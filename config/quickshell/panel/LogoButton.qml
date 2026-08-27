@@ -17,7 +17,7 @@ PanelPill {
         anchors.centerIn: parent
         width: 24
         height: 25.2
-        source: Qt.resolvedUrl("../assets/ctt_logo.png")
+        source: Qt.resolvedUrl("../assets/rahuljangirwork.svg")
         fillMode: Image.PreserveAspectFit
         asynchronous: true
         smooth: true
