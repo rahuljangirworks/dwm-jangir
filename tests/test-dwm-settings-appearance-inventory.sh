@@ -23,7 +23,7 @@ link_dir=$work/link-bin
 wallpaper_dir=$home/Pictures/backgrounds
 legacy_font_dir=$home/.fonts
 proc_root=$work/proc
-mkdir -p "$config_home/dwm-titus" "$config_home/dconf" "$config_home/fontconfig" \
+mkdir -p "$config_home/dwm-jangir" "$config_home/dconf" "$config_home/fontconfig" \
 	"$data_root/fonts/fixture" \
 	"$data_root/icons/Capitaine-Cursors/cursors" \
 	"$data_root/icons/unknown/cursors" \
@@ -35,7 +35,7 @@ mkdir -p "$config_home/dwm-titus" "$config_home/dconf" "$config_home/fontconfig"
 	"$data_root/themes/unknown/gtk-3.0" \
 	"$data_root/themes/Bad\"GTK/gtk-3.0" "$data_root/themes/Bad\"GTK/gtk-4.0" \
 	"$data_root/themes/Legacy/gtk-3.0" \
-	"$state_root/dwm-titus/appearance/wallpaper" \
+	"$state_root/dwm-jangir/appearance/wallpaper" \
 	"$wallpaper_dir/nested" "$legacy_font_dir/nested" "$bin_dir" "$link_dir" \
 	"$proc_root/4242"
 printf '[Icon Theme]\nName=Papirus\nDirectories=scalable/apps\n' \
@@ -50,7 +50,7 @@ printf 'jpg\n' >"$wallpaper_dir/nested/forest.JPG"
 printf 'png\n' >"$wallpaper_dir/unsafe"$'\034'"separator.png"
 printf 'ignored\n' >"$wallpaper_dir/readme.txt"
 printf 'export QT_QPA_PLATFORMTHEME=qt6ct\nexport XCURSOR_THEME=Capitaine-Cursors\nexport XCURSOR_SIZE=32\n' \
-	>"$config_home/dwm-titus/theme-env.sh"
+	>"$config_home/dwm-jangir/theme-env.sh"
 
 for command_name in awk bash chmod date find flock grep id mkdir mkfifo mktemp mv readlink rm \
 	rmdir sed sha256sum sleep stat timeout tr; do
@@ -113,8 +113,8 @@ if [ "${DWM_TEST_INOTIFY_BLOCK:-0}" = 1 ]; then
 	trap 'exit 143' HUP INT TERM
 	while :; do sleep 10; done
 fi
-config_dir=$(readlink -m -- "$XDG_CONFIG_HOME/dwm-titus")
-appearance_state_dir=$(readlink -m -- "${XDG_STATE_HOME:-$HOME/.local/state}/dwm-titus/appearance")
+config_dir=$(readlink -m -- "$XDG_CONFIG_HOME/dwm-jangir")
+appearance_state_dir=$(readlink -m -- "${XDG_STATE_HOME:-$HOME/.local/state}/dwm-jangir/appearance")
 printf 'CREATE\t%s/.font-exchange-a.fixture\n' "$config_dir"
 printf 'DELETE\t%s/.font-exchange-b.fixture\n' "$config_dir"
 printf 'ATTRIB,ISDIR\t%s/\n' "$appearance_state_dir"
@@ -176,7 +176,7 @@ if [[ $inventory == *$'\034'* ]]; then
 	printf 'Wallpaper candidate containing the inventory separator was emitted\n' >&2
 	exit 1
 fi
-cat >"$config_home/dwm-titus/wallpaper.conf" <<EOF
+cat >"$config_home/dwm-jangir/wallpaper.conf" <<EOF
 version=1
 path=$wallpaper_dir/nested/forest.JPG
 fit=max
@@ -301,7 +301,7 @@ elapsed=$(($(date +%s) - started))
 test "$elapsed" -lt 6
 grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tWallpaper state helper did not return a valid bounded response' \
 	<<<"$slow_wallpaper_inventory"
-rm -f "$config_home/dwm-titus/wallpaper.conf"
+rm -f "$config_home/dwm-jangir/wallpaper.conf"
 grep -Fqx $'selection\tfont\tavailable\tNoto Sans\tNoto Sans 11\tCurrent desktop font family is installed' \
 	<<<"$inventory"
 test "$(grep -Fc $'candidate\tfont\tavailable\tNoto Sans\tNoto Sans\tExact Fontconfig family' \
@@ -409,7 +409,7 @@ grep -Fqx $'selection\tfont\tavailable\tNoto Sans\tnoto sans bold 11\tCurrent de
 	<<<"$lowercase_styled_font"
 
 printf 'personalization-protocol\t1\t0\nfont\tnoto sans\n' \
-	>"$config_home/dwm-titus/personalization.conf"
+	>"$config_home/dwm-jangir/personalization.conf"
 case_preserved_font=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
@@ -418,7 +418,7 @@ grep -Fqx $'candidate\tfont\tavailable\tNoto Sans\tNoto Sans\tExact Fontconfig f
 	<<<"$case_preserved_font"
 grep -Fqx $'candidate\tfont\tavailable\tnoto sans\tnoto sans\tExact Fontconfig family' \
 	<<<"$case_preserved_font"
-rm -f "$config_home/dwm-titus/personalization.conf"
+rm -f "$config_home/dwm-jangir/personalization.conf"
 
 alias_font_bin=$work/alias-font-bin
 cp -a "$bin_dir" "$alias_font_bin"
@@ -433,7 +433,7 @@ printf 'MesloLGS NF\n'
 EOF
 chmod +x "$alias_font_bin/fc-list" "$alias_font_bin/fc-match"
 printf 'personalization-protocol\t1\t0\nfont\tMesloLGS Nerd Font Mono\n' \
-	>"$config_home/dwm-titus/personalization.conf"
+	>"$config_home/dwm-jangir/personalization.conf"
 alias_font=$(HOME=$home PATH=$alias_font_bin XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
@@ -442,7 +442,7 @@ grep -Fqx $'selection\tfont\tavailable\tMesloLGS NF\tmeslolgs nerd font mono 11\
 	<<<"$alias_font"
 grep -Fqx $'candidate\tfont\tavailable\tMesloLGS Nerd Font Mono\tMesloLGS Nerd Font Mono\tExact Fontconfig family' \
 	<<<"$alias_font"
-rm -f "$config_home/dwm-titus/personalization.conf"
+rm -f "$config_home/dwm-jangir/personalization.conf"
 
 reserved_font_bin=$work/reserved-font-bin
 cp -a "$bin_dir" "$reserved_font_bin"
@@ -459,7 +459,7 @@ printf '%s\n' "$candidate"
 EOF
 chmod +x "$reserved_font_bin/fc-list" "$reserved_font_bin/fc-match"
 printf 'personalization-protocol\t1\t0\nfont\tFont030\n' \
-	>"$config_home/dwm-titus/personalization.conf"
+	>"$config_home/dwm-jangir/personalization.conf"
 reserved_font=$(HOME=$home PATH=$reserved_font_bin XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
@@ -471,7 +471,7 @@ grep -Fqx $'candidate\tfont\tavailable\tFont030\tFont030\tExact Fontconfig famil
 test "$(grep -c $'^candidate\tfont\t' <<<"$reserved_font")" -eq 24
 
 printf 'personalization-protocol\t1\t0\nfont\tfont030\n' \
-	>"$config_home/dwm-titus/personalization.conf"
+	>"$config_home/dwm-jangir/personalization.conf"
 reserved_font_alias=$(HOME=$home PATH=$reserved_font_bin XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
@@ -479,7 +479,7 @@ reserved_font_alias=$(HOME=$home PATH=$reserved_font_bin XDG_CONFIG_HOME=$config
 grep -Fqx $'candidate\tfont\tavailable\tfont030\tfont030\tExact Fontconfig family' \
 	<<<"$reserved_font_alias"
 test "$(grep -c $'^candidate\tfont\t' <<<"$reserved_font_alias")" -eq 24
-rm -f "$config_home/dwm-titus/personalization.conf"
+rm -f "$config_home/dwm-jangir/personalization.conf"
 
 printf -v oversized_font '%*s' 4100 ''
 oversized_font=${oversized_font// /x}
@@ -493,7 +493,7 @@ grep -Fqx $'selection\tcursor\tavailable\tCapitaine-Cursors\t\tCurrent selection
 	<<<"$oversized"
 
 printf 'export QT_QPA_PLATFORMTHEME=unsupported\nexport XCURSOR_THEME=Capitaine-Cursors\nexport XCURSOR_SIZE=32\n' \
-	>"$config_home/dwm-titus/theme-env.sh"
+	>"$config_home/dwm-jangir/theme-env.sh"
 stale=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=unsupported \
@@ -505,7 +505,7 @@ done
 grep -Fqx $'selection\tqt\tpartial\tunsupported\t\tConfigured Qt platform theme backend is unsupported' \
 	<<<"$stale"
 printf 'export QT_QPA_PLATFORMTHEME=qt6ct\nexport XCURSOR_THEME=Capitaine-Cursors\nexport XCURSOR_SIZE=32\n' \
-	>"$config_home/dwm-titus/theme-env.sh"
+	>"$config_home/dwm-jangir/theme-env.sh"
 
 legacy_gtk=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
@@ -558,7 +558,7 @@ if grep -Fq $'candidate\tcursor\tavailable\tBad&Cursor\t' <<<"$unsafe_selected";
 fi
 
 printf 'personalization-protocol\t1\t0\ncursor\tcursor-258\n' \
-	>"$config_home/dwm-titus/personalization.conf"
+	>"$config_home/dwm-jangir/personalization.conf"
 limited_saved=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$limit_data DWM_APPEARANCE_DATA_DIRS=$limit_data \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
@@ -566,7 +566,7 @@ limited_saved=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 test "$(grep -c $'^candidate\tcursor\t' <<<"$limited_saved")" -eq 256
 grep -Fqx $'candidate\tcursor\tavailable\tcursor-258\tcursor-258\tXcursor theme' \
 	<<<"$limited_saved"
-rm -f "$config_home/dwm-titus/personalization.conf"
+rm -f "$config_home/dwm-jangir/personalization.conf"
 
 watch_args=$work/watch.args
 watch_find_complete=$work/watch-find.complete
@@ -576,7 +576,7 @@ resolved_wallpaper_dir=$work/resolved-wallpapers
 mkdir -p "$external_wallpaper_dir" "$resolved_wallpaper_dir"
 printf 'external png\n' >"$resolved_wallpaper_dir/selected.png"
 ln -s "$resolved_wallpaper_dir/selected.png" "$external_wallpaper_dir/selected.png"
-cat >"$config_home/dwm-titus/wallpaper.conf" <<EOF
+cat >"$config_home/dwm-jangir/wallpaper.conf" <<EOF
 version=1
 mode=selection
 path=$external_wallpaper_dir/selected.png
@@ -645,7 +645,7 @@ grep -Fq -- "$external_wallpaper_dir" "$watch_args"
 grep -Fq -- "$resolved_wallpaper_dir" "$watch_args"
 grep -Fq -- "$config_home/dconf" "$watch_args"
 grep -Fq -- "$config_home/fontconfig" "$watch_args"
-grep -Fq -- "$state_root/dwm-titus/appearance/wallpaper" "$watch_args"
+grep -Fq -- "$state_root/dwm-jangir/appearance/wallpaper" "$watch_args"
 grep -Fq -- "$data_root/icons" "$watch_args"
 grep -Fq -- "$data_root/themes" "$watch_args"
 grep -Fq -- "$data_root/icons/Papirus" "$watch_args"
@@ -669,7 +669,7 @@ if grep -Fq -- '/etc/compatible-looking.jpg' "$incompatible_watch_args" ||
 	printf 'Inventory watcher trusted an incompatible wallpaper protocol\n' >&2
 	exit 1
 fi
-rm -f -- "$config_home/dwm-titus/wallpaper.conf"
+rm -f -- "$config_home/dwm-jangir/wallpaper.conf"
 
 restricted_wallpaper_parent=$work/restricted-parent
 restricted_wallpaper_dir=$restricted_wallpaper_parent/restricted-wallpapers

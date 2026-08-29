@@ -20,6 +20,8 @@ Verified on 2026-08-29 without modifying Git history or remote configuration:
 | Item | Verified value |
 | --- | --- |
 | Current branch | `dev`, tracking `origin/dev`, with two local commits pending push |
+| Public fork repository | `https://github.com/rahuljangirworks/dwm-jangir` |
+| Read-only upstream repository | `https://github.com/ChrisTitusTech/dwm-titus` |
 | Published `origin/dev` commit | `3b1f179` (`synced-with-upstream-20260827`) |
 | Latest implementation commit | `728a84b` (`fix(display): persist NVIDIA layouts through Xorg`) |
 | Latest fork-record commit | `05a99b2` (`docs(fork): record upstream-safe display workflow`) |
@@ -56,6 +58,14 @@ the user verified this X11 layout:
 
 The managed shell check could not run because `shellcheck` is not installed;
 `shfmt` and the full suite remain unrun.
+
+## Current Local Worktree
+
+The uncommitted runtime-identity migration makes `dwm-jangir` the active XDG,
+session, helper, Xorg, LightDM, release, and source-asset name. Its installer
+migrates only unambiguous former `dwm-titus` user directories and preserves
+divergent settings. It must be validated and reviewed before any commit or
+push; do not treat the old runtime namespace as active after installation.
 
 ## Next Required Action
 

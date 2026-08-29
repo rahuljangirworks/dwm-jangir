@@ -116,8 +116,8 @@ for ks in "$standard_ks" "$nvidia_ks"; do
 		exit 1
 	fi
 	grep -Fq 'scripts/install-gearlever' "$ks"
-	grep -Fq '%include /tmp/dwm-titus-gaming-repo' "$ks"
-	grep -Fq '%include /tmp/dwm-titus-gaming-packages' "$ks"
+	grep -Fq '%include /tmp/dwm-jangir-gaming-repo' "$ks"
+	grep -Fq '%include /tmp/dwm-jangir-gaming-packages' "$ks"
 	# shellcheck disable=SC2016
 	grep -Fq 'fedora-$releasever-$basearch/' "$ks"
 	# shellcheck disable=SC2016

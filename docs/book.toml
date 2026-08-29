@@ -2,7 +2,7 @@
 authors = ["Chris Titus"]
 language = "en"
 src = "src"
-title = "dwm-titus: Fedora X11 Desktop"
+title = "dwm-jangir: Fedora X11 Desktop"
 
 [build]
 build-dir = "book"

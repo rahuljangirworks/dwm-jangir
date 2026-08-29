@@ -5,8 +5,8 @@ usage() {
 	cat <<'EOF'
 Usage: scripts/build-dwm-fedora-installer-iso.sh --input ISO --output ISO [--variant standard|nvidia]
 
-Embed this checkout and a dwm-titus Kickstart into a Fedora installer ISO.
-The resulting ISO exposes the checkout at /run/install/repo/dwm-titus.
+Embed this checkout and a dwm-jangir Kickstart into a Fedora installer ISO.
+The resulting ISO exposes the checkout at /run/install/repo/dwm-jangir.
 EOF
 }
 
@@ -112,7 +112,7 @@ if [[ ! -f $ks_file ]]; then
 fi
 
 work_dir="$(mktemp -d)"
-payload_dir="$work_dir/dwm-titus"
+payload_dir="$work_dir/dwm-jangir"
 grub_cfg="$work_dir/grub.cfg"
 patched_grub_cfg="$work_dir/grub.cfg.patched"
 output_dir="$(dirname "$output_iso")"
@@ -160,7 +160,7 @@ xorriso -indev "$input_iso" -outdev "$tmp_output" \
 	-boot_image any replay \
 	-map "$ks_file" /dwm-fedora.ks \
 	-map "$patched_grub_cfg" /EFI/BOOT/grub.cfg \
-	-map "$payload_dir" /dwm-titus
+	-map "$payload_dir" /dwm-jangir
 
 mv -f "$tmp_output" "$output_iso"
 printf 'Created %s (%s)\n' "$output_iso" "$variant"

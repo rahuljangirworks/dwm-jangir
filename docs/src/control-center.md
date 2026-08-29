@@ -100,7 +100,7 @@ make
 sudo make install-system
 ```
 
-The managed copy under `~/.local/share/dwm-titus` is never elevated itself. If
+The managed copy under `~/.local/share/dwm-jangir` is never elevated itself. If
 the installed helper is unavailable, cached or `NOPASSWD` sudo can still run
 the validated root-owned system commands. Polkit authorization requires the
 root-owned installed helper.
@@ -166,7 +166,7 @@ dwm-controlcenter
 The script is a compatibility wrapper around the Quickshell IPC target:
 
 ```bash
-quickshell ipc --path "${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/quickshell/shell.qml" call controlcenter toggle
+quickshell ipc --path "${XDG_DATA_HOME:-$HOME/.local/share}/dwm-jangir/config/quickshell/shell.qml" call controlcenter toggle
 ```
 
 Open or refresh System Health directly through its IPC target:

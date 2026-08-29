@@ -1,8 +1,8 @@
-# dwm-titus Project Specification
+# dwm-jangir Project Specification
 
 ## 1. Product Definition
 
-dwm-titus is a Fedora-only desktop environment for X11. It combines a small,
+dwm-jangir is a Fedora-only desktop environment for X11. It combines a small,
 maintained fork of suckless dwm with runtime-configurable hotkeys, themes, and
 window rules, a managed Quickshell shell and Settings layer, and supporting
 desktop services and helpers.
@@ -18,7 +18,7 @@ distributions are outside the supported product and validation contract.
 - Provide one cohesive Settings experience for common display, input,
   connectivity, audio, power, appearance, default-application, update, and
   system-information workflows.
-- Build and run the complete dwm-titus desktop on supported Fedora releases.
+- Build and run the complete dwm-jangir desktop on supported Fedora releases.
 - Provide safe, idempotent dependency installation and system integration.
 - Preserve the speed, simplicity, and direct configuration model of dwm.
 - Provide consistent defaults and complete Settings behavior on Fedora.
@@ -84,7 +84,7 @@ The installed session must provide:
 The product must load user configuration from:
 
 ```text
-${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/
+${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/
 ```
 
 The supported runtime files are:
@@ -100,19 +100,19 @@ an actionable error and retain safe defaults or the last valid state.
 Compile-time defaults remain in `config.def.h`. An existing `config.h` is user
 owned and must not be overwritten during installation or upgrade.
 
-Quickshell configuration is a managed shell-layer artifact owned by dwm-titus.
+Quickshell configuration is a managed shell-layer artifact owned by dwm-jangir.
 During installation, `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/` must be
 replaced from the tracked `config/quickshell/` directory so the running shell
 does not fall behind repository behavior. User-owned dwm TOML files remain
 preserved, but users should not place unrelated personal configuration under
-the dwm-titus-managed Quickshell directory. Quickshell integrations must use
+the dwm-jangir-managed Quickshell directory. Quickshell integrations must use
 event-driven updates whenever a state source provides a signal, subscription,
 watch mode, IPC stream, or service API. Polling timers are acceptable only for
 inherently sampled values, such as a clock or CPU load, or as documented
 fallbacks when no event source exists. The managed Quickshell shell must remain
 low overhead while idle: hidden launcher UI must not continuously filter or
 render application models, timer-triggered helper processes must not overlap,
-and only one shell provider should run in the dwm-titus session. On X11, the
+and only one shell provider should run in the dwm-jangir session. On X11, the
 managed shell must create one `PanelWindow` for every active screen so each
 monitor has a bar. The per-screen Quickshell `Variants` design must share its
 state providers and be explicitly profiled to show that it remains near idle.
@@ -129,7 +129,7 @@ the user `themes.toml` file.
 
 The project must support:
 
-- A display-manager session installed as `dwm.desktop`.
+- A display-manager session installed as `dwm-jangir.desktop`.
 - A `startx` flow whose `.xinitrc` launches dwm in a D-Bus session.
 - Startup without Picom, a wallpaper, or a polkit agent.
 - Detection of common polkit agent locations across `/usr/lib`,
@@ -220,7 +220,7 @@ A source-checkout update of an existing live installation must use the complete
 supported install path. Updating only the `dwm` executable is not a supported
 upgrade because it can leave installed helpers, session scripts, the managed
 Quickshell tree, and the user data copy at a different repository revision.
-When development is performed on a machine running dwm-titus, the
+When development is performed on a machine running dwm-jangir, the
 repository-owned `scripts/dev-sync-install.sh` command must synchronize the
 checkout to that machine's local live installation before the work is handed
 off or considered complete. The command is idempotent and must enforce this
@@ -229,7 +229,7 @@ contract for every developer deployment. Every live update must:
 1. Build the checked-out revision successfully before replacing installed
    files.
 2. Install the system files and refresh
-   `${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/` and the managed
+   `${XDG_DATA_HOME:-$HOME/.local/share}/dwm-jangir/` and the managed
    `${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/` tree from that same
    revision while preserving the user-owned dwm TOML files.
 3. Verify the installed binary and the managed Quickshell, data, and script
@@ -390,10 +390,10 @@ The snapshot must provide an overall state and categorized details for:
 - Current-boot journal and kernel errors, with `journalctl` preferred and
   privileged `dmesg` used as a fallback.
 - Failed system and user services, time synchronization, networking, audio,
-  and the dwm-titus desktop session.
+  and the dwm-jangir desktop session.
 - Memory, pressure, load, swap, local filesystem capacity, inode use,
   read-only mounts, and available battery, thermal, and drive-health data.
-- Required and optional dwm-titus commands, libraries, configuration, and the
+- Required and optional dwm-jangir commands, libraries, configuration, and the
   distribution package database.
 
 The dashboard must begin user-readable checks immediately and request a
@@ -509,14 +509,14 @@ Default system installation locations:
 ```text
 ${PREFIX}/bin/dwm
 ${PREFIX}/share/man/man1/dwm.1
-/usr/share/xsessions/dwm.desktop
+/usr/share/xsessions/dwm-jangir.desktop
 ```
 
 Default user locations:
 
 ```text
-${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/
-${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/
+${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/
+${XDG_DATA_HOME:-$HOME/.local/share}/dwm-jangir/
 ```
 
 System paths must be overridable for packaging and staged installs. User data
@@ -686,7 +686,7 @@ A roadmap feature is complete when:
 - Installation attempts without `ID=fedora` fail clearly before making
   changes.
 - Relevant automated and manual validation is recorded.
-- On a development machine running dwm-titus, the checkout has been
+- On a development machine running dwm-jangir, the checkout has been
   synchronized to the local live installation with
   `scripts/dev-sync-install.sh`, including the post-relogin check when one is
   required.

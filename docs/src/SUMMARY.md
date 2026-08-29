@@ -7,5 +7,5 @@
 - [Theming](./theming.md)
 - [Control Center](./control-center.md)
 - [Settings](./settings.md)
-- [How dwm-titus Works](./patches.md)
+- [How dwm-jangir Works](./patches.md)
 - [Troubleshooting](./troubleshooting.md)

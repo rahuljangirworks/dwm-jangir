@@ -18,7 +18,7 @@ captured layout; timeout or closing Settings also restores the prior layout.
 The machine-oriented `dwm-settings-display` helper exposes `discover` and
 `watch`, complete-layout `save` and `preview`, named `preview-profile`, timed
 `keep`, `revert`, and `preview-status`, plus authorized `install-profile` and
-`rollback-system` actions. Named profiles live under the dwm-titus XDG config
+`rollback-system` actions. Named profiles live under the dwm-jangir XDG config
 directory. Legacy incomplete profiles remain available to
 `dwm-display-profile`, but Settings requires them to be resaved as complete
 layouts before preview or persistent installation.
@@ -58,7 +58,7 @@ Saving the file applies the rule through dwm's normal hot reload. A customized
 rule with the same title can be retained instead.
 
 Persistent display installation writes only the managed
-`90-dwm-titus-display.conf` fragment after a separate confirmation and polkit
+`90-dwm-jangir-display.conf` fragment after a separate confirmation and polkit
 authorization. The installed helper accepts validated display records only,
 creates a backup, and offers a system rollback. Later phases add connectivity,
 audio, power, defaults, personalization, and system-management operations.

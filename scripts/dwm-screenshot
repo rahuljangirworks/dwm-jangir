@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Portable maim screenshot wrapper for dwm-titus.
+# Portable maim screenshot wrapper for dwm-jangir.
 #
 # Usage:
 #   dwm-screenshot screen  - save the monitor containing the cursor as JPEG
@@ -107,7 +107,7 @@ save_capture() {
 	fi
 
 	if command -v notify-send >/dev/null 2>&1; then
-		notify-send -a dwm-titus 'Screenshot saved' "$capture_file" \
+		notify-send -a dwm-jangir 'Screenshot saved' "$capture_file" \
 			>/dev/null 2>&1 || true
 	fi
 	printf '%s\n' "$capture_file"
@@ -121,7 +121,7 @@ copy_capture_to_clipboard() {
 		return 127
 	fi
 
-	runtime_dir="${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/dwm-titus"
+	runtime_dir="${XDG_RUNTIME_DIR:-${XDG_CACHE_HOME:-$HOME/.cache}}/dwm-jangir"
 	mkdir -p "$runtime_dir"
 	chmod 700 "$runtime_dir"
 	trap cleanup_clip_capture EXIT

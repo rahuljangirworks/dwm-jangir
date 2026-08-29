@@ -1,6 +1,6 @@
 # Fedora Installation
 
-> **dwm-titus is Fedora-only.** Fedora Linux with Xorg is required for every
+> **dwm-jangir is Fedora-only.** Fedora Linux with Xorg is required for every
 > supported installation, package, test, and release path.
 
 ## Quick Install (Recommended)
@@ -47,8 +47,8 @@ gaming subset without affecting other full-profile extras.
 ### 2. Clone and Build
 
 ```bash
-git clone https://github.com/ChrisTitusTech/dwm-titus.git
-cd dwm-titus
+git clone https://github.com/rahuljangirworks/dwm-jangir.git
+cd dwm-jangir
 cp config.def.h config.h
 ./scripts/dev-sync-install.sh
 ```
@@ -75,6 +75,19 @@ units are disabled from early startup but otherwise preserved.
 
 System files are installed with `sudo`, while configuration and data under the
 user's XDG directories are installed as that user.
+
+### Runtime identity migration
+
+The active installed identity is `dwm-jangir`. A normal installer run first
+installs the new session and privileged helper, then migrates unambiguous
+legacy `dwm-titus` XDG configuration, data, and state directories to
+`dwm-jangir`. It also renames the managed Xorg fragment to
+`/etc/X11/xorg.conf.d/90-dwm-jangir-display.conf`. If both user directories or
+both Xorg fragments exist and differ, the installer preserves both and prints a
+warning; review the differences before rebooting rather than losing settings.
+
+After a successful migration, select **dwm-jangir** in LightDM. The legacy
+`dwm` session entry is removed only when it is the project's former entry.
 
 If a v0.6.0 Fedora image left the default XDG parents owned by root, first
 verify that none of them is a symbolic link, then repair only those parents and
@@ -179,6 +192,21 @@ its `terminal` variable to `dwm-terminal`, set it to `alacritty` to adopt the
 current direct-terminal default. The installer does not overwrite that
 user-owned choice.
 
+### Installer diagnostic record
+
+Every non-dry-run installer run writes one user-owned record to:
+
+```text
+${XDG_STATE_HOME:-$HOME/.local/state}/dwm-jangir/install-last.log
+```
+
+It contains the read-only preflight inspection, full installer output, and the
+final result. The file is replaced atomically only after a run finishes, so it
+always represents the last completed install attempt and does not accumulate a
+long history. Share the relevant part of this file with an agent when an
+install fails. `--dry-run` does not replace the previous record. Set
+`DWM_INSTALL_LOG=0` only when you explicitly do not want an install record.
+
 ## Starting dwm
 
 **Display manager** (SDDM, GDM, LightDM): log out and select **dwm** from the session list.
@@ -186,12 +214,33 @@ user-owned choice.
 When the interactive installer runs inside an active X11 session, it offers
 the `dwm-display-setup` wizard after installation. The wizard previews the
 chosen resolution and multi-monitor layout, then installs a backed-up Xorg
-fragment. Installations run from a TTY or in non-interactive mode defer this
+fragment. Automatic horizontal placement is the default: the selected primary
+display is placed at `0x0`, then remaining enabled displays are arranged to its
+right using their rotation-aware size. Select manual placement to enter X/Y
+coordinates instead. Installations run from a TTY or in non-interactive mode defer this
 step; after the first X11 login, run:
 
 ```bash
 dwm-display-setup
 ```
+
+### Dell Precision 5820 display profile (opt-in)
+
+`dell-5820` is a personal profile for Rahul's DP-0 and DVI-D-0 wiring; it is
+not part of the generic installer path and is never auto-detected. Select it
+explicitly:
+
+```bash
+./install.sh --display-profile dell-5820
+```
+
+The installer copies the profile to
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/display-profiles/dell-5820.conf`.
+In an active X11 session it confirms the two required outputs are connected,
+then uses `dwm-display-setup` to preview and persist the configuration. A TTY
+install stores the profile but does not apply it. On any output mismatch, it
+does not change Xorg; use `dwm-display-setup` after logging in for the normal
+wizard.
 
 The installed Settings display provider is machine-oriented. Its actions are:
 
@@ -210,9 +259,9 @@ dwm-settings-display rollback-system
 
 Discovery and live previews require `xrandr`, and the hotplug watch requires
 `udevadm`. Persistent install and rollback additionally require `pkexec` plus
-the root-owned helper installed at `${PREFIX}/libexec/dwm-titus/`. Profiles are
+the root-owned helper installed at `${PREFIX}/libexec/dwm-jangir/`. Profiles are
 stored under
-`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/display-profiles/`. No move is
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/display-profiles/`. No move is
 needed for profiles created by `dwm-display-profile`, which uses the same
 directory. If `DWM_DISPLAY_PROFILE_DIR` previously pointed elsewhere, either
 keep that environment override or move those `.conf` files into the default
@@ -236,7 +285,7 @@ All input actions require `xinput`; keyboard layout and modifier operations
 also require `setxkbmap`; stable hardware identity and hotplug watching use
 `udevadm`, and the session watcher uses `flock` from `util-linux` to prevent
 duplicate replay workers. Kept values default to
-`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/input-settings.conf`. Set
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/input-settings.conf`. Set
 `DWM_INPUT_SETTINGS_FILE` to use a different file. The normal session startup
 invokes `apply-saved` idempotently and runs `watch-apply` to debounce input
 hotplug events before replaying saved values for returning devices.

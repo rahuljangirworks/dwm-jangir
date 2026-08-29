@@ -43,16 +43,16 @@ jobs:
       - name: Build with mdbook
         run: mdbook build docs
       - name: Setup Pages
-        if: github.event_name != 'pull_request' && github.repository == 'ChrisTitusTech/dwm-titus'
+        if: github.event_name != 'pull_request' && github.repository == 'rahuljangirworks/dwm-jangir'
         uses: actions/configure-pages@v6
       - name: Upload artifact
-        if: github.event_name != 'pull_request' && github.repository == 'ChrisTitusTech/dwm-titus'
+        if: github.event_name != 'pull_request' && github.repository == 'rahuljangirworks/dwm-jangir'
         uses: actions/upload-pages-artifact@v5
         with:
           path: ./docs/book
 
   deploy:
-    if: github.event_name != 'pull_request' && github.repository == 'ChrisTitusTech/dwm-titus'
+    if: github.event_name != 'pull_request' && github.repository == 'rahuljangirworks/dwm-jangir'
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}

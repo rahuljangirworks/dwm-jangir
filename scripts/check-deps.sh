@@ -1,7 +1,7 @@
 #!/bin/bash
 # shellcheck disable=SC2059
 # ─────────────────────────────────────────────────────────
-# dwm-titus dependency checker
+# dwm-jangir dependency checker
 # Run before building to verify all required packages
 # are installed. Exit code 0 = all good, 1 = missing deps.
 # ─────────────────────────────────────────────────────────
@@ -85,7 +85,7 @@ print_package_profile() {
 	fi
 }
 
-echo "═══ dwm-titus Dependency Check ═══"
+echo "═══ dwm-jangir Dependency Check ═══"
 echo ""
 echo "Distribution: $DISTRO_NAME"
 echo "Family: $DISTRO_FAMILY"
@@ -169,10 +169,10 @@ echo ""
 
 # ── Session entry ───────────────────────────────────────
 echo "Session Setup:"
-if [ -f /usr/share/xsessions/dwm.desktop ]; then
-	printf "  ${GREEN}✓${NC} dwm.desktop in /usr/share/xsessions/\n"
+if [ -f /usr/share/xsessions/dwm-jangir.desktop ]; then
+	printf "  ${GREEN}✓${NC} dwm-jangir.desktop in /usr/share/xsessions/\n"
 else
-	printf "  ${YELLOW}○${NC} dwm.desktop not found (run './install.sh')\n"
+	printf "  ${YELLOW}○${NC} dwm-jangir.desktop not found (run './install.sh')\n"
 fi
 if [ -f "$HOME/.xinitrc" ]; then
 	printf "  ${GREEN}✓${NC} ~/.xinitrc exists\n"

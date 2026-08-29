@@ -57,6 +57,14 @@ HDMI-1 connected primary 1920x1080+0+0 (normal left inverted right x axis y axis
    1920x1080     60.00*+
 EOF
 
+cat >"$work/query-dell-5820" <<'EOF'
+Screen 0: minimum 8 x 8, current 3460 x 1440, maximum 32767 x 32767
+DVI-D-0 connected 900x1440+2560+0 left (normal left inverted right x axis y axis)
+   1440x900      59.89*+
+DP-0 connected primary 2560x1440+0+0 (normal left inverted right x axis y axis)
+   2560x1440     59.95*+
+EOF
+
 cat >"$work/query-provider-suffix" <<'EOF'
 Screen 0: minimum 320 x 200, current 1024 x 768, maximum 16384 x 16384
 Virtual-1-1 connected (normal left inverted right x axis y axis)
@@ -129,6 +137,17 @@ HDMI-1 connected primary 1920x1080+0+0 (0x46) normal (normal left inverted right
   1920x1080 (0x48) 297.000MHz +HSync +VSync
         h: width  1920 start 2008 end 2052 total 2200 skew    0 clock 135.00KHz
         v: height 1080 start 1084 end 1089 total 1125           clock 120.00Hz
+EOF
+
+cat >"$work/verbose-dell-5820" <<'EOF'
+DVI-D-0 connected 900x1440+2560+0 (0x70) left (normal left inverted right x axis y axis)
+  1440x900 (0x71) 106.470MHz +HSync +VSync *current +preferred
+        h: width  1440 start 1520 end 1672 total 1904 skew    0 clock  55.92KHz
+        v: height 900 start 903 end 909 total 934           clock  59.89Hz
+DP-0 connected primary 2560x1440+0+0 (0x72) normal (normal left inverted right x axis y axis)
+  2560x1440 (0x73) 241.500MHz +HSync -VSync *current +preferred
+        h: width  2560 start 2608 end 2640 total 2720 skew    0 clock  88.79KHz
+        v: height 1440 start 1443 end 1448 total 1481           clock  59.95Hz
 EOF
 
 cat >"$work/verbose-rotated-no-current" <<'EOF'
@@ -338,7 +357,7 @@ grep -Eq '^--output HDMI-1( |$)' "$work/xrandr.log"
 
 env "${env_common[@]}" "$BASH_BIN" "$HELPER" generate \
 	"$work/profile-60.conf" >"$work/generated-60.conf"
-grep -Fq 'Option "Monitor-HDMI-1" "dwm-titus-HDMI-1"' "$work/generated-60.conf"
+grep -Fq 'Option "Monitor-HDMI-1" "dwm-jangir-HDMI-1"' "$work/generated-60.conf"
 grep -Fq 'MatchDriver "amdgpu"' "$work/generated-60.conf"
 grep -Fq 'Driver "amdgpu"' "$work/generated-60.conf"
 grep -Fq 'Option "TearFree" "true"' "$work/generated-60.conf"
@@ -401,6 +420,18 @@ grep -Fq 'Option "ForceFullCompositionPipeline" "true"' "$work/generated-nvidia.
 grep -Fq 'Option "MetaModes" "HDMI-1: 1920x1080 +0+0 {rotation=normal}, DP-1: 2560x1440 +1920+0 {rotation=left}"' "$work/generated-nvidia.conf"
 if grep -Fq 'Option "TearFree" "true"' "$work/generated-nvidia.conf"; then
 	printf '%s\n' 'TearFree was emitted for the NVIDIA Xorg driver' >&2
+	exit 1
+fi
+
+env "${env_common[@]}" TEST_QUERY="$work/query-dell-5820" \
+	TEST_VERBOSE="$work/verbose-dell-5820" TEST_PROPERTIES="$work/properties-unsupported" \
+	DWM_KERNEL_DRIVER=nvidia DWM_XORG_DRIVER=nvidia \
+	"$BASH_BIN" "$HELPER" generate "$ROOT_DIR/profiles/dell-5820.conf" \
+	>"$work/generated-dell-5820-nvidia.conf"
+grep -Fq 'Option "MetaModes" "DVI-D-0: 1440x900 +2560+0 {rotation=left}, DP-0: 2560x1440 +0+0 {rotation=normal}"' \
+	"$work/generated-dell-5820-nvidia.conf"
+if grep 'MetaModes' "$work/generated-dell-5820-nvidia.conf" | grep -Fq '2560x1440_59.95'; then
+	printf '%s\n' 'NVIDIA MetaModes used a synthetic refresh-suffixed mode name' >&2
 	exit 1
 fi
 env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
@@ -507,7 +538,7 @@ env "${env_common[@]}" "$BASH_BIN" "$HELPER" preview \
 grep -Fq -- '--dryrun --output HDMI-1 --mode 1920x1080 --rate 60 --pos 0x0 --rotate normal --primary --set TearFree on' "$work/xrandr.log"
 grep -Fq -- '--output HDMI-1 --mode 1920x1080 --rate 60 --pos 0x0 --rotate normal --primary --set TearFree on' "$work/xrandr.log"
 
-managed="$work/etc/X11/xorg.conf.d/90-dwm-titus-display.conf"
+managed="$work/etc/X11/xorg.conf.d/90-dwm-jangir-display.conf"
 env "${env_common[@]}" DWM_DISPLAY_TIMESTAMP=20260101-000001 \
 	"$BASH_BIN" "$HELPER" install "$work/profile-60.conf" \
 	--config "$managed" --no-preview --yes >/dev/null
@@ -519,6 +550,8 @@ env "${env_common[@]}" DWM_DISPLAY_TIMESTAMP=20260101-000002 \
 	"$BASH_BIN" "$HELPER" install "$work/profile-120.conf" \
 	--config "$managed" --no-preview --yes >/dev/null
 test -f "$managed.backup.20260101-000002"
+grep -Fq 'PreferredMode" "1920x1080_60"' \
+	"$managed.backup.20260101-000002"
 grep -Fq 'PreferredMode" "1920x1080_120"' "$managed"
 
 env "${env_common[@]}" "$BASH_BIN" "$HELPER" rollback \
@@ -535,13 +568,13 @@ grep -Fq 'output is not connected' "$work/output-error"
 settings_env=(
 	"${env_common[@]}"
 	DWM_DISPLAY_SETUP="$HELPER"
-	DWM_DISPLAY_PROFILE_DIR="$work/home/.config/dwm-titus/display-profiles"
+	DWM_DISPLAY_PROFILE_DIR="$work/home/.config/dwm-jangir/display-profiles"
 	XDG_RUNTIME_DIR="$work/runtime"
 )
 mkdir -p "$work/runtime"
 chmod 700 "$work/runtime"
-mkdir -p "$work/home/.config/dwm-titus/display-profiles"
-cat >"$work/home/.config/dwm-titus/display-profiles/legacy.conf" <<'EOF'
+mkdir -p "$work/home/.config/dwm-jangir/display-profiles"
+cat >"$work/home/.config/dwm-jangir/display-profiles/legacy.conf" <<'EOF'
 HDMI-1 --primary --mode 1920x1080 --rate 60
 DP-1 --mode 2560x1440 --rate 60
 EOF
@@ -584,7 +617,7 @@ spec_dp1='DP-1|1|2560x1440|60|1920|0|left|0'
 spec_dp2='DP-2|0||||||0'
 env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" save desk \
 	"$spec_hdmi" "$spec_dp1" "$spec_dp2" >"$work/settings-save"
-test -f "$work/home/.config/dwm-titus/display-profiles/desk.conf"
+test -f "$work/home/.config/dwm-jangir/display-profiles/desk.conf"
 
 mkdir -p "$work/runtime/dwm-settings-display"
 chmod 700 "$work/runtime/dwm-settings-display"
@@ -654,7 +687,7 @@ if env "${settings_env[@]}" "$BASH_BIN" "$SETTINGS_HELPER" keep rollback-failure
 	exit 1
 fi
 grep -Fq 'cannot save a named profile after rollback failure' "$work/settings-failed-keep.err"
-test ! -e "$work/home/.config/dwm-titus/display-profiles/unsafe-name.conf"
+test ! -e "$work/home/.config/dwm-jangir/display-profiles/unsafe-name.conf"
 test -f "$work/runtime/dwm-settings-display/rollback-failure.previous"
 # shellcheck disable=SC2016 # These patterns intentionally match literal shell source.
 claim_line=$(grep -n 'claim=$(claim_preview "$token")' "$SETTINGS_HELPER" | head -n 1 | cut -d: -f1)

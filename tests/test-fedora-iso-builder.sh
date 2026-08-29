@@ -47,7 +47,7 @@ while (($# > 0)); do
 		case "${3:-}" in
 		/dwm-fedora.ks) ks_map=${2:-} ;;
 		/EFI/BOOT/grub.cfg) grub_map=${2:-} ;;
-		/dwm-titus) payload_map=${2:-} ;;
+		/dwm-jangir) payload_map=${2:-} ;;
 		esac
 		shift 3
 		;;
@@ -86,8 +86,8 @@ SH
 chmod +x "$work/bin/xorriso"
 
 input_iso="$work/Fedora-Server-netinst.iso"
-standard_iso="$work/dwm-titus.iso"
-nvidia_iso="$work/dwm-titus-nvidia.iso"
+standard_iso="$work/dwm-jangir.iso"
+nvidia_iso="$work/dwm-jangir-nvidia.iso"
 touch "$input_iso"
 
 run_builder() {

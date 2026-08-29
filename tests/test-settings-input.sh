@@ -34,7 +34,7 @@ cleanup_test() {
 }
 
 trap cleanup_test EXIT
-mkdir -p "$work/bin" "$work/home/.config/dwm-titus" "$work/runtime"
+mkdir -p "$work/bin" "$work/home/.config/dwm-jangir" "$work/runtime"
 chmod 700 "$work/runtime"
 
 cat >"$work/devices" <<'EOF'
@@ -349,8 +349,8 @@ fi
 env "${env_common[@]}" "$helper" preview nodeless-test 5 "$nodeless_key" pointer-speed 0.4 >/dev/null
 env "${env_common[@]}" "$helper" keep nodeless-test 2>"$work/nodeless-keep.err" >/dev/null
 grep -Fq 'session value only' "$work/nodeless-keep.err"
-if [[ -f $work/home/.config/dwm-titus/input-settings.conf ]] &&
-	grep -Fq "$nodeless_key" "$work/home/.config/dwm-titus/input-settings.conf"; then
+if [[ -f $work/home/.config/dwm-jangir/input-settings.conf ]] &&
+	grep -Fq "$nodeless_key" "$work/home/.config/dwm-jangir/input-settings.conf"; then
 	printf 'node-less input identity was persisted\n' >&2
 	exit 1
 fi
@@ -360,7 +360,7 @@ grep -Fqx 'preview	pointer-test	5' "$work/preview"
 env "${env_common[@]}" "$helper" keep pointer-test >"$work/keep"
 grep -Fqx 'result	keep	pointer-test' "$work/keep"
 grep -Fqx "$mouse_key"$'\tpointer-speed\t0.25\t0.000000' \
-	"$work/home/.config/dwm-titus/input-settings.conf"
+	"$work/home/.config/dwm-jangir/input-settings.conf"
 
 env "${env_common[@]}" "$helper" apply-saved
 grep -Fq 'xinput set-prop 12 libinput Accel Speed 0.25' "$work/actions.log"
@@ -473,11 +473,11 @@ grep -Fq 'input preview failed' "$work/apply-failure.err"
 test ! -e "$work/runtime/dwm-settings-input/apply-failure.state"
 test ! -e "$work/runtime/dwm-settings-input/current"
 
-cp "$work/home/.config/dwm-titus/input-settings.conf" "$work/saved-connected"
+cp "$work/home/.config/dwm-jangir/input-settings.conf" "$work/saved-connected"
 {
 	printf '0000000000000000\tpointer-speed\t0.75\n'
 	cat "$work/saved-connected"
-} >"$work/home/.config/dwm-titus/input-settings.conf"
+} >"$work/home/.config/dwm-jangir/input-settings.conf"
 rm -f "$work/actions.log"
 env "${env_common[@]}" "$helper" apply-saved 2>"$work/apply-disconnected.err"
 if ! grep -Fq 'skipped unavailable 0000000000000000/pointer-speed' "$work/apply-disconnected.err"; then
@@ -563,7 +563,7 @@ env "${env_common[@]}" TEST_UNSTABLE=1 "$helper" preview unstable-test 5 \
 env "${env_common[@]}" TEST_UNSTABLE=1 "$helper" keep unstable-test \
 	2>"$work/unstable-keep.err" >/dev/null
 grep -Fq 'session value only' "$work/unstable-keep.err"
-if grep -Fq "$unstable_mouse_key" "$work/home/.config/dwm-titus/input-settings.conf"; then
+if grep -Fq "$unstable_mouse_key" "$work/home/.config/dwm-jangir/input-settings.conf"; then
 	printf 'unstable input identity was persisted\n' >&2
 	exit 1
 fi
@@ -600,7 +600,7 @@ for _ in {1..30}; do
 done
 env "${env_common[@]}" "$helper" keep keep-disconnected >/dev/null
 grep -Fqx "$mouse_key"$'\tpointer-speed\t0.6\t0.000000' \
-	"$work/home/.config/dwm-titus/input-settings.conf"
+	"$work/home/.config/dwm-jangir/input-settings.conf"
 test ! -e "$work/runtime/dwm-settings-input/keep-disconnected.state"
 cp "$work/devices-all" "$work/devices"
 rm -f "$work/actions.log"
@@ -614,10 +614,10 @@ env "${env_common[@]}" TEST_OPTIONS= "$helper" preview empty-options 5 \
 	"$keyboard_key" modifier-options ctrl:nocaps >/dev/null
 env "${env_common[@]}" "$helper" keep empty-options >/dev/null
 grep -Fqx "$keyboard_key"$'\tmodifier-options\tctrl:nocaps\t' \
-	"$work/home/.config/dwm-titus/input-settings.conf"
+	"$work/home/.config/dwm-jangir/input-settings.conf"
 env "${env_common[@]}" "$helper" reset "$keyboard_key" modifier-options >/dev/null
 printf '%s\tmodifier-options\t\t\n' "$keyboard_key" \
-	>>"$work/home/.config/dwm-titus/input-settings.conf"
+	>>"$work/home/.config/dwm-jangir/input-settings.conf"
 rm -f "$work/actions.log"
 env "${env_common[@]}" "$helper" apply-saved
 grep -Fq 'setxkbmap -device 13 -option  -option ' "$work/actions.log"
@@ -628,7 +628,7 @@ env "${env_common[@]}" "$helper" keep keyboard-reset >/dev/null
 env "${env_common[@]}" "$helper" reset "$keyboard_key" keyboard-layout >/dev/null
 grep -Fq 'setxkbmap -device 13 -layout de' "$work/actions.log"
 if grep -Fq "$keyboard_key"$'\tkeyboard-layout\t' \
-	"$work/home/.config/dwm-titus/input-settings.conf"; then
+	"$work/home/.config/dwm-jangir/input-settings.conf"; then
 	printf 'keyboard reset left a persisted layout override\n' >&2
 	exit 1
 fi

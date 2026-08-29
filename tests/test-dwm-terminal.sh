@@ -8,11 +8,11 @@ BASH_BIN="${BASH:-/usr/bin/bash}"
 work="$(mktemp -d)"
 trap 'rm -rf "$work"' EXIT
 
-mkdir -p "$work/bin" "$work/home/.config/dwm-titus"
+mkdir -p "$work/bin" "$work/home/.config/dwm-jangir"
 export HOME="$work/home"
 export XDG_CONFIG_HOME="$HOME/.config"
 
-cat >"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml" <<'EOF'
+cat >"$XDG_CONFIG_HOME/dwm-jangir/hotkeys.toml" <<'EOF'
 [vars]
 terminal = "alacritty"
 EOF
@@ -40,15 +40,15 @@ grep -Fqx -- "--class" "$work/out"
 grep -Fqx "dwm-test" "$work/out"
 
 sed -i 's/terminal = "alacritty"/terminal = "kitty"/' \
-	"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml"
+	"$XDG_CONFIG_HOME/dwm-jangir/hotkeys.toml"
 DWM_TERMINAL_TEST_OUT="$work/configured-out" \
 	PATH="$work/bin" \
 	"$BASH_BIN" "$HELPER" --print-command >"$work/configured-command"
 grep -Fqx kitty "$work/configured-command"
 sed -i 's/terminal = "kitty"/terminal = "alacritty"/' \
-	"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml"
+	"$XDG_CONFIG_HOME/dwm-jangir/hotkeys.toml"
 
-cat >>"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml" <<'EOF'
+cat >>"$XDG_CONFIG_HOME/dwm-jangir/hotkeys.toml" <<'EOF'
 [malformed-section
 terminal = "kitty"
 EOF
@@ -118,7 +118,7 @@ DWM_TERMINAL_TEST_OUT="$work/custom-out" \
 grep -Fqx "custom" "$work/custom-out"
 
 printf '%s\n' '[vars]' 'terminal = not-quoted' \
-	>"$XDG_CONFIG_HOME/dwm-titus/hotkeys.toml"
+	>"$XDG_CONFIG_HOME/dwm-jangir/hotkeys.toml"
 DWM_TERMINAL_TEST_OUT="$work/malformed-out" \
 	PATH="$work/bin" \
 	"$BASH_BIN" "$HELPER"
