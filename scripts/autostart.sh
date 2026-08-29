@@ -3,9 +3,6 @@
 # Phase 1: Blocking setup (must complete before windows appear)
 # Phase 2: Background services (compositor, notifications, shell, tray apps)
 
-# Monitor configuration
-xrandr --dpi 120 --output DP-0 --primary --mode 2560x1440 --rate 59.95 --pos 0x0 --rotate normal --output DVI-D-0 --mode 1440x900 --rate 59.89 --pos 2560x0 --rotate left
-
 start_once() {
 	process_name=$1
 	shift
