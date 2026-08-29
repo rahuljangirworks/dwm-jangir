@@ -1,6 +1,9 @@
 [Desktop Entry]
+Version=1.0
+Type=Application
 Name=dwm-jangir
 Comment=Dynamic window manager (dwm-jangir)
 Exec=@PREFIX@/bin/dwm-session
 Icon=dwm
-Type=Application
+DesktopNames=dwm-jangir
+Keywords=tiling;wm;windowmanager;window;manager;
