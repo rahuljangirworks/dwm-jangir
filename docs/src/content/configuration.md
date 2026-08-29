@@ -7,9 +7,14 @@ eyebrow: Make it yours
 
 # Configuration
 
-dwm-titus keeps user configuration under
-`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/`. Hotkeys and themes
+dwm-jangir keeps user configuration under
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/`. Hotkeys and themes
 **live-reload on save** — no recompile needed for most changes.
+
+When upgrading from the former runtime name, run `./install.sh` once from this
+checkout. It migrates an unambiguous `~/.config/dwm-titus` directory to this
+path and preserves both directories when any files differ, so no custom file is
+silently replaced.
 
 | File | Purpose |
 |------|---------|
@@ -100,7 +105,7 @@ to set the default browser, or `dwm-default-apps set-mime <mime> <desktop-id>`
 for other file types.
 
 Display profiles are optional files under
-`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/display-profiles`. Use
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/display-profiles`. Use
 `dwm-display-profile template` to print the format, `dwm-display-profile list`
 to show profiles, and `dwm-display-profile apply <name>` to run the profile
 through `xrandr`.
@@ -116,7 +121,7 @@ restored unless it is confirmed. Advanced calls may pass
 it on with an incompatible kernel or Xorg driver is rejected.
 
 Accepted layouts are installed as the isolated managed fragment
-`/etc/X11/xorg.conf.d/90-dwm-titus-display.conf`; existing Xorg files are not
+`/etc/X11/xorg.conf.d/90-dwm-jangir-display.conf`; existing Xorg files are not
 replaced. Each change creates a versioned backup. Use
 `dwm-display-setup rollback` to restore the newest backup, or
 `dwm-display-setup status` to inspect the managed file and current layout.
@@ -130,13 +135,13 @@ the current X11 layout after validation.
 The Settings Displays page uses the same profile grammar and validation through
 `dwm-settings-display`. Named profiles remain user-owned under the XDG path.
 Installing one persistently requires explicit confirmation and authorization;
-only the root-owned helper under `${PREFIX}/libexec/dwm-titus/` may update the
+only the root-owned helper under `${PREFIX}/libexec/dwm-jangir/` may update the
 managed Xorg fragment. Legacy profiles that omit complete position or rotation
 state remain usable with `dwm-display-profile`, but Settings will not preview or
 install them until they are resaved as a complete layout.
 
 Per-device input values kept in Settings are stored in
-`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/input-settings.conf`. The
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/input-settings.conf`. The
 event-driven input provider uses a hardware serial or path when available,
 re-resolves that identity before every change, and skips a disconnected device
 rather than applying its settings to another XInput ID. Session startup runs
@@ -164,7 +169,7 @@ remains available when automatic locking is disabled. The screen locker runs
 only while automatic locking is enabled or for the duration of an explicit
 manual lock, so DPMS display-off events remain independent from locking.
 External `loginctl lock-session` requests are forwarded to `dwm-lock` by an
-event-driven session listener. Until `power.conf` exists, dwm-titus leaves any
+event-driven session listener. Until `power.conf` exists, dwm-jangir leaves any
 user or Fedora-managed locker untouched.
 
 ### Modifier Syntax

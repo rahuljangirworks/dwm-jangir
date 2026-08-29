@@ -1,6 +1,6 @@
 [Desktop Entry]
-Name=dwm-titus
-Comment=Dynamic window manager (dwm-titus)
+Name=dwm-jangir
+Comment=Dynamic window manager (dwm-jangir)
 Exec=@PREFIX@/bin/dwm-session
 Icon=dwm
 Type=Application

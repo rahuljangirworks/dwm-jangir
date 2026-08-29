@@ -139,7 +139,7 @@ status_runner=$!
 track_runner "$status_runner"
 
 display_key=$(printf '%s' :199 | sha256sum | awk '{ print $1 }')
-identity_file=$work/runtime/dwm-titus/dwm-status.$display_key.identity
+identity_file=$work/runtime/dwm-jangir/dwm-status.$display_key.identity
 for _ in 1 2 3 4 5 6 7 8 9 10; do
 	[ -s "$identity_file" ] && break
 	sleep 0.02

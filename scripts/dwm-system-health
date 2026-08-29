@@ -493,9 +493,9 @@ scan_desktop() {
 
 	local config_home=${XDG_CONFIG_HOME:-$HOME/.config}
 	for detail in \
-		"hotkeys:$config_home/dwm-titus/hotkeys.toml" \
-		"themes:$config_home/dwm-titus/themes.toml" \
-		"rules:$config_home/dwm-titus/window-rules.toml" \
+		"hotkeys:$config_home/dwm-jangir/hotkeys.toml" \
+		"themes:$config_home/dwm-jangir/themes.toml" \
+		"rules:$config_home/dwm-jangir/window-rules.toml" \
 		"quickshell:$config_home/quickshell/shell.qml"; do
 		local name=${detail%%:*}
 		local path=${detail#*:}
@@ -612,7 +612,7 @@ scan_dependencies() {
 	if diagnostics=$(find_sibling_command dwm-diagnostics); then
 		"$diagnostics" --format health-tsv || true
 	else
-		emit_check dependencies restricted diagnostics "Dependency diagnostics" "dwm-diagnostics is unavailable" "Install the dwm-titus helper scripts"
+		emit_check dependencies restricted diagnostics "Dependency diagnostics" "dwm-diagnostics is unavailable" "Install the dwm-jangir helper scripts"
 	fi
 }
 

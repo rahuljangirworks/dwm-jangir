@@ -373,7 +373,7 @@ static void *toml_alloc(size_t sz);
 static const char autostartsh[] = "scripts/autostart.sh";
 static const char autostopsh[] = "scripts/autostop.sh";
 static const char broken[] = "broken";
-static const char dwmdir[] = "dwm-titus";
+static const char dwmdir[] = "dwm-jangir";
 static const char localshare[] = ".local/share";
 static char stext[256];
 static int statusw;
@@ -453,7 +453,7 @@ static volatile sig_atomic_t sig_reload_pending = 0;
 #define TOML_ARENA_CAP 65536u
 static char   toml_arena_buf[TOML_ARENA_CAP];
 static size_t toml_arena_pos = 0;
-/* Default (fallback) config paths: ~/.local/share/dwm-titus/config/ */
+/* Default (fallback) config paths: ~/.local/share/dwm-jangir/config/ */
 static char          dwm_config_home_dir[PATH_MAX];
 static char          dwm_data_home_dir[PATH_MAX];
 static char          dwm_data_dir[PATH_MAX];
@@ -4036,9 +4036,9 @@ setup_inotify(void)
 		return;
 	}
 
-	/* User-editable config: ${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/ */
+	/* User-editable config: ${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/ */
 	if (!pathjoin(toml_config_dir, sizeof(toml_config_dir),
-	              config_home, "dwm-titus")
+	              config_home, "dwm-jangir")
 	    || !pathjoin(toml_hotkeys_path, sizeof(toml_hotkeys_path),
 	                 toml_config_dir, "hotkeys.toml")
 	    || !pathjoin(toml_themes_path, sizeof(toml_themes_path),
@@ -4049,9 +4049,9 @@ setup_inotify(void)
 		return;
 	}
 
-	/* Default config: ${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus/config/ */
+	/* Default config: ${XDG_DATA_HOME:-$HOME/.local/share}/dwm-jangir/config/ */
 	if (!pathjoin(dwm_data_dir, sizeof(dwm_data_dir),
-	              data_home, "dwm-titus")
+	              data_home, "dwm-jangir")
 	    || !pathjoin(toml_default_dir, sizeof(toml_default_dir),
 	                 dwm_data_dir, "config")
 	    || !pathjoin(toml_hotkeys_default_path,
@@ -5177,7 +5177,7 @@ void
 updatestatus(void)
 {
 	if (!gettextprop(root, XA_WM_NAME, stext, sizeof(stext))) {
-		strcpy(stext, "dwm-titus:"VERSION);
+		strcpy(stext, "dwm-jangir:"VERSION);
 		statusw = TEXTW(stext) - lrpad + 2;
 	} else {
 		char *text, *s, ch;

@@ -3,8 +3,9 @@
 ## Purpose
 
 This is the version-controlled record of every current, intentional difference
-between `dwm-jangir` and `ChrisTitusTech/dwm-titus`. Read it for every upstream
-sync, rebase, conflict, or review of fork-owned behavior.
+between the public `rahuljangirworks/dwm-jangir` fork and its read-only
+`ChrisTitusTech/dwm-titus` upstream. Read it for every upstream sync, rebase,
+conflict, or review of fork-owned behavior.
 
 `FORK.md` defines the policy. `PROJECT-STATE.md` records the current live
 state. This file maps that policy to exact files and conflict decisions.
@@ -31,11 +32,13 @@ The committed fork-only history above the common ancestor is:
 | --- | --- | --- | --- | --- |
 | D-001 | `config/quickshell/assets/rahuljangirwork.svg` | Ship Rahul Jangir branding. | Keep the fork SVG. | Confirm the SVG exists and the panel loads it. |
 | D-002 | `config/quickshell/panel/LogoButton.qml` | Point the existing upstream logo control at the Rahul SVG. | Start with upstream's file; reapply only the asset reference using its current API. Do not keep unrelated fork edits. | Diff must show only the asset-reference change. |
-| D-003 | `scripts/dwm-display-setup`, `tests/test-dwm-display-setup.sh`, `CHANGELOG.md` | Persist generic NVIDIA layouts through generated Xorg `MetaModes`, including output position and rotation. | Preserve the generic MetaModes generator and its test; never add Rahul-specific connector names, modes, or positions. | Run `tests/test-dwm-display-setup.sh`; verify a real X11 layout after reboot when NVIDIA is used. |
-| D-004 | `scripts/dwm-session`, `scripts/.xinitrc`, `dwm.desktop`, `Makefile`, `lightdm/lightdm.conf`, `tests/test-lightdm-config.sh`, `CHANGELOG.md` | Give LightDM and `startx` one safe D-Bus-backed `dwm` session entry. | Preserve only the no-nested-bus guard and `exec dwm`; keep LightDM configuration aligned with the Fedora installer. | Run `sh -n scripts/dwm-session scripts/.xinitrc`, `tests/test-lightdm-config.sh`, and verify login/reboot. |
+| D-003 | `scripts/dwm-display-setup`, display setup tests, `CHANGELOG.md` | Persist generic NVIDIA layouts through generated Xorg `MetaModes`, including output position and rotation, and provide a rotation-aware automatic wizard layout. | Preserve the generic MetaModes generator and wizard behavior; never add Rahul-specific connector names, modes, or positions to generic setup. | Run display setup tests; verify a real X11 layout after reboot when NVIDIA is used. |
+| D-004 | `scripts/dwm-session`, `scripts/.xinitrc`, `dwm-jangir.desktop`, `Makefile`, `lightdm/lightdm.conf`, `tests/test-lightdm-config.sh`, `CHANGELOG.md` | Give LightDM and `startx` one safe D-Bus-backed `dwm` session entry. | Preserve only the no-nested-bus guard and `exec dwm`; keep LightDM configuration aligned with the Fedora installer. | Run `sh -n scripts/dwm-session scripts/.xinitrc`, `tests/test-lightdm-config.sh`, and verify login/reboot. |
 | D-005 | `AGENTS.md`, `FORK.md`, `FORK-DELTA.md`, `PROJECT-STATE.md`, `CONTRIBUTING.md`, `.gitignore` | Make the public fork and its agent workflow understandable and portable. | Keep the fork governance intent, but manually incorporate upstream documentation or ignore-rule improvements. | Read links and run `git diff --check`. |
+| D-006 | `profiles/dell-5820.conf`, `scripts/dwm-personal-display-profile`, `install.sh`, focused tests, install docs | Provide Rahul's Dell Precision 5820 layout only as an explicit installer option. | Seed only the invoking user's XDG profile; require connected `DVI-D-0` and `DP-0`; use `dwm-display-setup` for preview/persistent Xorg configuration; never select or apply it automatically. | Run focused profile/installer/display tests and verify the generated NVIDIA MetaModes contain real mode-pool names. |
+| D-007 | Runtime paths, installer, session entry, LightDM assets, Xorg helpers, release helper, and migration tests/docs | Make `dwm-jangir` the installed fork identity and migrate the former namespace safely. | Keep the current `dwm-jangir` name in active runtime paths. Treat `dwm-titus` only as the named read-only upstream or explicit legacy-migration source. Move a legacy user directory only when unambiguous; preserve it if files diverge. Rename the managed Xorg fragment only when safe, and remove legacy system files only after the new helper is installed. | Run runtime-identity, install-manifest, installer preservation, display, and shell checks; confirm the installed session and Xorg fragment on a real Fedora system. |
 
-Only D-001 through D-005 are approved. A new difference must be assigned a new
+Only D-001 through D-007 are approved. A new difference must be assigned a new
 ID here before it becomes a permanent fork change.
 
 ## Display Configuration Boundary
@@ -46,7 +49,10 @@ it is run from the logged-in X11 session. D-003 extends the generated NVIDIA
 configuration with generic MetaModes so saved position and rotation also apply
 at the next LightDM/Xorg start. Do not add a LightDM `display-setup-script`, a
 root script that reads user configuration, automatic profile selection,
-`.bashrc` mutation, or static output layout to the repository.
+`.bashrc` mutation, or static output layout to the repository. D-006 is the
+single explicit opt-in exception: it stores its layout under the user's XDG
+directory, checks required outputs in the active X11 session, and calls this
+same setup tool rather than any LightDM or login hook.
 
 The local LightDM workaround scripts and automatic profile code were removed
 from the worktree on 2026-08-29 because they ran before the greeter as root and

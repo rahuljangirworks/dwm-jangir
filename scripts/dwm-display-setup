@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-config_path="${DWM_XORG_CONFIG:-/etc/X11/xorg.conf.d/90-dwm-titus-display.conf}"
+config_path="${DWM_XORG_CONFIG:-/etc/X11/xorg.conf.d/90-dwm-jangir-display.conf}"
 main_config="${DWM_XORG_MAIN_CONFIG:-/etc/X11/xorg.conf}"
 drm_root="${DWM_DRM_SYSFS_ROOT:-/sys/class/drm}"
 tearfree_policy=auto
@@ -799,13 +799,13 @@ generate_config() {
 				done
 			fi
 			printf '\nSection "OutputClass"\n'
-			printf '\tIdentifier "dwm-titus-display-map-%s"\n' "$driver"
+			printf '\tIdentifier "dwm-jangir-display-map-%s"\n' "$driver"
 			printf '\tMatchDriver "%s"\n' "$match_driver"
 			printf '\tDriver "%s"\n' "$xorg_driver"
 			for index in "${!cfg_outputs[@]}"; do
 				[[ ${cfg_kernel_drivers[$index]} == "$driver" ]] || continue
 				output=${cfg_outputs[$index]}
-				identifier="dwm-titus-$output"
+				identifier="dwm-jangir-$output"
 				printf '\tOption "Monitor-%s" "%s"\n' "$output" "$identifier"
 			done
 			if [[ -n $metamodes ]]; then
@@ -829,13 +829,13 @@ generate_config() {
 			done
 			if ((${#tearfree_drivers[@]} == 0)); then
 				printf '\nSection "OutputClass"\n'
-				printf '\tIdentifier "dwm-titus-tearfree"\n'
+				printf '\tIdentifier "dwm-jangir-tearfree"\n'
 				printf '\tOption "TearFree" "true"\n'
 				printf 'EndSection\n'
 			else
 				for driver in "${!tearfree_drivers[@]}"; do
 					printf '\nSection "OutputClass"\n'
-					printf '\tIdentifier "dwm-titus-tearfree-%s"\n' "$driver"
+					printf '\tIdentifier "dwm-jangir-tearfree-%s"\n' "$driver"
 					printf '\tMatchDriver "%s"\n' "$driver"
 					printf '\tOption "TearFree" "true"\n'
 					printf 'EndSection\n'
@@ -845,7 +845,7 @@ generate_config() {
 
 		for index in "${!cfg_outputs[@]}"; do
 			output=${cfg_outputs[$index]}
-			identifier="dwm-titus-$output"
+			identifier="dwm-jangir-$output"
 			printf '\nSection "Monitor"\n'
 			printf '\tIdentifier "%s"\n' "$identifier"
 			if [[ ${cfg_enabled[$index]} == 0 ]]; then
@@ -1243,14 +1243,25 @@ prompt_value() {
 wizard_profile() {
 	local profile_file=$1
 	local output selection rotation x y width height next_x=0
-	local mode rate default default_selection answer index=1 primary_index enabled_count=0
+	local mode rate default default_selection answer index=1 primary_index enabled_count=0 layout_source_index
+	local automatic_layout=true
 	local tearfree_available=false
 	local -a outputs=() enabled_outputs=() modes=() selected_lines=()
+	local -a selected_modes=() selected_rates=() selected_rotations=() layout_indices=()
+	local -a selected_x=() selected_y=() selected_widths=() selected_heights=()
 
 	[[ -t 0 && -t 1 ]] || die "the wizard requires a terminal"
 	mapfile -t outputs < <(connected_outputs)
 	((${#outputs[@]} > 0)) || die "no connected X11 outputs were detected"
 	: >"$profile_file"
+
+	printf '\nDisplay layout\n'
+	printf '%s\n' 'Automatic placement puts the primary display at 0x0 and arranges other displays to its right.'
+	if prompt_yes_no "Use automatic horizontal placement?" true; then
+		automatic_layout=true
+	else
+		automatic_layout=false
+	fi
 
 	for output in "${outputs[@]}"; do
 		printf '\nConfigure %s\n' "$output"
@@ -1277,19 +1288,32 @@ wizard_profile() {
 		rate=${answer#*@}
 		rotation=$(prompt_value "Rotation (normal, left, right, inverted)" normal)
 		case $rotation in normal | left | right | inverted) ;; *) die "invalid rotation: $rotation" ;; esac
-		x=$(prompt_value "Horizontal position for $output" "$next_x")
-		y=$(prompt_value "Vertical position for $output" 0)
-		[[ $x =~ ^[0-9]+$ && $y =~ ^[0-9]+$ ]] || die "wizard positions must be non-negative integers"
-		selected_lines+=("$output --mode $mode --rate $rate --pos ${x}x${y} --rotate $rotation")
-		enabled_outputs+=("$output")
-		((enabled_count += 1))
 		width=${mode%x*}
 		height=${mode#*x}
 		if [[ $rotation == left || $rotation == right ]]; then
-			next_x=$((x + height))
+			selected_widths+=("$height")
+			selected_heights+=("$width")
 		else
-			next_x=$((x + width))
+			selected_widths+=("$width")
+			selected_heights+=("$height")
 		fi
+		selected_modes+=("$mode")
+		selected_rates+=("$rate")
+		selected_rotations+=("$rotation")
+		if [[ $automatic_layout == true ]]; then
+			x=0
+			y=0
+			printf '  Automatic position for %s will be calculated after choosing the primary display.\n' "$output" >&2
+		else
+			x=$(prompt_value "Horizontal position for $output" "$next_x")
+			y=$(prompt_value "Vertical position for $output" 0)
+			[[ $x =~ ^[0-9]+$ && $y =~ ^[0-9]+$ ]] || die "wizard positions must be non-negative integers"
+		fi
+		selected_x+=("$x")
+		selected_y+=("$y")
+		enabled_outputs+=("$output")
+		((enabled_count += 1))
+		next_x=$((x + selected_widths[$((${#selected_widths[@]} - 1))]))
 	done
 
 	((enabled_count > 0)) || die "at least one output must be enabled"
@@ -1301,10 +1325,40 @@ wizard_profile() {
 	[[ $primary_index =~ ^[0-9]+$ ]] || die "invalid primary display selection"
 	((primary_index >= 1 && primary_index <= ${#enabled_outputs[@]})) || die "primary selection is out of range"
 
+	selected_lines=()
+	if [[ $automatic_layout == true ]]; then
+		next_x=0
+		layout_indices=("$((primary_index - 1))")
+		for index in "${!enabled_outputs[@]}"; do
+			[[ $index -eq $((primary_index - 1)) ]] && continue
+			layout_indices+=("$index")
+		done
+		for index in "${layout_indices[@]}"; do
+			x=$next_x
+			y=0
+			selected_lines+=("${enabled_outputs[$index]} --mode ${selected_modes[$index]} --rate ${selected_rates[$index]} --pos ${x}x${y} --rotate ${selected_rotations[$index]}")
+			next_x=$((next_x + selected_widths[index]))
+		done
+	else
+		for index in "${!enabled_outputs[@]}"; do
+			selected_lines+=("${enabled_outputs[$index]} --mode ${selected_modes[$index]} --rate ${selected_rates[$index]} --pos ${selected_x[$index]}x${selected_y[$index]} --rotate ${selected_rotations[$index]}")
+		done
+	fi
+	printf '\nCalculated display layout:\n'
 	for index in "${!selected_lines[@]}"; do
-		if ((index + 1 == primary_index)); then
+		if [[ $automatic_layout == true ]]; then
+			layout_source_index=${layout_indices[$index]}
+		else
+			layout_source_index=$index
+		fi
+		if [[ $automatic_layout == true && $index -eq 0 ]] ||
+			[[ $automatic_layout == false && $((index + 1)) -eq $primary_index ]]; then
+			printf '  %s --primary (effective size %sx%s)\n' "${selected_lines[$index]}" \
+				"${selected_widths[$layout_source_index]}" "${selected_heights[$layout_source_index]}"
 			printf '%s --primary\n' "${selected_lines[$index]}" >>"$profile_file"
 		else
+			printf '  %s (effective size %sx%s)\n' "${selected_lines[$index]}" \
+				"${selected_widths[$layout_source_index]}" "${selected_heights[$layout_source_index]}"
 			printf '%s\n' "${selected_lines[$index]}" >>"$profile_file"
 		fi
 	done
@@ -1466,17 +1520,17 @@ main() {
 			apply_loaded_profile false
 			;;
 		generate)
-			generated="$work/90-dwm-titus-display.conf"
+			generated="$work/90-dwm-jangir-display.conf"
 			generate_config "$generated"
 			cat "$generated"
 			;;
 		preview)
-			generated="$work/90-dwm-titus-display.conf"
+			generated="$work/90-dwm-jangir-display.conf"
 			generate_config "$generated"
 			preview_profile "$profile" "$generated"
 			;;
 		install)
-			generated="$work/90-dwm-titus-display.conf"
+			generated="$work/90-dwm-jangir-display.conf"
 			generate_config "$generated"
 			if [[ $preview == true ]]; then
 				preview_profile "$profile" "$generated" || die "display preview was not accepted"
@@ -1490,7 +1544,7 @@ main() {
 		load_display_data
 		wizard_file="$work/wizard-profile.conf"
 		wizard_profile "$wizard_file"
-		generated="$work/90-dwm-titus-display.conf"
+		generated="$work/90-dwm-jangir-display.conf"
 		generate_config "$generated"
 		if [[ $preview == true ]]; then
 			preview_profile "$wizard_file" "$generated" || die "display preview was not accepted"
