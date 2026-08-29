@@ -35,3 +35,6 @@ program.log
 
 # Local Serena project metadata/cache
 /.serena/
+
+# Local agent workspace link; portable agent instructions live in FORK.md.
+/.agent

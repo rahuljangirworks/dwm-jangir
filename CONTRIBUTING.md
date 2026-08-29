@@ -6,8 +6,11 @@ target. Fedora Linux is the sole supported distribution.
 
 ## Before You Start
 
-- Read `AGENTS.md` for repository conventions, `SPEC.md` for product scope,
-  `ROADMAP.md` for phase outcomes, and `TASKS.md` for active work.
+- Read `AGENTS.md`, `FORK.md`, and `PROJECT-STATE.md` first. This repository
+  intentionally maintains a minimal delta from upstream, and `FORK.md` defines
+  which changes belong in the fork.
+- For explicitly approved product-feature work, also read `SPEC.md` for product
+  scope, `ROADMAP.md` for phase outcomes, and `TASKS.md` for active work.
 - Search existing issues and pull requests before starting overlapping work.
 - Keep durable requirements in `SPEC.md`; do not copy future roadmap phases
   into `TASKS.md` before they become active.
