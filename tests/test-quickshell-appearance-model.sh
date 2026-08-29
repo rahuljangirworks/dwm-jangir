@@ -200,7 +200,7 @@ fi
 grep -Fq 'root.personalizationActionKind === "delegate")' "$model"
 grep -Fq 'if (!root.settingsVisible) return;' "$model"
 grep -Fq 'personalizationStatusProcess.running = false;' "$model"
-grep -Fq 'root.configHome + "/dwm-titus/personalization.conf"' "$model"
+grep -Fq 'root.configHome + "/dwm-jangir/personalization.conf"' "$model"
 grep -Fq 'root.personalizationMutationState !== "available"' "$model"
 grep -Fq 'action === "apply" && !root.personalizationApplyReady(capability)' "$model"
 grep -Fq 'action === "reset" && !root.personalizationResetReady(capability)' "$model"

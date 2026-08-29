@@ -2,6 +2,53 @@
 set -euo pipefail
 
 REPO_DIR="$(cd "$(dirname "$0")" && pwd)"
+
+# A real installer run writes one user-owned diagnostic record. Keep only the
+# completed most recent run so it is useful to a later support agent without
+# accumulating a private system history. Dry runs remain side-effect free.
+install_dry_run_requested=false
+for install_argument in "$@"; do
+	[[ $install_argument == --dry-run ]] && install_dry_run_requested=true
+done
+case "${DWM_INSTALL_LOG:-auto}" in
+auto | 0 | 1) ;;
+*)
+	printf 'install.sh: ignoring invalid DWM_INSTALL_LOG value: %s\n' "${DWM_INSTALL_LOG}" >&2
+	DWM_INSTALL_LOG=auto
+	;;
+esac
+if [[ ${DWM_INSTALL_LOG_ACTIVE:-0} != 1 && $install_dry_run_requested != true &&
+	${DWM_INSTALL_LOG:-auto} != 0 &&
+	(${DWM_TEST_MODE:-0} != 1 || ${DWM_INSTALL_LOG:-auto} == 1) ]]; then
+	install_state_dir="${XDG_STATE_HOME:-$HOME/.local/state}/dwm-jangir"
+	install_log_path="$install_state_dir/install-last.log"
+	if mkdir -p "$install_state_dir" && chmod 700 "$install_state_dir" &&
+		install_log_tmp=$(mktemp "$install_state_dir/.install-last.XXXXXX"); then
+		chmod 600 "$install_log_tmp"
+		export DWM_INSTALL_LOG_ACTIVE=1 DWM_INSTALL_LOG_PATH="$install_log_path"
+		set +e
+		"${BASH:-bash}" "$0" "$@" 2>&1 | tee "$install_log_tmp"
+		install_pipeline_status=("${PIPESTATUS[@]}")
+		set -e
+		install_status=${install_pipeline_status[0]}
+		if ((install_status == 0 && install_pipeline_status[1] != 0)); then
+			install_status=${install_pipeline_status[1]}
+		fi
+		if ((install_status == 0)); then
+			printf '\nInstaller result: success\n' >>"$install_log_tmp"
+		else
+			printf '\nInstaller result: failed (exit status %s)\n' "$install_status" >>"$install_log_tmp"
+		fi
+		if mv -f "$install_log_tmp" "$install_log_path"; then
+			printf 'Installer log saved: %s\n' "$install_log_path"
+		else
+			printf 'install.sh: warning: could not save installer log: %s\n' "$install_log_path" >&2
+		fi
+		exit "$install_status"
+	fi
+	printf 'install.sh: warning: could not create the user installer log; continuing without it.\n' >&2
+fi
+
 # shellcheck source=scripts/dwm-utils.sh
 # shellcheck disable=SC1091
 source "$REPO_DIR/scripts/dwm-utils.sh"
@@ -22,6 +69,8 @@ Usage: ./install.sh [options]
 Options:
   --profile PROFILE      Install profile: core, recommended, or full.
                          Defaults to DWM_INSTALL_PROFILE or full.
+  --display-profile NAME Install an opt-in personal display profile. Supported:
+                         dell-5820. It is never selected automatically.
   --non-interactive      Use unattended defaults and do not prompt.
   --yes                  Accept the interactive install summary.
   --install-herdr        Install verified Herdr as an optional workspace.
@@ -42,12 +91,19 @@ fedora)
 	;;
 *)
 	err "Unsupported distribution: $DISTRO_NAME"
-	err "dwm-titus supports Fedora only."
+	err "dwm-jangir supports Fedora only."
 	exit 1
 	;;
 esac
 
 BG_DIR="$HOME/Pictures/backgrounds"
+RUNTIME_ID="dwm-jangir"
+LEGACY_RUNTIME_ID="dwm-titus"
+USER_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}"
+USER_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+USER_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
+MANAGED_XORG_CONFIG="/etc/X11/xorg.conf.d/90-${RUNTIME_ID}-display.conf"
+LEGACY_XORG_CONFIG="/etc/X11/xorg.conf.d/90-${LEGACY_RUNTIME_ID}-display.conf"
 MESLO_VERSION="3.4.0"
 MESLO_URL="https://github.com/ryanoasis/nerd-fonts/releases/download/v${MESLO_VERSION}/Meslo.zip"
 MESLO_SHA256="13b502ac8c2bd9d3161018064560e23cd42b175bb730780a270975265a19ad57"
@@ -61,6 +117,7 @@ NON_INTERACTIVE=false
 ASSUME_YES=false
 FEDORA_GAMING_REPOS_APPROVED=false
 DRY_RUN=false
+DISPLAY_PROFILE=""
 
 while (($# > 0)); do
 	case "$1" in
@@ -74,6 +131,18 @@ while (($# > 0)); do
 		;;
 	--profile=*)
 		INSTALL_PROFILE=${1#*=}
+		shift
+		;;
+	--display-profile)
+		if (($# < 2)); then
+			err "--display-profile requires a value."
+			exit 1
+		fi
+		DISPLAY_PROFILE=$2
+		shift 2
+		;;
+	--display-profile=*)
+		DISPLAY_PROFILE=${1#*=}
 		shift
 		;;
 	--non-interactive)
@@ -121,6 +190,15 @@ recommended | full) ;;
 *)
 	err "Unsupported DWM_INSTALL_PROFILE: $INSTALL_PROFILE"
 	err "Supported profiles: core, recommended, full"
+	exit 1
+	;;
+esac
+
+case "$DISPLAY_PROFILE" in
+"" | dell-5820) ;;
+*)
+	err "Unsupported display profile: $DISPLAY_PROFILE"
+	err "Supported display profiles: dell-5820"
 	exit 1
 	;;
 esac
@@ -304,6 +382,11 @@ print_install_summary() {
 	printf '  Family: %s\n' "$DISTRO_FAMILY"
 	printf '  Package manager: %s\n' "$PKG_CMD"
 	printf '  Profile: %s\n' "$INSTALL_PROFILE"
+	if [[ -n $DISPLAY_PROFILE ]]; then
+		printf '  Personal display profile: %s (opt-in)\n' "$DISPLAY_PROFILE"
+	else
+		printf '  Personal display profile: none\n'
+	fi
 	printf '  Mode: %s\n' "$([[ $NON_INTERACTIVE == true ]] && echo non-interactive || echo interactive)"
 	print_summary_profile "Required packages" required
 	if install_recommended_profile; then
@@ -361,12 +444,23 @@ confirm_install_summary() {
 	esac
 }
 
+meslo_nerd_font_installed() {
+	local resolved_family
+	command -v fc-match >/dev/null 2>&1 || return 1
+	resolved_family=$(fc-match --format '%{family[0]}\n' \
+		'MesloLGS Nerd Font Mono:charset=20-7e' 2>/dev/null || true)
+	case $resolved_family in
+	'MesloLGS Nerd Font Mono' | 'MesloLGS Nerd Font' | 'MesloLGS NF') return 0 ;;
+	*) return 1 ;;
+	esac
+}
+
 install_meslo_nerd_font() {
 	local font_dir="$HOME/.local/share/fonts/Meslo"
 	local tmp_dir
 	local archive
 
-	if fc-list 2>/dev/null | command grep -Eqi 'MesloLGS (NF|Nerd Font)'; then
+	if meslo_nerd_font_installed; then
 		ok "MesloLGS Nerd Font is already installed."
 		return
 	fi
@@ -433,7 +527,7 @@ install_supported_terminal() {
 
 configure_quickshell_picom_opacity() {
 	local config="/etc/xdg/picom.conf"
-	local backup="${config}.dwm-titus.bak"
+	local backup="${config}.dwm-jangir.bak"
 	local tooltip_rule="^([[:space:]]*\"[0-9]+([.][0-9]+)?:window_type = 'tooltip')(\"[[:space:]]*,?[[:space:]]*)$"
 	local configured_rule="^[[:space:]]*\"[0-9]+([.][0-9]+)?:window_type = 'tooltip' && name != 'quickshell'\"[[:space:]]*,?[[:space:]]*$"
 	local tmp
@@ -471,6 +565,8 @@ configure_quickshell_picom_opacity() {
 configure_displays_after_install() {
 	local answer
 
+	[[ -z $DISPLAY_PROFILE ]] || return 0
+
 	if [[ $NON_INTERACTIVE == true ]]; then
 		warn "Display setup deferred for non-interactive installation."
 		warn "Run dwm-display-setup from an X11 session after login."
@@ -501,6 +597,180 @@ configure_displays_after_install() {
 	esac
 }
 
+configure_selected_display_profile_after_install() {
+	local profile_path answer
+
+	[[ -n $DISPLAY_PROFILE ]] || return 0
+	profile_path=$("$REPO_DIR/scripts/dwm-personal-display-profile" prepare "$DISPLAY_PROFILE") || {
+		warn "The selected $DISPLAY_PROFILE profile was not written; existing user configuration was preserved."
+		return 0
+	}
+
+	info "Selected personal display profile: $DISPLAY_PROFILE"
+	printf '  %s\n' "$profile_path"
+	if [[ $NON_INTERACTIVE != true ]]; then
+		printf 'Validate and install this profile through dwm-display-setup? [y/N] '
+		read -r answer
+		case $answer in
+		y | Y | yes | YES) ;;
+		*)
+			warn "Profile was saved but not applied. Run dwm-display-setup when ready."
+			return 0
+			;;
+		esac
+	fi
+
+	if [[ -z ${DISPLAY:-} ]]; then
+		warn "Profile was saved but no active X11 session is available, so it was not applied."
+		warn "After login, run: dwm-display-setup install $profile_path"
+		return 0
+	fi
+	if ! "$REPO_DIR/scripts/dwm-personal-display-profile" validate "$DISPLAY_PROFILE" "$profile_path"; then
+		warn "The selected profile does not match this active hardware and was not applied."
+		warn "Run dwm-display-setup for the normal display wizard."
+		return 0
+	fi
+
+	if [[ $NON_INTERACTIVE == true ]]; then
+		"$REPO_DIR/scripts/dwm-display-setup" install --no-preview --yes "$profile_path" || {
+			warn "Could not install the selected profile; the existing display configuration was preserved."
+			return 0
+		}
+	else
+		"$REPO_DIR/scripts/dwm-display-setup" install "$profile_path" || {
+			warn "The selected profile was not accepted; the existing display configuration was preserved."
+			return 0
+		}
+	fi
+	ok "Installed persistent display profile: $DISPLAY_PROFILE"
+}
+
+# Move only complete, unambiguous user-owned runtime directories.  When both
+# names exist we copy only missing files and retain the legacy directory if it
+# still contains a divergent file; an installer must never discard settings.
+migrate_user_runtime_directory() {
+	local legacy=$1 current=$2
+	[[ -e $legacy ]] || return 0
+	if [[ ! -e $current ]]; then
+		mv -- "$legacy" "$current"
+		ok "Migrated ${legacy#"$HOME"/} to ${current#"$HOME"/}."
+		return 0
+	fi
+	if [[ ! -d $legacy || ! -d $current ]]; then
+		warn "Cannot safely merge legacy path $legacy into $current; preserving both."
+		return 0
+	fi
+	cp -aL -n --no-preserve=ownership "$legacy"/. "$current"/
+	if diff -qr -- "$legacy" "$current" >/dev/null 2>&1; then
+		rm -rf -- "$legacy"
+		ok "Merged and removed legacy ${legacy#"$HOME"/}."
+	else
+		warn "Legacy settings remain at $legacy because they differ from $current."
+		warn "Review and merge them manually; they were not overwritten or deleted."
+	fi
+}
+
+migrate_user_runtime_identity() {
+	migrate_user_runtime_directory "$USER_CONFIG_HOME/$LEGACY_RUNTIME_ID" \
+		"$USER_CONFIG_HOME/$RUNTIME_ID"
+	migrate_user_runtime_directory "$USER_DATA_HOME/$LEGACY_RUNTIME_ID" \
+		"$USER_DATA_HOME/$RUNTIME_ID"
+	migrate_user_runtime_directory "$USER_STATE_HOME/$LEGACY_RUNTIME_ID" \
+		"$USER_STATE_HOME/$RUNTIME_ID"
+}
+
+# The data directory is a managed checkout copy, not a user configuration
+# location. Once install-user has created its replacement, keeping an older
+# copy only risks helpers accidentally loading stale code.
+cleanup_legacy_user_runtime() {
+	local legacy_data="$USER_DATA_HOME/$LEGACY_RUNTIME_ID"
+	local current_data="$USER_DATA_HOME/$RUNTIME_ID"
+	local legacy_state="$USER_STATE_HOME/$LEGACY_RUNTIME_ID"
+	local current_state="$USER_STATE_HOME/$RUNTIME_ID"
+	local state_difference
+
+	if [[ -d $legacy_data && ! -L $legacy_data &&
+		-d $current_data/config && -d $current_data/scripts ]]; then
+		rm -rf -- "$legacy_data"
+		ok "Removed stale managed data directory: $legacy_data"
+	fi
+	if [[ -d $legacy_state && ! -L $legacy_state && -d $current_state ]]; then
+		state_difference=$(diff -qr -- "$legacy_state" "$current_state" 2>/dev/null || true)
+		if [[ -z $(printf '%s\n' "$state_difference" |
+			grep -Fv "Only in $current_state:" || true) ]]; then
+			rm -rf -- "$legacy_state"
+			ok "Removed migrated legacy state directory: $legacy_state"
+		else
+			warn "Legacy state remains at $legacy_state because it has files not present in $current_state."
+		fi
+	fi
+}
+
+# A display fragment is system-owned and influences the next login.  Rename it
+# before installing a profile so there can never be two managed fragments.
+migrate_managed_xorg_identity() {
+	local legacy_backup current_backup
+	if [[ -e $LEGACY_XORG_CONFIG ]]; then
+		if [[ ! -e $MANAGED_XORG_CONFIG ]]; then
+			sudo mv -- "$LEGACY_XORG_CONFIG" "$MANAGED_XORG_CONFIG"
+			ok "Migrated persistent display configuration to $MANAGED_XORG_CONFIG."
+		elif sudo cmp -s -- "$LEGACY_XORG_CONFIG" "$MANAGED_XORG_CONFIG"; then
+			sudo rm -f -- "$LEGACY_XORG_CONFIG"
+			ok "Removed duplicate legacy display configuration."
+		else
+			warn "Both managed display fragments differ; preserving $LEGACY_XORG_CONFIG."
+			warn "Resolve it before rebooting so only $MANAGED_XORG_CONFIG remains."
+		fi
+	fi
+	shopt -s nullglob
+	for legacy_backup in "$LEGACY_XORG_CONFIG".backup.*; do
+		current_backup="${legacy_backup/$LEGACY_RUNTIME_ID/$RUNTIME_ID}"
+		[[ -e $current_backup ]] || sudo mv -- "$legacy_backup" "$current_backup"
+	done
+	shopt -u nullglob
+}
+
+remove_legacy_system_runtime() {
+	local legacy_libexec="/usr/local/libexec/$LEGACY_RUNTIME_ID"
+	local legacy_release="/usr/local/bin/${LEGACY_RUNTIME_ID}-release"
+	local legacy_session="/usr/share/xsessions/dwm.desktop"
+	local legacy_license="/usr/share/licenses/$LEGACY_RUNTIME_ID/capitaine-cursors"
+	local legacy_asset legacy_lightdm_backup current_lightdm_backup
+
+	[[ -x /usr/local/libexec/$RUNTIME_ID/dwm-settings-display-root ]] || {
+		warn "New privileged helper is missing; legacy system files were preserved."
+		return 0
+	}
+	if [[ -d $legacy_libexec && ! -L $legacy_libexec ]]; then
+		sudo rm -rf -- "$legacy_libexec"
+		ok "Removed legacy privileged helper directory: $legacy_libexec"
+	fi
+	if [[ -f $legacy_release && ! -L $legacy_release ]]; then
+		sudo rm -f -- "$legacy_release"
+		ok "Removed legacy release helper: $legacy_release"
+	fi
+	if [[ -f $legacy_session ]] &&
+		sudo grep -Fqx 'Exec=/usr/local/bin/dwm-session' "$legacy_session"; then
+		sudo rm -f -- "$legacy_session"
+		ok "Removed legacy dwm session entry: $legacy_session"
+	fi
+	if [[ -d $legacy_license && ! -L $legacy_license ]]; then
+		sudo rm -rf -- "$legacy_license"
+	fi
+	for legacy_asset in \
+		/usr/share/pixmaps/${LEGACY_RUNTIME_ID}.jpg \
+		/usr/share/pixmaps/${LEGACY_RUNTIME_ID}-logo.png; do
+		[[ -f $legacy_asset && ! -L $legacy_asset ]] || continue
+		sudo rm -f -- "$legacy_asset"
+	done
+	shopt -s nullglob
+	for legacy_lightdm_backup in /etc/lightdm/lightdm.conf."$LEGACY_RUNTIME_ID".*.bak; do
+		current_lightdm_backup="${legacy_lightdm_backup/$LEGACY_RUNTIME_ID/$RUNTIME_ID}"
+		[[ -e $current_lightdm_backup ]] || sudo mv -- "$legacy_lightdm_backup" "$current_lightdm_backup"
+	done
+	shopt -u nullglob
+}
+
 detect_display_manager() {
 	local unit
 
@@ -528,6 +798,68 @@ detect_display_manager() {
 	done
 }
 
+print_install_preflight() {
+	local profile_path existing_dwm current_dm active_outputs revision dirty_count
+	local -a xorg_backups=()
+
+	echo ""
+	echo "Preflight inspection (read-only):"
+	printf '  Repository checkout: %s\n' "$REPO_DIR"
+	if command -v git >/dev/null 2>&1 &&
+		revision=$(git -C "$REPO_DIR" rev-parse --short HEAD 2>/dev/null); then
+		dirty_count=$(git -C "$REPO_DIR" status --porcelain 2>/dev/null | wc -l)
+		printf '  Repository revision: %s (%s changed worktree path(s))\n' "$revision" "$dirty_count"
+	fi
+	if existing_dwm=$(command -v dwm 2>/dev/null); then
+		printf '  Existing dwm command: %s\n' "$existing_dwm"
+	else
+		printf '  Existing dwm command: not found\n'
+	fi
+	if [[ -x $REPO_DIR/dwm ]]; then
+		printf '  Checkout build: present\n'
+	else
+		printf '  Checkout build: not built yet\n'
+	fi
+	if [[ -f $REPO_DIR/config.h ]]; then
+		printf '  Build configuration: existing config.h will be preserved\n'
+	else
+		printf '  Build configuration: config.h will be created by the installer\n'
+	fi
+	if [[ -d $USER_CONFIG_HOME/$RUNTIME_ID ]]; then
+		printf '  User dwm configuration: existing XDG configuration detected\n'
+	elif [[ -d $USER_CONFIG_HOME/$LEGACY_RUNTIME_ID ]]; then
+		printf '  User dwm configuration: legacy %s configuration will be migrated\n' "$LEGACY_RUNTIME_ID"
+	else
+		printf '  User dwm configuration: no existing XDG configuration\n'
+	fi
+	current_dm=$(detect_display_manager)
+	printf '  Display manager: %s\n' "${current_dm:-not detected}"
+	if [[ -f $MANAGED_XORG_CONFIG ]]; then
+		printf '  Persistent display configuration: existing managed Xorg fragment\n'
+	elif [[ -f $LEGACY_XORG_CONFIG ]]; then
+		printf '  Persistent display configuration: legacy fragment will be migrated\n'
+	else
+		printf '  Persistent display configuration: no managed Xorg fragment\n'
+	fi
+	shopt -s nullglob
+	xorg_backups=("$MANAGED_XORG_CONFIG".backup.*)
+	shopt -u nullglob
+	printf '  Managed Xorg backups: %d\n' "${#xorg_backups[@]}"
+	if [[ -n $DISPLAY_PROFILE ]]; then
+		profile_path="$USER_CONFIG_HOME/$RUNTIME_ID/display-profiles/${DISPLAY_PROFILE}.conf"
+		printf '  Selected display profile: %s\n' "$profile_path"
+	fi
+	if [[ -n ${DWM_INSTALL_LOG_PATH:-} && -f ${DWM_INSTALL_LOG_PATH} ]]; then
+		printf '  Previous installer record: %s\n' "$DWM_INSTALL_LOG_PATH"
+	fi
+	if [[ -n ${DISPLAY:-} ]] && command -v xrandr >/dev/null 2>&1; then
+		active_outputs=$(xrandr --query 2>/dev/null | awk '$2 == "connected" { printf "%s ", $1 }' || true)
+		printf '  Active X11 outputs: %s\n' "${active_outputs:-unavailable}"
+	else
+		printf '  Active X11 outputs: no active X11 session\n'
+	fi
+}
+
 install_lightdm_config() {
 	local lightdm_config="/etc/lightdm/lightdm.conf"
 	local lightdm_seat_section="SeatDefaults"
@@ -550,20 +882,21 @@ install_lightdm_config() {
 		sudo restorecon \
 			"$lightdm_config" \
 			/etc/lightdm/slick-greeter.conf \
-			/usr/share/pixmaps/dwm-titus.jpg \
-			/usr/share/pixmaps/dwm-titus-logo.png
+			/usr/share/pixmaps/dwm-jangir.jpg \
+			/usr/share/pixmaps/dwm-jangir-logo.png
 	fi
 }
 
 echo ""
 echo "╔═══════════════════════════════════════════╗"
-echo "║             dwm-titus Installer           ║"
+echo "║            dwm-jangir Installer           ║"
 echo "╚═══════════════════════════════════════════╝"
 echo ""
 info "Distribution: $DISTRO_NAME"
 info "Family: $DISTRO_FAMILY"
 info "Package manager: $PKG_CMD"
 info "Install profile: $INSTALL_PROFILE"
+print_install_preflight
 confirm_install_summary
 confirm_fedora_gaming_repositories
 
@@ -586,7 +919,7 @@ if install_recommended_profile; then
 	dwm_install_package_profile desktop
 	if ! env -u DWM_TEST_MODE -u DWM_TEST_QUICKSHELL_VERSION \
 		"$REPO_DIR/scripts/dwm-quickshell-version-check"; then
-		err "The installed Quickshell build is incompatible with dwm-titus."
+		err "The installed Quickshell build is incompatible with dwm-jangir."
 		exit 1
 	fi
 	if ! dwm_install_available_package_profile screenshot-optional; then
@@ -745,12 +1078,17 @@ sudo make install-system \
 	USER_HOME="$HOME" \
 	OWNER="$(id -un)" \
 	DATADIR="/usr/share"
+migrate_user_runtime_identity
 make install-user \
 	USER_HOME="$HOME" \
 	OWNER="$(id -un)" \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
 	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+cleanup_legacy_user_runtime
+migrate_managed_xorg_identity
 configure_displays_after_install
+configure_selected_display_profile_after_install
+remove_legacy_system_runtime
 
 # ── Done ─────────────────────────────────────────────────
 echo ""
@@ -762,7 +1100,10 @@ info "Detected: $DISTRO_NAME"
 echo "  • Build configuration: $REPO_DIR/config.h"
 echo "  • Reconfigure by removing config.h and running the installer again"
 echo "  • Display setup: dwm-display-setup"
-echo "  • Log out and select 'dwm', or start with: startx"
+if [[ -n ${DWM_INSTALL_LOG_PATH:-} ]]; then
+	echo "  • Installer record: $DWM_INSTALL_LOG_PATH"
+fi
+echo "  • Log out and select 'dwm-jangir', or start with: startx"
 if [[ $currentdm == "lightdm" ]]; then
 	echo "  • Start LightDM now (optional): sudo systemctl start lightdm.service"
 fi

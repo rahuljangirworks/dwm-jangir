@@ -41,6 +41,40 @@ versions from `config.mk`.
   without preventing shell startup. Fixed atomic set/reset actions preserve
   file mode and refuse concurrent or unsafe replacements.
 
+- Rename the fork's active runtime identity from `dwm-titus` to `dwm-jangir`:
+  XDG configuration and data, Xorg display fragment, privileged helper,
+  session entry, LightDM assets, release helper, and generated release names
+  now use the fork name. The installer migrates unambiguous legacy settings
+  and preserves any divergent files for manual review rather than overwriting
+  or deleting them.
+
+- Establish `https://github.com/rahuljangirworks/dwm-jangir` as the canonical
+  public repository in clone, release, issue, changelog, and agent guidance.
+  `ChrisTitusTech/dwm-titus` remains explicitly documented as the read-only
+  upstream source.
+
+- Add an installer preflight inspection and one atomic, user-owned last-run
+  diagnostic record under the XDG state directory. It records existing desktop,
+  display, and repository state before installation and preserves only the most
+  recent completed non-dry-run attempt for support and agent diagnosis.
+
+- Avoid unnecessary Meslo Nerd Font downloads during repeat installs. The
+  installer now verifies the exact Fontconfig family with `fc-match` before
+  using the network, avoiding the former `pipefail` false negative from the
+  `fc-list` pipeline.
+
+- Add the explicit `--display-profile dell-5820` installer option for Rahul's
+  Dell Precision 5820. The opt-in profile is stored in the user's XDG display
+  profile directory, validates its required connected outputs before use, and
+  is installed only through the existing previewable, backed-up
+  `dwm-display-setup` persistent Xorg path. NVIDIA output configuration uses
+  real MetaModes mode-pool names rather than refresh-suffixed synthetic names.
+
+- Make the display wizard default to an automatic horizontal layout. It places
+  the selected primary display at `0x0`, calculates rotated dimensions before
+  placing the other enabled outputs to its right, prints the calculated layout,
+  and retains explicit manual X/Y placement.
+
 - Add Settings Appearance controls for desktop font and text scale, cursor and
   icon themes, GTK themes, and Qt platform themes. The root Appearance model
   consumes the existing pane-scoped bounded inventory and the versioned
@@ -375,5 +409,5 @@ versions from `config.mk`.
 - Prevent nested dwm/Xvfb instances from terminating the active graphical login
   by verifying the logind display and isolating `XDG_DATA_HOME` in runtime tests.
 
-[Unreleased]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.6.1...HEAD
-[0.6.1]: https://github.com/ChrisTitusTech/dwm-titus/compare/v0.5.2...v0.6.1
+[Unreleased]: https://github.com/rahuljangirworks/dwm-jangir/compare/v0.6.1...HEAD
+[0.6.1]: https://github.com/rahuljangirworks/dwm-jangir/compare/v0.5.2...v0.6.1

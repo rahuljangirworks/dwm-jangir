@@ -183,10 +183,10 @@ config_home=$home/.config
 data_home=$home/.local/share
 state_home=$home/.local/state
 export XDG_STATE_HOME="$state_home"
-mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" \
+mkdir -p "$config_home/quickshell" "$config_home/dwm-jangir" \
 	"$config_home/autostart" "$data_home/applications" \
-	"$data_home/dwm-titus/config" "$data_home/dwm-titus/scripts" \
-	"$state_home/dwm-titus/appearance" \
+	"$data_home/dwm-jangir/config" "$data_home/dwm-jangir/scripts" \
+	"$state_home/dwm-jangir/appearance" \
 	"$home/Pictures/backgrounds" \
 	"$runtime_storage" "$schema_dir" "$helper_tmp"
 chmod 700 "$runtime_storage"
@@ -240,9 +240,9 @@ cp "$repo/config/quickshell/assets/ctt_logo.png" "$home/Pictures/backgrounds/tes
 # so versioned helper battery records exercise the fallback parser.
 sed -i 's/readonly property var nativeBattery: UPower.displayDevice/readonly property var nativeBattery: null/' \
 	"$config_home/quickshell/power/PowerModel.qml"
-cp "$repo/config/"*.toml "$config_home/dwm-titus/"
-cp "$repo/config/themes.toml" "$data_home/dwm-titus/config/themes.toml"
-printf '# inactive integration watch fixture\n' >"$config_home/dwm-titus/theme-env.sh"
+cp "$repo/config/"*.toml "$config_home/dwm-jangir/"
+cp "$repo/config/themes.toml" "$data_home/dwm-jangir/config/themes.toml"
+printf '# inactive integration watch fixture\n' >"$config_home/dwm-jangir/theme-env.sh"
 cat >"$data_home/applications/kitty.desktop" <<'EOF'
 [Desktop Entry]
 Type=Application
@@ -286,12 +286,12 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-settings-theme" "$repo/scripts/dwm-xsettings" \
 	"$repo/scripts/dwm-panel-settings" \
 	"$repo/scripts/theme-apply.sh" \
-	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
+	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-jangir/scripts/"
 
 appearance_failure_fixture=$work/appearance-snapshot-failure
-mv "$data_home/dwm-titus/scripts/dwm-settings-appearance" \
-	"$data_home/dwm-titus/scripts/dwm-settings-appearance.real"
-cat >"$data_home/dwm-titus/scripts/dwm-settings-appearance" <<'SH'
+mv "$data_home/dwm-jangir/scripts/dwm-settings-appearance" \
+	"$data_home/dwm-jangir/scripts/dwm-settings-appearance.real"
+cat >"$data_home/dwm-jangir/scripts/dwm-settings-appearance" <<'SH'
 #!/bin/sh
 set -eu
 fixture=${DWM_SETTINGS_TEST_APPEARANCE_FAILURE:?}
@@ -383,11 +383,11 @@ if [ "${1:-}" = snapshot ] && [ -f "$fixture" ]; then
 fi
 exec "$(dirname -- "$0")/dwm-settings-appearance.real" "$@"
 SH
-chmod +x "$data_home/dwm-titus/scripts/dwm-settings-appearance"
+chmod +x "$data_home/dwm-jangir/scripts/dwm-settings-appearance"
 
-mv "$data_home/dwm-titus/scripts/dwm-settings-personalization" \
-	"$data_home/dwm-titus/scripts/dwm-settings-personalization.real"
-cat >"$data_home/dwm-titus/scripts/dwm-settings-personalization" <<'SH'
+mv "$data_home/dwm-jangir/scripts/dwm-settings-personalization" \
+	"$data_home/dwm-jangir/scripts/dwm-settings-personalization.real"
+cat >"$data_home/dwm-jangir/scripts/dwm-settings-personalization" <<'SH'
 #!/bin/sh
 set -eu
 fixture=${DWM_SETTINGS_TEST_APPEARANCE_FAILURE:?}
@@ -418,12 +418,12 @@ if [ "${1:-}" = status ] && [ -f "$fixture" ]; then
 fi
 exec "$(dirname -- "$0")/dwm-settings-personalization.real" "$@"
 SH
-chmod +x "$data_home/dwm-titus/scripts/dwm-settings-personalization"
+chmod +x "$data_home/dwm-jangir/scripts/dwm-settings-personalization"
 
 wallpaper_status_fixture=$work/wallpaper-status
-mv "$data_home/dwm-titus/scripts/dwm-settings-wallpaper" \
-	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper.real"
-cat >"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" <<'SH'
+mv "$data_home/dwm-jangir/scripts/dwm-settings-wallpaper" \
+	"$data_home/dwm-jangir/scripts/dwm-settings-wallpaper.real"
+cat >"$data_home/dwm-jangir/scripts/dwm-settings-wallpaper" <<'SH'
 #!/bin/sh
 set -eu
 fixture=${DWM_SETTINGS_TEST_WALLPAPER_STATUS:-}
@@ -452,12 +452,12 @@ if [ "${1:-}" = status ] && [ "${2:-}" = --read-only ] &&
 fi
 exec "$(dirname -- "$0")/dwm-settings-wallpaper.real" "$@"
 SH
-chmod +x "$data_home/dwm-titus/scripts/dwm-settings-wallpaper"
+chmod +x "$data_home/dwm-jangir/scripts/dwm-settings-wallpaper"
 
 theme_status_fixture=$work/theme-preview-status
-mv "$data_home/dwm-titus/scripts/dwm-settings-theme" \
-	"$data_home/dwm-titus/scripts/dwm-settings-theme.real"
-cat >"$data_home/dwm-titus/scripts/dwm-settings-theme" <<'SH'
+mv "$data_home/dwm-jangir/scripts/dwm-settings-theme" \
+	"$data_home/dwm-jangir/scripts/dwm-settings-theme.real"
+cat >"$data_home/dwm-jangir/scripts/dwm-settings-theme" <<'SH'
 #!/bin/sh
 set -eu
 fixture=${DWM_SETTINGS_TEST_THEME_STATUS:?}
@@ -505,12 +505,12 @@ if [ "${1:-}" = preview-status ] && [ -f "$fixture" ]; then
 fi
 exec "$(dirname -- "$0")/dwm-settings-theme.real" "$@"
 SH
-chmod +x "$data_home/dwm-titus/scripts/dwm-settings-theme"
+chmod +x "$data_home/dwm-jangir/scripts/dwm-settings-theme"
 
 malformed_power_snapshot=$work/malformed-power-snapshot
-mv "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" \
-	"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter.real"
-cat >"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" <<'SH'
+mv "$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter" \
+	"$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter.real"
+cat >"$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter" <<'SH'
 #!/bin/sh
 set -eu
 fixture=${DWM_SETTINGS_TEST_MALFORMED_POWER_SNAPSHOT:?}
@@ -537,18 +537,18 @@ if [ "${1:-}" = power-snapshot ] && [ -r "$fixture" ]; then
 fi
 exec "$(dirname -- "$0")/dwm-quickshell-controlcenter.real" "$@"
 SH
-chmod +x "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter"
-cat >"$data_home/dwm-titus/scripts/kitty" <<'EOF'
+chmod +x "$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter"
+cat >"$data_home/dwm-jangir/scripts/kitty" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
-cat >"$data_home/dwm-titus/scripts/alacritty" <<'EOF'
+cat >"$data_home/dwm-jangir/scripts/alacritty" <<'EOF'
 #!/bin/sh
 exit 0
 EOF
-chmod +x "$data_home/dwm-titus/scripts/kitty" "$data_home/dwm-titus/scripts/alacritty"
+chmod +x "$data_home/dwm-jangir/scripts/kitty" "$data_home/dwm-jangir/scripts/alacritty"
 
-cat >"$data_home/dwm-titus/scripts/dbus-monitor" <<'SH'
+cat >"$data_home/dwm-jangir/scripts/dbus-monitor" <<'SH'
 #!/bin/sh
 trap 'exit 0' HUP INT TERM
 printf 'signal\n'
@@ -556,11 +556,11 @@ while :; do
 	sleep 1
 done
 SH
-cat >"$data_home/dwm-titus/scripts/light-locker" <<'SH'
+cat >"$data_home/dwm-jangir/scripts/light-locker" <<'SH'
 #!/bin/sh
 exit 0
 SH
-cat >"$data_home/dwm-titus/scripts/nmcli" <<'SH'
+cat >"$data_home/dwm-jangir/scripts/nmcli" <<'SH'
 #!/bin/sh
 set -eu
 while [ "$#" -gt 0 ]; do
@@ -586,7 +586,7 @@ case $* in
 *) exit 2 ;;
 esac
 SH
-cat >"$data_home/dwm-titus/scripts/bluetoothctl" <<'SH'
+cat >"$data_home/dwm-jangir/scripts/bluetoothctl" <<'SH'
 #!/bin/sh
 set -eu
 case $* in
@@ -599,7 +599,7 @@ devices) ;;
 *) exit 2 ;;
 esac
 SH
-cat >"$data_home/dwm-titus/scripts/busctl" <<'SH'
+cat >"$data_home/dwm-jangir/scripts/busctl" <<'SH'
 #!/bin/sh
 set -eu
 case $* in
@@ -618,18 +618,18 @@ JSON
 *) exit 1 ;;
 esac
 SH
-chmod +x "$data_home/dwm-titus/scripts/dbus-monitor" \
-	"$data_home/dwm-titus/scripts/light-locker" \
-	"$data_home/dwm-titus/scripts/nmcli" \
-	"$data_home/dwm-titus/scripts/bluetoothctl" \
-	"$data_home/dwm-titus/scripts/busctl"
+chmod +x "$data_home/dwm-jangir/scripts/dbus-monitor" \
+	"$data_home/dwm-jangir/scripts/light-locker" \
+	"$data_home/dwm-jangir/scripts/nmcli" \
+	"$data_home/dwm-jangir/scripts/bluetoothctl" \
+	"$data_home/dwm-jangir/scripts/busctl"
 
 power_state=$work/power-state
 mkdir -p "$power_state"
 printf '1\n' >"$power_state/dpms-enabled"
 printf '600\n' >"$power_state/dpms-timeout"
 printf '600\n' >"$power_state/saver-timeout"
-cat >"$data_home/dwm-titus/scripts/xset" <<'SH'
+cat >"$data_home/dwm-jangir/scripts/xset" <<'SH'
 #!/bin/sh
 set -eu
 state=${DWM_SETTINGS_TEST_POWER_STATE:?}
@@ -668,7 +668,7 @@ s)
 *) exit 2 ;;
 esac
 SH
-chmod +x "$data_home/dwm-titus/scripts/xset"
+chmod +x "$data_home/dwm-jangir/scripts/xset"
 
 Xvfb "$display" -screen 0 "$screen_geometry" -nolisten tcp -extension GLX >"$work/xvfb.log" 2>&1 &
 xvfb_pid=$!
@@ -704,7 +704,7 @@ env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	DWM_SETTINGS_TEST_APPEARANCE_FAILURE="$appearance_failure_fixture" \
 	DWM_SETTINGS_TEST_WALLPAPER_STATUS="$wallpaper_status_fixture" \
 	DWM_SETTINGS_TEST_THEME_STATUS="$theme_status_fixture" \
-	PATH="$data_home/dwm-titus/scripts:$PATH" \
+	PATH="$data_home/dwm-jangir/scripts:$PATH" \
 	quickshell --no-duplicate >"$work/quickshell.log" 2>&1 &
 quickshell_pid=$!
 quickshell_identity=$(capture_process_identity "$quickshell_pid")
@@ -719,8 +719,8 @@ settings_power_watch_count() {
 		[ -n "$monitor_parent" ] && [ -r "/proc/$monitor_parent/cmdline" ] || continue
 		monitor_command=$(tr '\0' ' ' <"/proc/$monitor_parent/cmdline")
 		case $monitor_command in
-		*"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter power-watch"* | \
-			*"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter.real power-watch"*)
+		*"$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter power-watch"* | \
+			*"$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter.real power-watch"*)
 			watch_count=$((watch_count + 1))
 			;;
 		esac
@@ -736,8 +736,8 @@ settings_power_gsettings_watch_count() {
 		[ -n "$monitor_parent" ] && [ -r "/proc/$monitor_parent/cmdline" ] || continue
 		monitor_command=$(tr '\0' ' ' <"/proc/$monitor_parent/cmdline")
 		case $monitor_command in
-		*"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter power-watch"* | \
-			*"$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter.real power-watch"*)
+		*"$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter power-watch"* | \
+			*"$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter.real power-watch"*)
 			watch_count=$((watch_count + 1))
 			;;
 		esac
@@ -754,7 +754,7 @@ settings_defaults_watch_count() {
 }
 
 settings_autostart_watch_count() {
-	expected="$data_home/dwm-titus/scripts/dwm-xdg-autostart watch"
+	expected="$data_home/dwm-jangir/scripts/dwm-xdg-autostart watch"
 	count=0
 	for watch_pid in $(pgrep -f '[d]wm-xdg-autostart watch$' 2>/dev/null || true); do
 		[ -r "/proc/$watch_pid/cmdline" ] || continue
@@ -981,7 +981,7 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings close >/dev/null
 sleep 0.1
 if ! pgrep -af '[d]wm-quickshell-controlcenter([.]real)? power-dpms off$' |
-	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" >/dev/null; then
+	grep -F "$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter" >/dev/null; then
 	printf 'Power mutation did not survive Settings closure\n' >&2
 	exit 1
 fi
@@ -1135,7 +1135,7 @@ done
 [ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings autostartEntryOrigin dwm-test-autostart.desktop)" = user-only ]
 
-sed -i 's/terminal = "alacritty"/terminal = "kitty"/' "$config_home/dwm-titus/hotkeys.toml"
+sed -i 's/terminal = "alacritty"/terminal = "kitty"/' "$config_home/dwm-jangir/hotkeys.toml"
 i=0
 while [ "$i" -lt 200 ]; do
 	terminal_id=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1145,7 +1145,7 @@ while [ "$i" -lt 200 ]; do
 	sleep 0.05
 done
 [ "$terminal_id" = kitty.desktop ]
-sed -i 's/terminal = "kitty"/terminal = "alacritty"/' "$config_home/dwm-titus/hotkeys.toml"
+sed -i 's/terminal = "kitty"/terminal = "alacritty"/' "$config_home/dwm-jangir/hotkeys.toml"
 i=0
 while [ "$i" -lt 200 ]; do
 	terminal_id=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1177,7 +1177,7 @@ while [ "$i" -lt 200 ]; do
 done
 [ "$defaults_busy" = false ]
 [ "$terminal_id" = kitty.desktop ]
-grep -Fqx 'terminal = "kitty"' "$config_home/dwm-titus/hotkeys.toml"
+grep -Fqx 'terminal = "kitty"' "$config_home/dwm-jangir/hotkeys.toml"
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings defaultsResetRole terminal >/dev/null
@@ -1193,12 +1193,12 @@ while [ "$i" -lt 200 ]; do
 done
 [ "$defaults_busy" = false ]
 [ "$terminal_id" = Alacritty.desktop ]
-grep -Fqx 'terminal = "alacritty"' "$config_home/dwm-titus/hotkeys.toml"
+grep -Fqx 'terminal = "alacritty"' "$config_home/dwm-jangir/hotkeys.toml"
 
 # A helper that prints the exact success record but exits nonzero must never
 # produce a saved message in QML. Snapshot/watch continue through the real
 # helper so the pane remains live while this failure boundary is exercised.
-defaults_helper=$data_home/dwm-titus/scripts/dwm-default-apps
+defaults_helper=$data_home/dwm-jangir/scripts/dwm-default-apps
 mv "$defaults_helper" "$defaults_helper.real"
 cat >"$defaults_helper" <<'EOF'
 #!/bin/sh
@@ -1267,7 +1267,7 @@ if grep -Eq '^NotShowIn=.*X-DWM' "$config_home/autostart/dwm-test-autostart.desk
 	exit 1
 fi
 
-autostart_helper=$data_home/dwm-titus/scripts/dwm-xdg-autostart
+autostart_helper=$data_home/dwm-jangir/scripts/dwm-xdg-autostart
 mv "$autostart_helper" "$autostart_helper.real"
 cat >"$autostart_helper" <<'EOF'
 #!/bin/sh
@@ -1349,14 +1349,14 @@ done
 i=0
 while [ "$i" -lt 100 ]; do
 	if ! pgrep -af '[d]wm-quickshell-controlcenter([.]real)? (power-snapshot|power-watch)$' |
-		grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" >/dev/null; then
+		grep -F "$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter" >/dev/null; then
 		break
 	fi
 	i=$((i + 1))
 	sleep 0.05
 done
 if pgrep -af '[d]wm-quickshell-controlcenter([.]real)? (power-snapshot|power-watch)$' |
-	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" >/dev/null; then
+	grep -F "$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter" >/dev/null; then
 	printf 'Settings-owned power work remained active after leaving Power\n' >&2
 	exit 1
 fi
@@ -1416,7 +1416,7 @@ available | partial) ;;
 		"$appearance_status" "$appearance_detail" >&2
 	HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		DWM_SETTINGS_TEST_APPEARANCE_FAILURE="$appearance_failure_fixture" \
-		"$data_home/dwm-titus/scripts/dwm-settings-appearance" snapshot >&2 || true
+		"$data_home/dwm-jangir/scripts/dwm-settings-appearance" snapshot >&2 || true
 	exit 1
 	;;
 esac
@@ -1491,7 +1491,7 @@ panel_volume=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA
 
 panel_status_ready=$work/panel-status.ready
 panel_status_used=$work/panel-status.used
-managed_panel_helper=$data_home/dwm-titus/scripts/dwm-panel-settings
+managed_panel_helper=$data_home/dwm-jangir/scripts/dwm-panel-settings
 mv "$managed_panel_helper" "$managed_panel_helper.real"
 cat >"$managed_panel_helper" <<EOF
 #!/bin/sh
@@ -1535,7 +1535,7 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$panel_volume" = false ]
 expected=$(printf 'volume\tdisabled')
-grep -Fqx "$expected" "$config_home/dwm-titus/panel-widgets.conf"
+grep -Fqx "$expected" "$config_home/dwm-jangir/panel-widgets.conf"
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetsReset >/dev/null
 i=0
@@ -1574,7 +1574,7 @@ esac
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime DWM_SETTINGS_TEST_THEME_STATUS=$theme_status_fixture \
 	DWM_SETTINGS_TEST_APPEARANCE_FAILURE=$appearance_failure_fixture \
-	"$data_home/dwm-titus/scripts/dwm-settings-personalization" \
+	"$data_home/dwm-jangir/scripts/dwm-settings-personalization" \
 	apply qt gtk3 >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
@@ -1594,7 +1594,7 @@ fi
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime DWM_SETTINGS_TEST_THEME_STATUS=$theme_status_fixture \
 	DWM_SETTINGS_TEST_APPEARANCE_FAILURE=$appearance_failure_fixture \
-	"$data_home/dwm-titus/scripts/dwm-settings-personalization" \
+	"$data_home/dwm-jangir/scripts/dwm-settings-personalization" \
 	reset qt >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
@@ -1649,7 +1649,7 @@ while IFS= read -r candidate; do
 done <"$font_candidates"
 [ -n "$test_font" ]
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-titus/scripts/dwm-settings-font" \
+	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-jangir/scripts/dwm-settings-font" \
 	apply "$test_font" 1.25 >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
@@ -1668,7 +1668,7 @@ if [ "$font_family" != "$test_font" ] || [ "$font_scale" != 1.25 ]; then
 fi
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-titus/scripts/dwm-settings-font" \
+	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-jangir/scripts/dwm-settings-font" \
 	preview nested-font 60 "$test_font" 1.50 >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
@@ -1697,7 +1697,7 @@ if [ "$font_remaining_after" -ge "$font_remaining_before" ]; then
 fi
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-titus/scripts/dwm-settings-font" revert nested-font >/dev/null
+	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-jangir/scripts/dwm-settings-font" revert nested-font >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
 	font_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1714,7 +1714,7 @@ if [ "$font_preview" != none ] || [ "$font_scale" != 1.25 ]; then
 fi
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-titus/scripts/dwm-settings-font" reset >/dev/null
+	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-jangir/scripts/dwm-settings-font" reset >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
 	font_scale=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1731,7 +1731,7 @@ fi
 # the fixture on an exact system family after proving reset, so later aggregate
 # appearance assertions isolate the state they are intended to test.
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-titus/scripts/dwm-settings-font" \
+	XDG_RUNTIME_DIR=$runtime "$data_home/dwm-jangir/scripts/dwm-settings-font" \
 	apply "$test_font" 1.00 >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
@@ -1752,7 +1752,7 @@ test_stage='validating wallpaper Settings lifecycle and recovery'
 test_wallpaper=$home/Pictures/backgrounds/test-wallpaper.png
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
-	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" apply "$test_wallpaper" max >/dev/null
+	"$data_home/dwm-jangir/scripts/dwm-settings-wallpaper" apply "$test_wallpaper" max >/dev/null
 i=0
 while [ "$i" -lt 200 ]; do
 	wallpaper_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1776,7 +1776,7 @@ fi
 wallpaper_preview_timeout=60
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
-	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" \
+	"$data_home/dwm-jangir/scripts/dwm-settings-wallpaper" \
 	preview nested-wallpaper "$wallpaper_preview_timeout" "$test_wallpaper" center >/dev/null
 i=0
 while [ "$i" -lt 200 ]; do
@@ -1840,7 +1840,7 @@ fi
 # A dead watchdog is surfaced as failed by read-only status. The explicit
 # Settings recovery action performs writable reconciliation and rearms it.
 test_stage='validating wallpaper watchdog reconciliation'
-wallpaper_preview_meta=$state_home/dwm-titus/appearance/wallpaper/nested-wallpaper.meta
+wallpaper_preview_meta=$state_home/dwm-jangir/appearance/wallpaper/nested-wallpaper.meta
 wallpaper_watchdog_identity=$(awk -F= '
 	$1 == "pid" { pid = $2 }
 	$1 == "pid_start" { start = $2 }
@@ -1873,7 +1873,7 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 # Trigger the independently covered theme-source watcher only after the pane is
 # open. This guarantees a post-cleanup snapshot even when CI coalesces the
 # integration FileView load with the close/open boundary.
-printf '# trigger inactive integration snapshot\n' >>"$config_home/dwm-titus/themes.toml"
+printf '# trigger inactive integration snapshot\n' >>"$config_home/dwm-jangir/themes.toml"
 i=0
 while [ "$i" -lt 200 ]; do
 	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1965,7 +1965,7 @@ if [ "$wallpaper_state" != available ]; then
 fi
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
-	"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" revert nested-wallpaper >/dev/null
+	"$data_home/dwm-jangir/scripts/dwm-settings-wallpaper" revert nested-wallpaper >/dev/null
 i=0
 while [ "$i" -lt 200 ]; do
 	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2009,7 +2009,7 @@ cp "$repo/config/quickshell/assets/ctt_logo.png" "$test_wallpaper"
 # Preview and recovery metadata are watched while Appearance is open. An
 # external keep or abandon must clear active and failed controls without
 # waiting for a theme-file change or a countdown boundary.
-transaction_state_file=$state_home/dwm-titus/appearance/integration-transaction
+transaction_state_file=$state_home/dwm-jangir/appearance/integration-transaction
 printf '%s\n' external-active >"$theme_status_fixture"
 : >"$theme_status_fixture.external"
 printf 'active\n' >"$transaction_state_file"
@@ -2074,7 +2074,7 @@ printf '%s\n' none >"$theme_status_fixture"
 # A helper that exits silently must clear the last good snapshot instead of
 # leaving stale available state visible.
 printf '%s\n' silent >"$appearance_failure_fixture"
-printf '# trigger silent provider failure\n' >>"$config_home/dwm-titus/themes.toml"
+printf '# trigger silent provider failure\n' >>"$config_home/dwm-jangir/themes.toml"
 i=0
 while [ "$i" -lt 100 ]; do
 	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2105,7 +2105,7 @@ case $appearance_status in available | partial) ;; *) exit 1 ;; esac
 
 # Early provider records from a failed helper are not a complete snapshot.
 printf '%s\n' truncated >"$appearance_failure_fixture"
-printf '# trigger truncated provider failure\n' >>"$config_home/dwm-titus/themes.toml"
+printf '# trigger truncated provider failure\n' >>"$config_home/dwm-jangir/themes.toml"
 i=0
 while [ "$i" -lt 100 ]; do
 	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2138,7 +2138,7 @@ case $appearance_status in available | partial) ;; *) exit 1 ;; esac
 test_stage='validating active appearance integration watches'
 printf '%s\n' 'export QT_QPA_PLATFORMTHEME=gtk3' \
 	'export XCURSOR_THEME=Adwaita' 'export XCURSOR_SIZE=24' \
-	>"$config_home/dwm-titus/theme-env.sh"
+	>"$config_home/dwm-jangir/theme-env.sh"
 i=0
 while [ "$i" -lt 100 ]; do
 	appearance_qt=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2171,7 +2171,7 @@ available | partial) ;;
 	;;
 esac
 printf '%s\n' inventory-only >"$appearance_failure_fixture"
-printf '# trigger inventory-only provider fixture\n' >>"$config_home/dwm-titus/themes.toml"
+printf '# trigger inventory-only provider fixture\n' >>"$config_home/dwm-jangir/themes.toml"
 i=0
 while [ "$i" -lt 100 ]; do
 	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2200,12 +2200,12 @@ if [ "$appearance_status" != partial ] ||
 	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime DWM_SETTINGS_TEST_THEME_STATUS=$theme_status_fixture \
 		DWM_SETTINGS_TEST_APPEARANCE_FAILURE=$appearance_failure_fixture \
-		"$data_home/dwm-titus/scripts/dwm-settings-personalization" status >&2 || true
+		"$data_home/dwm-jangir/scripts/dwm-settings-personalization" status >&2 || true
 	exit 1
 fi
 rm -f "$appearance_failure_fixture"
 test_stage='restoring healthy appearance baseline'
-printf '# restore real provider snapshot\n' >>"$config_home/dwm-titus/themes.toml"
+printf '# restore real provider snapshot\n' >>"$config_home/dwm-jangir/themes.toml"
 i=0
 while [ "$i" -lt 100 ]; do
 	appearance_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2799,7 +2799,7 @@ if [ "$appearance_status" != "$baseline_appearance_status" ] ||
 fi
 
 test_stage='validating restored appearance integration state'
-printf '# inactive integration watch fixture\n' >"$config_home/dwm-titus/theme-env.sh"
+printf '# inactive integration watch fixture\n' >"$config_home/dwm-jangir/theme-env.sh"
 # The active-file assertion above covers the integration watcher. Reopen the
 # pane for cleanup so this restoration is a fresh generation-scoped snapshot,
 # not a second file event that can be coalesced with the provider-fixture edge.
@@ -2823,9 +2823,9 @@ fi
 # Invalid selected labels are diagnostic provider output. Keep the valid
 # fallback inventory available so Settings can offer recovery.
 test_stage='validating appearance recovery inventory'
-cp "$config_home/dwm-titus/themes.toml" "$work/valid-themes.toml"
+cp "$config_home/dwm-jangir/themes.toml" "$work/valid-themes.toml"
 sed -i '0,/theme = "nord"/s//theme = "missing theme"/' \
-	"$config_home/dwm-titus/themes.toml"
+	"$config_home/dwm-jangir/themes.toml"
 i=0
 while [ "$i" -lt 100 ]; do
 	appearance_theme=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2842,7 +2842,7 @@ done
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus)" = partial ]
 [ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceApplicationState)" = partial ]
-cp "$work/valid-themes.toml" "$config_home/dwm-titus/themes.toml"
+cp "$work/valid-themes.toml" "$config_home/dwm-jangir/themes.toml"
 i=0
 while [ "$i" -lt 100 ]; do
 	appearance_theme=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2857,7 +2857,7 @@ done
 # provider's safe dark default instead of dropping the active row.
 test_stage='validating appearance metadata recovery'
 sed -i '0,/dark_mode       = true/s//dark_mode       = "bogus"/' \
-	"$config_home/dwm-titus/themes.toml"
+	"$config_home/dwm-jangir/themes.toml"
 i=0
 while [ "$i" -lt 100 ]; do
 	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2872,7 +2872,7 @@ done
 [ "$appearance_count" -eq 15 ]
 [ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme)" = nord ]
-cp "$work/valid-themes.toml" "$config_home/dwm-titus/themes.toml"
+cp "$work/valid-themes.toml" "$config_home/dwm-jangir/themes.toml"
 i=0
 while [ "$i" -lt 100 ]; do
 	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2918,7 +2918,7 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 sleep 1
 rm -f "$theme_status_fixture.started" "$theme_status_fixture.calls"
 printf '%s\n' active-zero-fail >"$theme_status_fixture"
-printf '# trigger bounded preview retry fixture\n' >>"$config_home/dwm-titus/themes.toml"
+printf '# trigger bounded preview retry fixture\n' >>"$config_home/dwm-jangir/themes.toml"
 i=0
 while [ "$i" -lt 100 ]; do
 	appearance_message=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2953,8 +2953,8 @@ printf '%s\n' none >"$theme_status_fixture"
 
 # The provider's missing-source and legacy identifiers are intentional
 # read-only protocol sentinels, not mutation-safe theme names.
-mv "$config_home/dwm-titus/themes.toml" "$work/named-themes.toml"
-mv "$data_home/dwm-titus/config/themes.toml" "$work/managed-themes.toml"
+mv "$config_home/dwm-jangir/themes.toml" "$work/named-themes.toml"
+mv "$data_home/dwm-jangir/config/themes.toml" "$work/managed-themes.toml"
 i=0
 while [ "$i" -lt 100 ]; do
 	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2973,7 +2973,7 @@ done
 [ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme)" = none ]
 
-cat >"$config_home/dwm-titus/themes.toml" <<'EOF'
+cat >"$config_home/dwm-jangir/themes.toml" <<'EOF'
 [colors]
 normfgcolor = "#D8DEE9"
 normbgcolor = "#2E3440"
@@ -3023,38 +3023,38 @@ if pgrep -f '[d]wm-settings-provider discover$' >/dev/null; then
 	exit 1
 fi
 if pgrep -af '[d]wm-settings-display watch [0-9]+ [0-9]+$' |
-	grep -F "$data_home/dwm-titus/scripts/dwm-settings-display" >/dev/null; then
+	grep -F "$data_home/dwm-jangir/scripts/dwm-settings-display" >/dev/null; then
 	printf 'Settings display watcher remained active after close\n' >&2
 	exit 1
 fi
 if pgrep -af '[d]wm-settings-input watch [0-9]+ [0-9]+$' |
-	grep -F "$data_home/dwm-titus/scripts/dwm-settings-input" >/dev/null; then
+	grep -F "$data_home/dwm-jangir/scripts/dwm-settings-input" >/dev/null; then
 	printf 'Settings input watcher remained active after close\n' >&2
 	exit 1
 fi
 
 if pgrep -af '[d]wm-quickshell-network (snapshot|wifi-scan|wifi-connect|connect|disconnect|forget)' |
-	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-network" >/dev/null; then
+	grep -F "$data_home/dwm-jangir/scripts/dwm-quickshell-network" >/dev/null; then
 	printf 'Settings-owned network work remained active after close\n' >&2
 	exit 1
 fi
 if pgrep -af '[d]wm-quickshell-controls (bluetooth-snapshot|bluetooth-scan|bluetooth-power|bluetooth-pair|bluetooth-trust|bluetooth-connect|bluetooth-disconnect|bluetooth-remove)' |
-	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controls" >/dev/null; then
+	grep -F "$data_home/dwm-jangir/scripts/dwm-quickshell-controls" >/dev/null; then
 	printf 'Settings-owned Bluetooth work remained active after close\n' >&2
 	exit 1
 fi
 if pgrep -af '[d]wm-quickshell-controlcenter([.]real)? (power-snapshot|power-watch|power-profile-set|power-dpms|power-dpms-timeout|power-lock|power-lock-timeout)' |
-	grep -F "$data_home/dwm-titus/scripts/dwm-quickshell-controlcenter" >/dev/null; then
+	grep -F "$data_home/dwm-jangir/scripts/dwm-quickshell-controlcenter" >/dev/null; then
 	printf 'Settings-owned power work remained active after close\n' >&2
 	exit 1
 fi
 if pgrep -af '[d]wm-default-apps (snapshot|watch|set-role|set-mime|reset-role|reset-mime)' |
-	grep -F "$data_home/dwm-titus/scripts/dwm-default-apps" >/dev/null; then
+	grep -F "$data_home/dwm-jangir/scripts/dwm-default-apps" >/dev/null; then
 	printf 'Settings-owned Defaults work remained active after close\n' >&2
 	exit 1
 fi
 if pgrep -af '[d]wm-xdg-autostart (snapshot|watch|set|reset)' |
-	grep -F "$data_home/dwm-titus/scripts/dwm-xdg-autostart" >/dev/null; then
+	grep -F "$data_home/dwm-jangir/scripts/dwm-xdg-autostart" >/dev/null; then
 	printf 'Settings-owned autostart work remained active after close\n' >&2
 	exit 1
 fi

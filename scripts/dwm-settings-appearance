@@ -25,9 +25,9 @@ state_home=${XDG_STATE_HOME:-}
 [[ $config_home == /* ]] || config_home=${HOME:?HOME is required for XDG_CONFIG_HOME fallback}/.config
 [[ $data_home == /* ]] || data_home=${HOME:?HOME is required for XDG_DATA_HOME fallback}/.local/share
 [[ $state_home == /* ]] || state_home=${HOME:?HOME is required for XDG_STATE_HOME fallback}/.local/state
-config_dir=$config_home/dwm-titus
-themes_file=${DWM_APPEARANCE_THEMES_FILE:-$config_home/dwm-titus/themes.toml}
-managed_themes_file=${DWM_APPEARANCE_MANAGED_THEMES_FILE:-$data_home/dwm-titus/config/themes.toml}
+config_dir=$config_home/dwm-jangir
+themes_file=${DWM_APPEARANCE_THEMES_FILE:-$config_home/dwm-jangir/themes.toml}
+managed_themes_file=${DWM_APPEARANCE_MANAGED_THEMES_FILE:-$data_home/dwm-jangir/config/themes.toml}
 readonly max_themes_size=1048576
 readonly max_theme_count=128
 readonly max_error_count=256
@@ -1339,9 +1339,9 @@ watch_inventory() {
 		return 1
 	}
 	canonical_config_dir=$(readlink -m -- "$config_dir") || return 1
-	canonical_state_base=$(readlink -m -- "$state_home/dwm-titus") || return 1
-	canonical_appearance_state_dir=$(readlink -m -- "$state_home/dwm-titus/appearance") || return 1
-	canonical_font_state_dir=$(readlink -m -- "$state_home/dwm-titus/appearance/font") || return 1
+	canonical_state_base=$(readlink -m -- "$state_home/dwm-jangir") || return 1
+	canonical_appearance_state_dir=$(readlink -m -- "$state_home/dwm-jangir/appearance") || return 1
+	canonical_font_state_dir=$(readlink -m -- "$state_home/dwm-jangir/appearance/font") || return 1
 	arm_parent_exit_watch
 	wallpaper_dir=${DWM_APPEARANCE_WALLPAPER_DIR:-${HOME:?HOME is required}/Pictures/backgrounds}
 	# Add every required state root before optional descendants so a large
@@ -1351,8 +1351,8 @@ watch_inventory() {
 	add_inventory_watch_target "$config_home/dconf"
 	add_inventory_watch_target "$config_home/gtk-3.0"
 	add_inventory_watch_target "$config_home/gtk-4.0"
-	add_inventory_watch_target "$config_home/dwm-titus"
-	add_inventory_watch_target "$state_home/dwm-titus/appearance/wallpaper"
+	add_inventory_watch_target "$config_home/dwm-jangir"
+	add_inventory_watch_target "$state_home/dwm-jangir/appearance/wallpaper"
 	while IFS= read -r root; do
 		inventory_icon_roots+=("$root/icons")
 		inventory_theme_roots+=("$root/themes")
@@ -1596,7 +1596,7 @@ decode_theme_environment_value() {
 }
 
 parse_theme_environment() {
-	local env_file=$config_home/dwm-titus/theme-env.sh line value
+	local env_file=$config_home/dwm-jangir/theme-env.sh line value
 	local seen_qt=false seen_cursor=false seen_size=false
 	[[ -f $env_file && ! -L $env_file && -r $env_file &&
 		$(stat -c %u -- "$env_file") == "$UID" &&
@@ -1650,7 +1650,7 @@ theme_env_value() {
 }
 
 personalization_value() {
-	local key=$1 file=$config_home/dwm-titus/personalization.conf value
+	local key=$1 file=$config_home/dwm-jangir/personalization.conf value
 	[[ -f $file && ! -L $file && -r $file && $(stat -c %u -- "$file") == "$UID" &&
 	$(stat -c %h -- "$file") == 1 &&
 	$(stat -c %s -- "$file") -le 4096 ]] || return 1
@@ -1701,7 +1701,7 @@ cursor_theme_applied() {
 	[[ -n $effective ]] || effective=${XCURSOR_THEME:-}
 	[[ -n $effective ]] || return 1
 	[[ $effective == "$expected" ]] || return 1
-	[[ -f $config_home/dwm-titus/cursor.Xresources ]] || return 1
+	[[ -f $config_home/dwm-jangir/cursor.Xresources ]] || return 1
 	awk -F: -v expected="$expected" '
 		$1 == "Xcursor.theme" {
 			value = substr($0, index($0, ":") + 1)
@@ -1710,7 +1710,7 @@ cursor_theme_applied() {
 			exit
 		}
 		END { exit(found ? 0 : 1) }
-	' "$config_home/dwm-titus/cursor.Xresources" || return 1
+	' "$config_home/dwm-jangir/cursor.Xresources" || return 1
 	for version in 3.0 4.0; do
 		file=$config_home/gtk-$version/settings.ini
 		[[ -f $file ]] &&

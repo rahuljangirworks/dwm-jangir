@@ -1,8 +1,8 @@
-# Fedora mutable installer profile for dwm-titus with RPM Fusion NVIDIA drivers.
+# Fedora mutable installer profile for dwm-jangir with RPM Fusion NVIDIA drivers.
 #
 # Build an installer ISO with:
 # scripts/build-dwm-fedora-installer-iso.sh --variant nvidia
-# The local checkout is available at /run/install/repo/dwm-titus during install.
+# The local checkout is available at /run/install/repo/dwm-jangir during install.
 # Storage, locale, keyboard layout, timezone, hostname, root password, and user
 # creation are intentionally left to the Anaconda UI.
 
@@ -22,14 +22,14 @@ repo --name="rpmfusion-nonfree-updates" --metalink="https://mirrors.rpmfusion.or
 repo --name="rpmfusion-nonfree-tainted" --metalink="https://mirrors.rpmfusion.org/metalink?repo=nonfree-fedora-tainted-$releasever&arch=$basearch" --install
 repo --name="brave-browser" --baseurl="https://brave-browser-rpm-release.s3.brave.com/$basearch" --install
 repo --name="mwt-packages" --baseurl="https://mirror.mwt.me/shiftkey-desktop/rpm" --install
-%include /tmp/dwm-titus-gaming-repo
+%include /tmp/dwm-jangir-gaming-repo
 
 bootloader --location=mbr --append="rd.driver.blacklist=nouveau modprobe.blacklist=nouveau nvidia-drm.modeset=1"
 services --enabled=NetworkManager
 
 %pre --interpreter=/bin/sh
-gaming_repo=/tmp/dwm-titus-gaming-repo
-gaming_packages=/tmp/dwm-titus-gaming-packages
+gaming_repo=/tmp/dwm-jangir-gaming-repo
+gaming_packages=/tmp/dwm-jangir-gaming-packages
 case "$(uname -m)" in
 x86_64)
 	cat >"$gaming_repo" <<'EOF'
@@ -86,7 +86,7 @@ xdotool
 xprop
 xdg-utils
 flatpak
-%include /tmp/dwm-titus-gaming-packages
+%include /tmp/dwm-jangir-gaming-packages
 quickshell
 lightdm
 slick-greeter
@@ -150,19 +150,19 @@ xorg-x11-drv-nvidia-cuda
 nvidia-settings
 %end
 
-%post --nochroot --erroronfail --log=/mnt/sysimage/root/dwm-titus-copy.log
+%post --nochroot --erroronfail --log=/mnt/sysimage/root/dwm-jangir-copy.log
 set -eu
 
 install -d -m 0755 /mnt/sysimage/opt
-rm -rf /mnt/sysimage/opt/dwm-titus
-cp -a /run/install/repo/dwm-titus /mnt/sysimage/opt/dwm-titus
+rm -rf /mnt/sysimage/opt/dwm-jangir
+cp -a /run/install/repo/dwm-jangir /mnt/sysimage/opt/dwm-jangir
 %end
 
-%post --erroronfail --log=/root/dwm-titus-kickstart.log
+%post --erroronfail --log=/root/dwm-jangir-kickstart.log
 set -eu
 
-repo_dir=/opt/dwm-titus
-install_sudoers=/etc/sudoers.d/90-dwm-titus-install
+repo_dir=/opt/dwm-jangir
+install_sudoers=/etc/sudoers.d/90-dwm-jangir-install
 target_user=$(
 	awk -F: '$3 >= 1000 && $3 < 60000 && $6 ~ "^/home/" && $7 !~ /(nologin|false)$/ { print $1; exit }' /etc/passwd
 )
@@ -182,7 +182,7 @@ done
 
 target_home=$(getent passwd "$target_user" | cut -d: -f6)
 target_group=$(id -gn "$target_user")
-target_repo_dir="$target_home/.local/share/dwm-titus"
+target_repo_dir="$target_home/.local/share/dwm-jangir"
 
 for xdg_dir in \
 	"$target_home/.local" \
@@ -204,8 +204,8 @@ chown -R "$target_user:$target_group" "$target_repo_dir"
 install -m 0440 /dev/null "$install_sudoers"
 printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$target_user" > "$install_sudoers"
 
-su - "$target_user" -c 'cd "$HOME/.local/share/dwm-titus" && ./install.sh --non-interactive --profile core'
-su - "$target_user" -c 'cd "$HOME/.local/share/dwm-titus" && scripts/install-gearlever'
+su - "$target_user" -c 'cd "$HOME/.local/share/dwm-jangir" && ./install.sh --non-interactive --profile core'
+su - "$target_user" -c 'cd "$HOME/.local/share/dwm-jangir" && scripts/install-gearlever'
 
 if getent group gamemode >/dev/null 2>&1; then
 	usermod -aG gamemode "$target_user"
@@ -220,7 +220,7 @@ if systemctl list-unit-files nvidia-persistenced.service >/dev/null 2>&1; then
 	systemctl enable nvidia-persistenced.service
 fi
 
-find /usr/share/xsessions -mindepth 1 -maxdepth 1 -type f ! -name dwm.desktop -delete 2>/dev/null || true
+find /usr/share/xsessions -mindepth 1 -maxdepth 1 -type f ! -name dwm-jangir.desktop -delete 2>/dev/null || true
 find /usr/share/wayland-sessions -mindepth 1 -maxdepth 1 -type f -delete 2>/dev/null || true
 systemctl disable initial-setup.service initial-setup-graphical.service 2>/dev/null || true
 rm -f "$install_sudoers"

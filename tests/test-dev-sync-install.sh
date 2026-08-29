@@ -15,20 +15,30 @@ data_root="$work/system data"
 config_home="$test_home/.config"
 xdg_data_home="$test_home/.local/share"
 state_home="$test_home/.local/state"
-data_dir="$xdg_data_home/dwm-titus"
+data_dir="$xdg_data_home/dwm-jangir"
 output="$work/output"
 install_sources="$work/install-sources"
 test_bin="$work/bin"
+safe_bin="$work/safe-bin"
 
-mkdir -p "$test_repo" "$test_bin" "$prefix/bin" "$prefix/libexec/dwm-titus" \
+mkdir -p "$test_repo" "$test_bin" "$safe_bin" "$prefix/bin" "$prefix/libexec/dwm-jangir" \
 	"$manprefix/man1" "$xsessions_dir" \
-	"$data_root/icons" "$data_root/licenses/dwm-titus/capitaine-cursors" \
+	"$data_root/icons" "$data_root/licenses/dwm-jangir/capitaine-cursors" \
 	"$config_home/systemd/user" "$data_dir"
+# Keep the test independent of desktop tools installed on the developer host.
+# The fixture controls xsettingsd and dump_xsettings through test_bin.
+find /usr/bin -maxdepth 1 \( -type f -o -type l \) -printf '%f\n' |
+	while IFS= read -r command_name; do
+	case $command_name in
+	xsettingsd | dump_xsettings) continue ;;
+	esac
+	ln -s "/usr/bin/$command_name" "$safe_bin/$command_name"
+done
 cp -a \
 	"$repo_dir/Makefile" \
 	"$repo_dir/config.mk" \
 	"$repo_dir/dwm.1" \
-	"$repo_dir/dwm.desktop" \
+	"$repo_dir/dwm-jangir.desktop" \
 	"$repo_dir/config" \
 	"$repo_dir/scripts" \
 	"$repo_dir/assets" \
@@ -43,7 +53,7 @@ make -s -C "$test_repo" --no-print-directory \
 
 install -Dm755 "$test_repo/dwm" "$prefix/bin/dwm"
 sed "s|@PREFIX@|$prefix|g" "$test_repo/scripts/dwm-settings-display-root" |
-	install -Dm755 /dev/stdin "$prefix/libexec/dwm-titus/dwm-settings-display-root"
+	install -Dm755 /dev/stdin "$prefix/libexec/dwm-jangir/dwm-settings-display-root"
 while IFS= read -r install_source; do
 	[ -n "$install_source" ] || continue
 	install -Dm755 "$test_repo/$install_source" \
@@ -52,7 +62,7 @@ done <"$install_sources"
 
 version=$(awk '$1 == "VERSION" && $2 == "=" { print $3; exit }' "$test_repo/config.mk")
 sed "s/VERSION/$version/g" "$test_repo/dwm.1" >"$manprefix/man1/dwm.1"
-sed "s|@PREFIX@|$prefix|g" "$test_repo/dwm.desktop" >"$xsessions_dir/dwm.desktop"
+sed "s|@PREFIX@|$prefix|g" "$test_repo/dwm-jangir.desktop" >"$xsessions_dir/dwm-jangir.desktop"
 cp -a "$test_repo/config" "$data_dir/config"
 cp -a "$test_repo/scripts" "$data_dir/scripts"
 cp -a "$test_repo/config/quickshell" "$config_home/quickshell"
@@ -62,13 +72,13 @@ for cursor_source in "$test_repo"/assets/cursors/Capitaine-Cursors*; do
 	cp -a "$cursor_source" "$data_root/icons/"
 done
 install -Dm644 "$test_repo/assets/cursors/COPYING" \
-	"$data_root/licenses/dwm-titus/capitaine-cursors/COPYING"
+	"$data_root/licenses/dwm-jangir/capitaine-cursors/COPYING"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/xsettingsd"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/dump_xsettings"
 chmod +x "$test_bin/xsettingsd" "$test_bin/dump_xsettings"
 
 run_check() {
-	PATH="$test_bin:$PATH" \
+	PATH="$test_bin:$safe_bin" \
 		DWM_DEV_SYNC_SKIP_RUNTIME=1 \
 		DWM_DEV_SYNC_SKIP_PRIVILEGED_TRUST=1 \
 		USER_HOME="$test_home" \
@@ -113,7 +123,7 @@ esac
 EOF
 chmod +x "$test_bin/id"
 mv "$test_bin/xsettingsd" "$test_bin/xsettingsd.missing"
-if PATH="$test_bin:$PATH" \
+if PATH="$test_bin:$safe_bin" \
 	DWM_DEV_SYNC_SKIP_RUNTIME=1 \
 	USER_HOME="$test_home" \
 	PREFIX="$prefix" \
@@ -156,7 +166,7 @@ exit 1
 EOF
 chmod +x "$test_bin/id" "$test_bin/sudo" "$test_bin/dnf"
 mv "$test_bin/xsettingsd" "$test_bin/xsettingsd.missing"
-if PATH="$test_bin:$PATH" \
+if PATH="$test_bin:$safe_bin" \
 	DWM_DEV_SYNC_TEST_MODE=1 \
 	DWM_DEV_SYNC_DESKTOP_FEATURE=1 \
 	DWM_DEV_SYNC_SOURCE_UPDATE_READY=0 \

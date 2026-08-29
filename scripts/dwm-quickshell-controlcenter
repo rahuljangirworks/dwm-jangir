@@ -8,8 +8,8 @@ repo_dir=$(
 
 config_home=${XDG_CONFIG_HOME:-${HOME:-}/.config}
 data_home=${XDG_DATA_HOME:-${HOME:-}/.local/share}
-dwm_config_dir=$config_home/dwm-titus
-managed_config_dir=$data_home/dwm-titus/config
+dwm_config_dir=$config_home/dwm-jangir
+managed_config_dir=$data_home/dwm-jangir/config
 
 config_file() {
 	name=$1
@@ -244,7 +244,7 @@ write_power_config() {
 		fi
 	else
 		if ! {
-			printf '%s\n' '# dwm-titus power settings'
+			printf '%s\n' '# dwm-jangir power settings'
 			printf 'dpms_enabled=%s\n' "$power_dpms_enabled"
 			printf 'dpms_timeout=%s\n' "$power_dpms_timeout"
 			printf 'lock_enabled=%s\n' "$power_lock_enabled"

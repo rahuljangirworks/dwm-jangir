@@ -17,7 +17,7 @@ Scope {
     readonly property int criticalTimeoutMs: 10000
     readonly property int maxVisible: 4
     readonly property int maxHistory: 50
-    readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/dwm-titus"
+    readonly property string cacheDir: (Quickshell.env("XDG_CACHE_HOME") || (Quickshell.env("HOME") + "/.cache")) + "/dwm-jangir"
     readonly property string historyPath: cacheDir + "/notification-history.json"
 
     Component.onCompleted: Quickshell.execDetached(["mkdir", "-p", cacheDir])

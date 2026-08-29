@@ -2,7 +2,7 @@ name: CI
 
 on:
   push:
-    branches: ["main"]
+    branches: ["dev"]
   pull_request:
   workflow_dispatch:
 
@@ -19,7 +19,7 @@ jobs:
     timeout-minutes: 30
     container: fedora:44
     env:
-      DWM_TEST_TMP_ROOT: /var/tmp/dwm-titus-tests
+      DWM_TEST_TMP_ROOT: /var/tmp/dwm-jangir-tests
 
     steps:
       - name: Install checkout dependency

@@ -69,7 +69,7 @@ stop_scoped_status() {
 	status_command_path=$(readlink -f -- "$status_command" 2>/dev/null) || return 0
 	status_display_key=$(printf '%s' "${DISPLAY:-}" | sha256sum | awk '{ print $1 }')
 	case $status_display_key in *[!0-9a-f]* | '') return 0 ;; esac
-	status_identity_file=$XDG_RUNTIME_DIR/dwm-titus/dwm-status.$status_display_key.identity
+	status_identity_file=$XDG_RUNTIME_DIR/dwm-jangir/dwm-status.$status_display_key.identity
 	[ -f "$status_identity_file" ] && [ ! -L "$status_identity_file" ] || return 0
 	status_pid=
 	status_starttime=

@@ -1,0 +1,107 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+script_dir="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+template_dir="${DWM_PERSONAL_DISPLAY_TEMPLATE_DIR:-$script_dir/../profiles}"
+config_home="${XDG_CONFIG_HOME:-$HOME/.config}"
+profile_dir="$config_home/dwm-jangir/display-profiles"
+
+usage() {
+	cat >&2 <<'EOF'
+usage: dwm-personal-display-profile prepare dell-5820
+       dwm-personal-display-profile validate dell-5820 [PROFILE]
+
+prepare copies the opt-in profile into the invoking user's XDG configuration
+without replacing a different existing profile. validate checks that the
+required outputs are connected in the active X11 session.
+EOF
+}
+
+die() {
+	printf 'dwm-personal-display-profile: %s\n' "$*" >&2
+	exit 1
+}
+
+profile_template() {
+	case $1 in
+	dell-5820) printf '%s/dell-5820.conf\n' "$template_dir" ;;
+	*) die "unsupported personal display profile: $1" ;;
+	esac
+}
+
+profile_destination() {
+	case $1 in
+	dell-5820) printf '%s/dell-5820.conf\n' "$profile_dir" ;;
+	*) die "unsupported personal display profile: $1" ;;
+	esac
+}
+
+prepare_profile() {
+	local name=$1 template destination
+
+	template=$(profile_template "$name")
+	destination=$(profile_destination "$name")
+	[[ -r $template && ! -L $template ]] || die "profile template is unavailable: $template"
+	mkdir -p "$profile_dir"
+	chmod 700 "$profile_dir"
+	if [[ -e $destination ]]; then
+		[[ -f $destination && ! -L $destination ]] || die "existing profile is not a regular file: $destination"
+		cmp -s "$template" "$destination" ||
+			die "existing user profile differs and was preserved: $destination"
+	else
+		install -m 600 "$template" "$destination"
+	fi
+	printf '%s\n' "$destination"
+}
+
+validate_profile() {
+	local name=$1 profile=${2:-} query output
+
+	[[ $name == dell-5820 ]] || die "unsupported personal display profile: $name"
+	[[ -n ${DISPLAY:-} ]] ||
+		die "DISPLAY is not set; profile was not applied. Log in, then run dwm-display-setup for the normal display wizard."
+	command -v xrandr >/dev/null 2>&1 ||
+		die "xrandr is unavailable; profile was not applied. Run dwm-display-setup for the normal display wizard."
+	if [[ -n $profile ]]; then
+		[[ -r $profile && ! -L $profile ]] || die "profile is not readable: $profile"
+		cmp -s "$(profile_template "$name")" "$profile" ||
+			die "profile contents do not match the selected $name layout; profile was not applied."
+	fi
+	query=$(mktemp)
+	if ! xrandr --query >"$query"; then
+		rm -f "$query"
+		die "could not query the active X11 display"
+	fi
+	for output in DVI-D-0 DP-0; do
+		if ! awk -v output="$output" '$1 == output && $2 == "connected" { found = 1 } END { exit !found }' "$query"; then
+			rm -f "$query"
+			die "profile requires connected output $output; no persistent layout was applied. Run dwm-display-setup for the normal display wizard."
+		fi
+	done
+	rm -f "$query"
+	printf '%s\n' "dwm-personal-display-profile: Dell 5820 output check passed"
+}
+
+main() {
+	local command=${1:-} name=${2:-}
+
+	case $command in
+	prepare)
+		[[ $# == 2 ]] || { usage; exit 2; }
+		prepare_profile "$name"
+		;;
+	validate)
+		[[ $# == 2 || $# == 3 ]] || { usage; exit 2; }
+		validate_profile "$name" "${3:-}"
+		;;
+	-h | --help | help)
+		usage
+		;;
+	*)
+		usage
+		exit 2
+		;;
+	esac
+}
+
+main "$@"
