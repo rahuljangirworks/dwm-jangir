@@ -2,7 +2,7 @@
 title: DWM-Jangir Project State
 type: live-project-state
 project: dwm-jangir
-status: active-wip
+status: active
 last-verified: 2026-08-29
 ---
 
@@ -19,33 +19,29 @@ Verified on 2026-08-29 without modifying Git history or remote configuration:
 
 | Item | Verified value |
 | --- | --- |
-| Current branch | `dev`, tracking `origin/dev` |
-| Current `dev` commit | `3b1f179` (`synced-with-upstream-20260827`) |
+| Current branch | `dev`, tracking `origin/dev`, with two local commits pending push |
+| Published `origin/dev` commit | `3b1f179` (`synced-with-upstream-20260827`) |
+| Latest implementation commit | `728a84b` (`fix(display): persist NVIDIA layouts through Xorg`) |
+| Latest fork-record commit | `05a99b2` (`docs(fork): record upstream-safe display workflow`) |
 | Locally fetched upstream base | `46991ca` |
 | Live `upstream/main` | `97f1ed9` |
-| Live comparison | `dev` has 2 fork commits; upstream has 5 newer commits; histories diverge at `46991ca` |
+| Live comparison | `dev` has 4 fork commits; upstream has 5 newer commits; histories diverge at `46991ca` |
 | GitHub default branch | `dev` at `3b1f179`; it matches `origin/dev` |
 | Legacy branch | `origin/main` at `0bea4f6`; it is 98 commits behind `dev` |
 
-The two fork commits are:
+The current fork commits above the common upstream base are:
 
 1. `1a68941 feat: add personal branding and display config`
 2. `3b1f179 docs: restore project state after upstream sync`
+3. `728a84b fix(display): persist NVIDIA layouts through Xorg`
+4. `05a99b2 docs(fork): record upstream-safe display workflow`
 
-## Current Worktree
+## Verified Display Recovery
 
-The worktree contains a validated display/session repair and the related
-governance documentation. It is ready for focused commits before the next
-upstream synchronization:
-
-- Fork-governance documentation: `AGENTS.md`, `FORK.md`, `FORK-DELTA.md`,
-  `PROJECT-STATE.md`, `CONTRIBUTING.md`, and `.gitignore`. This is a separate
-  documentation change that should be reviewed independently of runtime work.
-- Display/session repair: `scripts/.xinitrc` and `scripts/autostart.sh` remove
-  the old static monitor command; `scripts/dwm-session` gives LightDM and
-  `startx` one D-Bus-backed session entry; `dwm-display-setup` generates generic
-  NVIDIA MetaModes for persistent mode, position, and rotation.
-- `.agent` is a local workspace link and is intentionally ignored.
+The current local commits remove the old static monitor command, add one
+D-Bus-backed `dwm-session` entry for LightDM and `startx`, and generate generic
+NVIDIA MetaModes for persistent mode, position, and rotation. The unsafe local
+LightDM root-hook scripts were removed. `.agent` remains a local, ignored link.
 
 `bash -n`/`sh -n` passed for the relevant shell files on 2026-08-29.
 `tests/test-dwm-display-setup.sh` and `tests/test-lightdm-config.sh` passed.
@@ -63,14 +59,14 @@ The managed shell check could not run because `shellcheck` is not installed;
 
 ## Next Required Action
 
-Commit the validated display/session repair and fork-governance records. Then
-install ShellCheck and shfmt before the next upstream sync and run the managed
-shell and format checks. The supported monitor path is `dwm-display-setup` from
-a logged-in X11 session, with reversible preview and persistent Xorg
+Ask Rahul before pushing the three local commits to `origin/dev`. Then install
+ShellCheck and shfmt before the next upstream sync and run the managed shell and
+format checks. The supported monitor path is `dwm-display-setup` from a
+logged-in X11 session, with reversible preview and persistent Xorg
 configuration. Do not restore a LightDM display hook, `.bashrc` profile
 selection, static monitor layout, or emergency repair script.
 
-After the worktree is clean and reviewed:
+After the commits are pushed and the worktree is clean:
 
 1. Fetch upstream and create a dated `sync/YYYY-MM-DD` branch.
 2. Rebase the integration branch onto the exact `upstream/main` SHA.
