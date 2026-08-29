@@ -5,6 +5,11 @@ Fedora's Slick Greeter 2.2.6. It provides a compact dark login card, a
 desktop-session selector, centered date/time and a solar timeline, plus
 bottom-corner status/actions. It does not force a display mode or alter
 LightDM authentication or session handling.
+A modern Fedora LightDM login screen using Slick Greeter with a Nord colour
+palette, blurred background, and the MesloLGS NF font.
+
+The Fedora installer uses `slick-greeter`. The dwm-jangir LightDM install target
+renders the matching Fedora `lightdm.conf`.
 
 ## Files
 
@@ -72,6 +77,7 @@ The build helper downloads the version-pinned upstream source only when it is
 not already present in `$RPM_TOPDIR/SOURCES`, and verifies its SHA-256 before
 building. It installs only the patched executable; Fedora's `slick-greeter`
 package continues to supply the schemas and shared data.
+| `wallpaper.jpg` | `/usr/share/pixmaps/dwm-jangir.jpg` |
 
 ## Install
 
