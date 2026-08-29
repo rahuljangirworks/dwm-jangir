@@ -9,13 +9,13 @@ OWNER ?= $(or $(SUDO_USER),$(USER))
 USER_HOME ?= $(shell getent passwd "${OWNER}" 2>/dev/null | cut -d: -f6)
 XDG_CONFIG_HOME ?= ${USER_HOME}/.config
 XDG_DATA_HOME ?= ${USER_HOME}/.local/share
-DATA_DIR  := ${XDG_DATA_HOME}/dwm-titus
+DATA_DIR  := ${XDG_DATA_HOME}/dwm-jangir
 CFG_DIR   := ${XDG_CONFIG_HOME}
 DATADIR   ?= ${PREFIX}/share
 SYSTEMDUSERDIR ?= ${PREFIX}/lib/systemd/user
 CAPITAINE_DARK_THEME = Capitaine-Cursors
 CAPITAINE_LIGHT_THEME = Capitaine-Cursors-White
-CAPITAINE_LICENSE_DIR = ${DATADIR}/licenses/dwm-titus/capitaine-cursors
+CAPITAINE_LICENSE_DIR = ${DATADIR}/licenses/dwm-jangir/capitaine-cursors
 run_managed_test = if [ -n "$${DWM_TEST_WORKSPACE:-}" ] && [ -n "$${DWM_TEST_RUNNER_TOKEN:-}" ] && [ "$${TMPDIR:-}" = "$${DWM_TEST_WORKSPACE}" ] && [ -f "$${DWM_TEST_WORKSPACE}/.runner" ] && [ ! -L "$${DWM_TEST_WORKSPACE}/.runner" ] && [ "$$(cat "$${DWM_TEST_WORKSPACE}/.runner" 2>/dev/null)" = "$${DWM_TEST_RUNNER_TOKEN}" ]; then $(1); else scripts/run-tests $(1); fi
 
 SRC = drw.c dwm.c util.c tomlparser.c
@@ -47,7 +47,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-system-management \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
-	scripts/dwm-titus-release \
+	scripts/dwm-jangir-release \
 	scripts/dwm-screenshot \
 	scripts/dwm-settings \
 	scripts/dwm-settings-display \
@@ -58,6 +58,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-settings-wallpaper \
 	scripts/dwm-settings-theme \
 	scripts/dwm-settings-provider \
+	scripts/dwm-session \
 	scripts/dwm-session-launch \
 	scripts/dwm-xsettings \
 	scripts/dwm-terminal \
@@ -78,9 +79,9 @@ INSTALL_COMMANDS = \
 	scripts/xscreensaver-setup.sh
 INSTALL_COMMAND_NAMES = $(notdir ${INSTALL_COMMANDS})
 PRIVILEGED_HELPERS = scripts/dwm-settings-display-root
-PRIVILEGED_HELPER_DIR = ${PREFIX}/libexec/dwm-titus
+PRIVILEGED_HELPER_DIR = ${PREFIX}/libexec/dwm-jangir
 
-RELEASE_NAME = dwm-titus-${VERSION}
+RELEASE_NAME = dwm-jangir-${VERSION}
 RELEASE_ARCHIVE = release/${RELEASE_NAME}.tar.gz
 SOURCE_DATE_EPOCH ?= $(shell git log -1 --format=%ct 2>/dev/null || printf '0')
 

@@ -444,6 +444,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Generate NVIDIA `MetaModes` for persistent display mode, position, and
+  rotation settings so LightDM/Xorg applies saved layouts at login.
+- Make LightDM and `startx` enter the same D-Bus-backed dwm session, and keep
+  the checked-in LightDM configuration aligned with the Fedora installer.
 - Enforce the Fedora-only power-management boundary before any status scan or
   system change, and keep fixture overrides out of the privileged path.
 - Reject direct root `make install` calls without a target user before building
