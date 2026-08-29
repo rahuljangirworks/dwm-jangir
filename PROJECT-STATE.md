@@ -1,144 +1,88 @@
 ---
 title: DWM-Jangir Project State
-type: project-state
+type: live-project-state
 project: dwm-jangir
-status: active
-work-claim: none
-last-updated: 2026-08-27
+status: active-wip
+last-verified: 2026-08-29
 ---
 
 # DWM-Jangir Project State
 
-## Overview
+This is the short, verified handoff record for agents and contributors. Read
+`AGENTS.md` and `FORK.md` before acting; read `FORK-DELTA.md` before an
+upstream sync or conflict. Keep historical decisions in Git, commit messages,
+and dedicated documentation; do not use this file as a diary.
 
-Personal fork of ChrisTitusTech/dwm-titus window manager.
+## Verified Git Snapshot
 
-- **Base**: ChrisTitusTech/dwm-titus
-- **Repository**: https://github.com/rahuljangirworks/dwm-jangir
-- **Branch**: dev
-- **Policy**: 99% upstream + logo + display config
+Verified on 2026-08-29 without modifying Git history or remote configuration:
 
-## Fork Policy
+| Item | Verified value |
+| --- | --- |
+| Current branch | `dev`, tracking `origin/dev` |
+| Current `dev` commit | `3b1f179` (`synced-with-upstream-20260827`) |
+| Locally fetched upstream base | `46991ca` |
+| Live `upstream/main` | `97f1ed9` |
+| Live comparison | `dev` has 2 fork commits; upstream has 5 newer commits; histories diverge at `46991ca` |
+| GitHub default branch | `dev` at `3b1f179`; it matches `origin/dev` |
+| Legacy branch | `origin/main` at `0bea4f6`; it is 98 commits behind `dev` |
 
-This fork maintains **minimal delta** from upstream:
+The two fork commits are:
 
-### Always Keep (2 Changes)
-1. **Logo**: Personal branding (rahuljangirwork.svg)
-2. **Display Config**: Dual monitor setup (DP-0 + DVI-D-0)
+1. `1a68941 feat: add personal branding and display config`
+2. `3b1f179 docs: restore project state after upstream sync`
 
-### Always Match Upstream
-- Panel styling
-- Themes
-- Terminal configs
-- Application hotkeys
-- All other configurations
+## Current Worktree
 
-**Golden Rule**: When in doubt, choose upstream.
+The worktree contains a validated display/session repair and the related
+governance documentation. It is ready for focused commits before the next
+upstream synchronization:
 
-## Current Status
+- Fork-governance documentation: `AGENTS.md`, `FORK.md`, `FORK-DELTA.md`,
+  `PROJECT-STATE.md`, `CONTRIBUTING.md`, and `.gitignore`. This is a separate
+  documentation change that should be reviewed independently of runtime work.
+- Display/session repair: `scripts/.xinitrc` and `scripts/autostart.sh` remove
+  the old static monitor command; `scripts/dwm-session` gives LightDM and
+  `startx` one D-Bus-backed session entry; `dwm-display-setup` generates generic
+  NVIDIA MetaModes for persistent mode, position, and rotation.
+- `.agent` is a local workspace link and is intentionally ignored.
 
-- **Synced with upstream**: ⚠️ NO (pending sync)
-- **Ahead**: 23 commits + uncommitted changes
-- **Behind**: 9 commits
-- **Next Action**: Full upstream sync (keep only logo + display)
+`bash -n`/`sh -n` passed for the relevant shell files on 2026-08-29.
+`tests/test-dwm-display-setup.sh` and `tests/test-lightdm-config.sh` passed.
+The generated LightDM configuration contains no `display-setup-script`.
 
-## Hardware Setup
+After the fixed LightDM configuration was deployed and the machine rebooted,
+the user verified this X11 layout:
 
-### Display Configuration
-```bash
-# Primary: DP-0
-Resolution: 2560x1440
-Refresh: 60Hz
-Position: 0,0
-Rotation: Normal
+- `DP-0` primary at `2560x1440+0+0`.
+- `DVI-D-0` at `900x1440+2560+0`, rotated left.
+- Combined X11 desktop: `3460x1440`.
 
-# Secondary: DVI-D-0
-Resolution: 1440x900
-Refresh: 59.89Hz
-Position: 2560,0
-Rotation: Left (portrait)
-```
+The managed shell check could not run because `shellcheck` is not installed;
+`shfmt` and the full suite remain unrun.
 
-## Maintenance Schedule
+## Next Required Action
 
-- **Upstream sync**: Monthly (check for new commits)
-- **Testing**: After each sync
-- **Documentation**: Keep agent docs updated
+Commit the validated display/session repair and fork-governance records. Then
+install ShellCheck and shfmt before the next upstream sync and run the managed
+shell and format checks. The supported monitor path is `dwm-display-setup` from
+a logged-in X11 session, with reversible preview and persistent Xorg
+configuration. Do not restore a LightDM display hook, `.bashrc` profile
+selection, static monitor layout, or emergency repair script.
 
-## Agent Instructions
+After the worktree is clean and reviewed:
 
-### For Merge Conflicts
+1. Fetch upstream and create a dated `sync/YYYY-MM-DD` branch.
+2. Rebase the integration branch onto the exact `upstream/main` SHA.
+3. Preserve only the allowed branding and portable governance deltas.
+4. Run the required validation.
+5. Update this record with the resulting SHA, validation, and one next action.
 
-**Rule 1: Logo & Display → OURS**
-```bash
-git checkout --ours config/quickshell/assets/rahuljangirwork.svg
-git checkout --ours config/quickshell/panel/LogoButton.qml  # logo line only
-git checkout --ours scripts/autostart.sh  # xrandr line only
-git checkout --ours scripts/.xinitrc  # xrandr line only
-```
+## Public Branch Policy
 
-**Rule 2: Everything Else → THEIRS**
-```bash
-git checkout --theirs <any-other-file>
-```
-
-### For New Upstream Features
-
-Always adopt upstream's version. Test after sync.
-
-### Documentation Location
-
-All fork documentation:
-- `~/.work/04-personal-projacts/dwm-jangir/_agent/documentation/`
-
-Key files:
-- `CUSTOMIZATION-INVENTORY.md` - What we had
-- `AGENT-MERGE-GUIDE.md` - How to merge
-- `RECREATION-GUIDE.md` - How to recreate features
-- `SYNC-EXECUTION-PLAN.md` - Sync procedure
-
-## Recent Activity
-
-**2026-08-27**:
-- Documented all customizations before sync
-- Created agent merge guide
-- Ready to execute upstream sync
-- Updated policy: Keep only logo + display config
-
-**Previous**: 
-- Added flat panel styling (will remove)
-- Added modern clock (will remove)
-- Fixed Flameshot tray (will remove)
-- Added Rajasthani theme (will remove)
-
-## Next Steps
-
-1. Execute upstream sync per SYNC-EXECUTION-PLAN.md
-2. Keep only: logo + display config
-3. Test build and installation
-4. Update this file after sync
-5. Monitor for issues
-
-## Testing Checklist
-
-After any change:
-- [ ] `make clean && make` succeeds
-- [ ] `./install.sh` succeeds
-- [ ] Quickshell starts without errors
-- [ ] Logo displays correctly
-- [ ] Both monitors configured properly
-- [ ] Panel functions work
-- [ ] No regressions
-
-## Related Files
-
-- Brain: `~/.work/04-personal-projacts/dwm-jangir/`
-- Runnable: `~/work/personal-projacts/dwm-jangir/`
-- Config: `~/work/personal-projacts/dwm-jangir/config/`
-- Scripts: `~/work/personal-projacts/dwm-jangir/scripts/`
-
----
-
-**Project Owner**: Rahul Jangir
-**Agent Contact**: Personal Buddy / Project Agent
-**Escalation**: Ask user before destructive changes
+`dev` is the tested public branch, active integration branch, and current
+GitHub default branch. `main` is a legacy compatibility branch and must not be
+used for new work while it remains behind `dev`. The current CI configuration
+runs direct-push validation only for `main`; update it to include `dev` before
+relying on direct pushes as a quality gate. Do not merge, reset, rename, delete,
+or push branches without the maintainer's explicit approval.
