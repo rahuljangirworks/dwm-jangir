@@ -2,10 +2,11 @@
 
 ## Purpose
 
-This is Rahul Jangir's public Fedora X11 desktop fork of
-`ChrisTitusTech/dwm-titus`. The fork intentionally keeps a very small,
-maintainable delta from upstream. It is not an independent rewrite of the
-desktop.
+This is Rahul Jangir's public Fedora X11 desktop fork at
+`https://github.com/rahuljangirworks/dwm-jangir`, based on the read-only
+`ChrisTitusTech/dwm-titus` upstream. The fork intentionally keeps a very
+small, maintainable delta from upstream. It is not an independent rewrite of
+the desktop.
 
 ## Authority and Reading Order
 
@@ -33,13 +34,17 @@ Keep only changes that fit one of these categories:
 | Area | Allowed change | Boundary |
 | --- | --- | --- |
 | Branding | Rahul Jangir logo and the minimal reference required to display it. | Do not change unrelated panel styling or assets. |
-| Display persistence | Generic fixes implemented through the upstream display setup and persistent Xorg configuration path. | No LightDM display hook, shell-profile mutation, static output layout, or repository-owned machine profile. |
+| Runtime identity | Install the fork under the `dwm-jangir` XDG, Xorg, session, helper, release, asset, and package names, with a safe one-way migration from the former runtime name. | Never discard divergent user settings or leave two conflicting managed Xorg fragments. Keep `ChrisTitusTech/dwm-titus` only where it identifies the read-only upstream. |
+| Display persistence | Generic fixes implemented through the upstream display setup and persistent Xorg configuration path; the documented `dell-5820` profile is a narrowly scoped opt-in exception. | No LightDM display hook, shell-profile mutation, or automatic profile selection. The exception may only seed a user-owned XDG profile after explicit `--display-profile dell-5820`, validate its connected outputs, and invoke `dwm-display-setup` for preview/persistent Xorg installation. |
 | Session startup | Minimal, generic D-Bus session guard shared by LightDM and `startx`. | Do not add desktop policy, display setup, or user-specific environment to the wrapper. |
 
 Use `dwm-display-setup` from an X11 session for reversible preview and
 persistent Xorg configuration. Do not add a LightDM `display-setup-script`,
-login hook, shell-profile mutation, static monitor command, or
-repository-owned layout.
+login hook, shell-profile mutation, static monitor command, or automatic
+repository-owned layout. The documented `dell-5820` installer option is the
+only exception: it is explicit, stores a user-owned XDG profile, validates the
+active outputs, and still relies on `dwm-display-setup` for the actual Xorg
+change.
 
 Everything else should follow upstream. If a requested change does not clearly
 fit this table, stop and ask the maintainer whether it is a permanent fork

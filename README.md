@@ -1,22 +1,28 @@
 <div align="center">
-  <img width="103" height="109" alt="image" src="https://github.com/user-attachments/assets/902d66d5-b4e4-4faf-84a7-a862a710e9b7" />
+  <img src="./dwm-jangir.png" alt="dwm-jangir logo" width="190" />
+  <h1>dwm-jangir</h1>
   <p><strong>A fast, focused Fedora X11 desktop built for keyboard-driven work.</strong></p>
   <p>
     <a href="https://dwm.christitus.com">Documentation</a> |
-    <a href="https://github.com/ChrisTitusTech/dwm-titus/releases/latest">Latest release</a> |
+    <a href="https://github.com/rahuljangirworks/dwm-jangir/releases/latest">Latest release</a> |
     <a href="./CHANGELOG.md">Changelog</a> |
     <a href="./CONTRIBUTING.md">Contributing</a>
   </p>
 </div>
 
-![The dwm-titus desktop with its Quickshell panel](./dwm-titus-qs-4x.webp)
+![The dwm-jangir desktop with its Quickshell panel](./dwm-jangir-qs-4x.webp)
 
-dwm-titus is a complete, lightweight X11 desktop with sensible defaults,
-guided installation, and powerful customization. It is designed for people who
-want a responsive keyboard-first workflow without having to assemble every
-part themselves.
+dwm-jangir is Rahul Jangir's public fork of the upstream dwm-titus Fedora X11
+desktop.
+It keeps upstream compatibility while adding documented, minimal fork-specific
+behavior. It is designed for people who want a responsive keyboard-first
+workflow without having to assemble every part themselves.
 
-**dwm-titus is a Fedora-only distribution.** Fedora Linux is the sole supported
+The canonical fork repository is
+[github.com/rahuljangirworks/dwm-jangir](https://github.com/rahuljangirworks/dwm-jangir).
+`ChrisTitusTech/dwm-titus` remains the read-only upstream project.
+
+**dwm-jangir is a Fedora-only distribution.** Fedora Linux is the sole supported
 platform for installation, runtime behavior, package resolution, testing, and
 release qualification. Use either the Fedora desktop image or the
 existing-system installer on Fedora Linux.
@@ -31,7 +37,7 @@ existing-system installer on Fedora Linux.
 | **Personal configuration** | Live-reloading hotkeys, themes, and window rules, with local configuration preserved across upgrades. |
 | **Two installation paths** | A ready-to-install Fedora image or an installer for an existing Fedora system. |
 
-> dwm-titus is an X11 desktop. A Wayland-native session is not currently part
+> dwm-jangir is an X11 desktop. A Wayland-native session is not currently part
 > of the project scope.
 
 ## Install
@@ -52,19 +58,19 @@ Download the latest image:
 
 | Image | Download |
 | --- | --- |
-| Standard | [`dwm-titus.iso`](https://github.com/ChrisTitusTech/dwm-titus/releases/latest/download/dwm-titus.iso) |
-| NVIDIA | [`dwm-titus-nvidia.iso`](https://github.com/ChrisTitusTech/dwm-titus/releases/latest/download/dwm-titus-nvidia.iso) |
-| Checksums and release notes | [Latest release](https://github.com/ChrisTitusTech/dwm-titus/releases/latest) |
+| Standard | [`dwm-jangir.iso`](https://github.com/rahuljangirworks/dwm-jangir/releases/latest/download/dwm-jangir.iso) |
+| NVIDIA | [`dwm-jangir-nvidia.iso`](https://github.com/rahuljangirworks/dwm-jangir/releases/latest/download/dwm-jangir-nvidia.iso) |
+| Checksums and release notes | [Latest release](https://github.com/rahuljangirworks/dwm-jangir/releases/latest) |
 
 Use the NVIDIA image only for systems that need the dedicated NVIDIA
 installation path. Write the selected ISO to a USB drive, boot it, complete the
-Fedora installer, and reboot into the `dwm` session.
+Fedora installer, and reboot into the `dwm-jangir` session.
 
 ### Existing System
 
 ```bash
-git clone https://github.com/ChrisTitusTech/dwm-titus.git
-cd dwm-titus
+git clone https://github.com/rahuljangirworks/dwm-jangir.git
+cd dwm-jangir
 
 ./install.sh --dry-run --non-interactive --profile recommended
 ./install.sh --profile recommended
@@ -75,6 +81,28 @@ The installer requires Fedora, preserves existing personal configuration, and
 installs the managed desktop components. It accepts only Fedora's
 `/etc/os-release` identity and rejects every other operating-system identity
 before making changes.
+
+Each real installer run keeps one diagnostic record for later troubleshooting:
+`${XDG_STATE_HOME:-$HOME/.local/state}/dwm-jangir/install-last.log`. It records
+the preflight state and result, replaces only the prior completed run, and is
+not updated by `--dry-run`.
+
+#### Dell Precision 5820 display profile (optional)
+
+This opt-in profile is only for Rahul's Dell Precision 5820 display wiring. It
+is never selected automatically and does not add a login hook or a static
+monitor command. To seed and install it through the normal persistent Xorg
+workflow, use:
+
+```bash
+./install.sh --display-profile dell-5820
+```
+
+The installer saves it as
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/display-profiles/dell-5820.conf`,
+then checks that `DVI-D-0` and `DP-0` are connected before it asks
+`dwm-display-setup` to preview/install it. If the outputs do not match, nothing
+is applied; log in normally and run `dwm-display-setup` for the generic wizard.
 
 | Profile | Includes |
 | --- | --- |
@@ -114,7 +142,7 @@ startx
 Most personal settings live under:
 
 ```text
-${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/
+${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/
 ```
 
 Hotkeys, themes, and window rules reload when their TOML files are saved.
@@ -122,13 +150,16 @@ Advanced compile-time preferences live in the user-owned `config.h`, which the
 installer and future upgrades preserve.
 
 The installer also provides `dwm-settings-display` and its root-owned
-`libexec/dwm-titus/dwm-settings-display-root` persistence helper. Live display
+`libexec/dwm-jangir/dwm-settings-display-root` persistence helper. Live display
 discovery and previews require `xrandr`; hotplug watching requires `udevadm`;
 only persistent Xorg install and rollback require `pkexec`. Named profiles live
 under the `display-profiles/` directory in the XDG path above.
 Run `dwm-display-setup detect`, then `dwm-display-setup`, for a guided wizard
 that detects outputs and configures modes, positions, rotation, and the primary
-display with a reversible preview. Persistent generation selects compatible
+display with a reversible preview. The wizard defaults to an automatic
+horizontal layout: the chosen primary display starts at `0x0`, and other enabled
+displays are placed to its right using rotation-aware dimensions. Choose manual
+placement in the wizard to enter explicit X/Y coordinates instead. Persistent generation selects compatible
 TearFree or NVIDIA Full Composition Pipeline behavior automatically; pass
 `--force-full-composition-pipeline off` to disable the NVIDIA default.
 The adjacent `dwm-settings-input` provider uses `xinput`, `setxkbmap` for
@@ -150,7 +181,7 @@ safe customization paths.
 - [Theming](https://dwm.christitus.com/theming.html)
 - [Control Center](https://dwm.christitus.com/control-center.html)
 - [Settings](https://dwm.christitus.com/settings.html)
-- [How dwm-titus Works](https://dwm.christitus.com/patches.html)
+- [How dwm-jangir Works](https://dwm.christitus.com/patches.html)
 - [Troubleshooting](https://dwm.christitus.com/troubleshooting.html)
 
 The technical guide explains the project architecture, what dwm is, and how
@@ -176,7 +207,7 @@ If the session does not start, run `startx` from a TTY to see its error output.
 The [Troubleshooting Guide](https://dwm.christitus.com/troubleshooting.html)
 covers common session, panel, terminal, theme, display, and NVIDIA issues.
 
-If the problem remains, [open an issue](https://github.com/ChrisTitusTech/dwm-titus/issues)
+If the problem remains, [open an issue](https://github.com/rahuljangirworks/dwm-jangir/issues)
 and include the relevant diagnostic output. Review it first and remove any
 private system information.
 

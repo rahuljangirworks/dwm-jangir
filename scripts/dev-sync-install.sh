@@ -8,7 +8,7 @@ usage() {
 	cat <<'EOF'
 Usage: scripts/dev-sync-install.sh [--check]
 
-Build and synchronize the current checkout with the live dwm-titus install.
+Build and synchronize the current checkout with the live dwm-jangir install.
 The default mode:
 
   1. Builds dwm from a clean object state.
@@ -88,12 +88,12 @@ data_root=${DATADIR:-/usr/share}
 config_home=${XDG_CONFIG_HOME:-$user_home/.config}
 xdg_data_home=${XDG_DATA_HOME:-$user_home/.local/share}
 state_home=${XDG_STATE_HOME:-$user_home/.local/state}
-data_dir=$xdg_data_home/dwm-titus
+data_dir=$xdg_data_home/dwm-jangir
 quickshell_dir=$config_home/quickshell
 binary_target=$prefix/bin/dwm
 man_target=$manprefix/man1/dwm.1
-xsession_target=$xsessions_dir/dwm.desktop
-display_root_helper_target=$prefix/libexec/dwm-titus/dwm-settings-display-root
+xsession_target=$xsessions_dir/dwm-jangir.desktop
+display_root_helper_target=$prefix/libexec/dwm-jangir/dwm-settings-display-root
 make_command=${MAKE:-make}
 os_release_file=/etc/os-release
 if [ "${DWM_DEV_SYNC_TEST_MODE:-0}" = 1 ] &&
@@ -120,7 +120,7 @@ work=$(mktemp -d "${TMPDIR:-/tmp}/dwm-dev-sync.XXXXXX")
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 install_sources_file=$work/install-sources
 expected_man=$work/dwm.1
-expected_xsession=$work/dwm.desktop
+expected_xsession=$work/dwm-jangir.desktop
 expected_display_root_helper=$work/dwm-settings-display-root
 tree_diff=$work/tree.diff
 
@@ -135,7 +135,7 @@ prepare_expected_files() {
 	version=$(awk '$1 == "VERSION" && $2 == "=" { print $3; exit }' "$repo_dir/config.mk")
 	[ -n "$version" ] || die "could not read VERSION from config.mk"
 	sed "s/VERSION/$version/g" "$repo_dir/dwm.1" >"$expected_man"
-	sed "s|@PREFIX@|$prefix|g" "$repo_dir/dwm.desktop" >"$expected_xsession"
+	sed "s|@PREFIX@|$prefix|g" "$repo_dir/dwm-jangir.desktop" >"$expected_xsession"
 	sed "s|@PREFIX@|$prefix|g" "$repo_dir/scripts/dwm-settings-display-root" \
 		>"$expected_display_root_helper"
 }
@@ -298,7 +298,7 @@ verify_install() {
 			"cursor theme $cursor_name"
 	done
 	verify_file "$repo_dir/assets/cursors/COPYING" \
-		"$data_root/licenses/dwm-titus/capitaine-cursors/COPYING" \
+		"$data_root/licenses/dwm-jangir/capitaine-cursors/COPYING" \
 		"cursor license"
 
 	if [ "$verification_failed" -eq 0 ]; then
@@ -321,7 +321,7 @@ backup_live_install() {
 			die "required backup command not found: $backup_command"
 	done
 
-	backup_parent=$state_home/dwm-titus/live-update-backups
+	backup_parent=$state_home/dwm-jangir/live-update-backups
 	backup_stamp=$(date -u +%Y%m%dT%H%M%SZ)
 	mkdir -p "$backup_parent"
 	backup_dir=$backup_parent/$backup_stamp-$$
@@ -333,7 +333,7 @@ backup_live_install() {
 	fi
 	if [ -e "$data_dir" ]; then
 		tar -C "$(dirname "$data_dir")" -cpf \
-			"$backup_dir/dwm-titus-data.tar" "$(basename "$data_dir")"
+			"$backup_dir/dwm-jangir-data.tar" "$(basename "$data_dir")"
 	fi
 
 	system_manifest=$work/system-files
@@ -350,7 +350,7 @@ backup_live_install() {
 		[ -d "$cursor_source" ] || continue
 		add_system_backup_path "$data_root/icons/${cursor_source##*/}"
 	done
-	add_system_backup_path "$data_root/licenses/dwm-titus/capitaine-cursors/COPYING"
+	add_system_backup_path "$data_root/licenses/dwm-jangir/capitaine-cursors/COPYING"
 	if [ -s "$system_manifest" ]; then
 		tar -C / -cpf "$backup_dir/system-files.tar" -T "$system_manifest"
 	fi

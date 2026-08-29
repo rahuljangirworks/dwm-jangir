@@ -6,7 +6,7 @@ Singleton {
     function helperCommand(helper, action, args, preferManaged) {
         const argv = args || [];
         const managedScript = "\"$data_dir/scripts/" + helper + "\"";
-        const dataDir = "data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-titus";
+        const dataDir = "data_dir=${XDG_DATA_HOME:-$HOME/.local/share}/dwm-jangir";
         const runManaged = "[ -x " + managedScript + " ] && exec " + managedScript + " \"$@\"";
         const runPath = "command -v " + helper + " >/dev/null 2>&1 && exec " + helper + " \"$@\"";
         const fallback = "exec " + managedScript + " \"$@\"";

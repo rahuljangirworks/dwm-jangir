@@ -728,7 +728,7 @@ run_status_optional_lock_case() {
 	DISPLAY=:104 HOME=$home TEST_STATE=$state PATH="$work/bin:/usr/bin:/bin" \
 		XDG_CONFIG_HOME="$home/.config" XDG_RUNTIME_DIR=$runtime \
 		DWM_AUTOSTART_NO_INPUT_WATCH=1 DWM_AUTOSTART_NO_SETSID=1 \
-		TEST_CHMOD_FAILURE_TARGET="$runtime/dwm-titus" \
+		TEST_CHMOD_FAILURE_TARGET="$runtime/dwm-jangir" \
 		sh "$repo_dir/scripts/autostart.sh"
 	wait_for_marker "$state/dwm-status.running"
 	test "$(cat "$state/dwm-status.count")" -eq 1

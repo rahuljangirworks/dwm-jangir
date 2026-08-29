@@ -1,4 +1,4 @@
-# dwm-titus version
+# dwm-jangir version
 VERSION = 0.7.0
 
 # Customize below to fit your system

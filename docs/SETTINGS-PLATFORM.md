@@ -238,7 +238,7 @@ root-owned, non-symlinked, and not writable by group or others. Its installed
 `dwm-display-setup` dependency has the same ownership checks. It accepts a
 validated X11 display, a caller-owned Xauthority file, and structured profile
 records only, then writes only
-`/etc/X11/xorg.conf.d/90-dwm-titus-display.conf`. Root-container tests cover
+`/etc/X11/xorg.conf.d/90-dwm-jangir-display.conf`. Root-container tests cover
 repository copies, wrong ownership, writable files, symlinks, injected input,
 and authorization denial.
 

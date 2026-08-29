@@ -90,8 +90,8 @@ runtime=$runtime_storage
 config_home=$home/.config
 data_home=$home/.local/share
 bin=$work/bin
-mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" "$home/.cache" \
-	"$data_home/dwm-titus/scripts" "$data_home/applications" "$runtime" "$bin"
+mkdir -p "$config_home/quickshell" "$config_home/dwm-jangir" "$home/.cache" \
+	"$data_home/dwm-jangir/scripts" "$data_home/applications" "$runtime" "$bin"
 chmod 700 "$runtime_storage"
 if [ "${#runtime}" -gt 64 ]; then
 	runtime_alias_dir=$(mktemp -d /tmp/dwm-large-surface-runtime.XXXXXX)
@@ -99,15 +99,15 @@ if [ "${#runtime}" -gt 64 ]; then
 	runtime=$runtime_alias_dir/runtime
 fi
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
-cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-titus/scripts/dwm-system-management"
-chmod +x "$data_home/dwm-titus/scripts/dwm-system-management"
-cp "$repo/config/"*.toml "$config_home/dwm-titus/"
+cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-jangir/scripts/dwm-system-management"
+chmod +x "$data_home/dwm-jangir/scripts/dwm-system-management"
+cp "$repo/config/"*.toml "$config_home/dwm-jangir/"
 cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-settings-display" "$repo/scripts/dwm-settings-input" \
 	"$repo/scripts/dwm-display-setup" "$repo/scripts/dwm-quickshell-controlcenter" \
 	"$repo/scripts/dwm-quickshell-controls" "$repo/scripts/dwm-quickshell-network" \
 	"$repo/scripts/dwm-quickshell-launcher" "$repo/scripts/dwm-diagnostics" \
-	"$repo/scripts/dwm-lock" "$data_home/dwm-titus/scripts/"
+	"$repo/scripts/dwm-lock" "$data_home/dwm-jangir/scripts/"
 
 cat >"$data_home/applications/dwm-large-surface-test.desktop" <<'DESKTOP'
 [Desktop Entry]
@@ -145,7 +145,7 @@ dwm_pid=$!
 env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	XDG_DATA_HOME="$data_home" XDG_CACHE_HOME="$home/.cache" XDG_RUNTIME_DIR="$runtime" \
 	QSG_RHI_BACKEND=software QT_QUICK_BACKEND=software \
-	DWM_LARGE_SURFACE_DEX_LOG="$work/dex.log" PATH="$bin:$data_home/dwm-titus/scripts:$PATH" \
+	DWM_LARGE_SURFACE_DEX_LOG="$work/dex.log" PATH="$bin:$data_home/dwm-jangir/scripts:$PATH" \
 	quickshell --no-duplicate >"$work/quickshell.log" 2>&1 &
 quickshell_pid=$!
 config=$config_home/quickshell/shell.qml
