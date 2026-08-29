@@ -12,19 +12,24 @@ state. This file maps that policy to exact files and conflict decisions.
 
 ## Verified Baseline
 
-Verified on 2026-08-29:
+Verified on 2026-08-30:
 
 | Ref | Commit | Meaning |
 | --- | --- | --- |
-| `dev` / GitHub default branch | `3b1f179` | Public fork branch before the current local worktree changes. |
-| Common ancestor | `46991ca` | Last upstream base incorporated by `dev`. |
-| Live `upstream/main` | `97f1ed9` | Upstream has five commits not yet incorporated. |
+| `sync/2026-08-30` | `c60c139` | Upstream sync branch with all fork commits rebased onto latest upstream. |
+| `dev` / GitHub default branch | `8cc8ed4` | Public fork branch with completed runtime migration (not yet synced). |
+| Common ancestor (previous) | `46991ca` | Upstream base before 2026-08-30 sync. |
+| Current upstream base | `97f1ed9` | Latest upstream incorporated by sync/2026-08-30. |
 | `origin/main` | `0bea4f6` | Legacy branch; do not use for new work. |
 
-The committed fork-only history above the common ancestor is:
+The committed fork history on `sync/2026-08-30` above upstream/main:
 
-1. `1a68941 feat: add personal branding and display config`
-2. `3b1f179 docs: restore project state after upstream sync`
+1. `14f1f52 feat: add personal branding and display config`
+2. `4579a77 docs: restore project state after upstream sync`
+3. `db280a2 fix(display): persist NVIDIA layouts through Xorg`
+4. `91db491 docs(fork): record upstream-safe display workflow`
+5. `430c1f4 docs(fork): record display recovery verification`
+6. `c60c139 feat: complete dwm-titus → dwm-jangir runtime identity migration`
 
 ## Current Maintained Delta
 
@@ -94,6 +99,7 @@ changed. State any unavailable environment or tool in `PROJECT-STATE.md`.
 | 2026-08-29 | GitHub `dev` became the default public branch; fork policy was consolidated in version-controlled repository files. | Active. |
 | 2026-08-29 | Removed the non-upstream LightDM display hook and automatic profile scripts; monitor persistence returns to upstream `dwm-display-setup`. | Active. |
 | 2026-08-29 | Generated NVIDIA MetaModes and a shared D-Bus session launcher were validated; a real reboot confirmed DP-0 primary 2560x1440 and DVI-D-0 900x1440 rotated left. | Active. |
+| 2026-08-30 | Synced fork with upstream `97f1ed9` via rebase on `sync/2026-08-30`. Resolved conflicts in Makefile (D-007 runtime identity), CHANGELOG.md, and README.md (D-002 branding). All seven maintained deltas preserved correctly. Validation passed: shell syntax clean, runtime paths verified, no whitespace errors. | Active. |
 
 Historical material must never override this file, `FORK.md`, or
 `PROJECT-STATE.md` during a merge.
