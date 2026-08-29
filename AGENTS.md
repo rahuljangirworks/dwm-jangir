@@ -1,5 +1,18 @@
 # AGENTS.md
 
+## DWM-Jangir Fork Authority
+
+This repository is Rahul Jangir's minimal-delta fork of
+`ChrisTitusTech/dwm-titus`. Before making any change, read `FORK.md` and
+`PROJECT-STATE.md` after this file. Before any upstream sync or conflict
+resolution, also read `FORK-DELTA.md`. `FORK.md` defines what this fork may
+keep and how agents handle branches and upstream synchronization.
+
+`SPEC.md`, `ROADMAP.md`, and `TASKS.md` remain authoritative for explicitly
+approved upstream-product work, but they do not authorize an agent to start new
+roadmap work in this fork. When a task is not clearly within the fork contract,
+ask the maintainer before changing code.
+
 ## Purpose
 
 This repository is a Fedora-only X11 desktop environment built around a
@@ -45,6 +58,9 @@ package or installation path.
 - `dwm-fedora.ks`, `dwm-fedora-nvidia.ks`: Fedora image installation profiles.
 - `dwm.desktop`: display-manager X session entry.
 - `AGENTS.md`: durable engineering and agent-execution rules.
+- `FORK.md`: fork scope, permanent-delta allowlist, and upstream procedure.
+- `FORK-DELTA.md`: exact maintained deltas, conflict choices, and sync ledger.
+- `PROJECT-STATE.md`: verified current branch, upstream, worktree, and next-action record.
 - `SPEC.md`: product scope, interfaces, and acceptance criteria.
 - `ROADMAP.md`: ordered desktop-environment outcomes.
 - `TASKS.md`: implementation work for the active roadmap phase only.
@@ -52,6 +68,9 @@ package or installation path.
 
 ## Planning Workflow
 
+- For fork maintenance, read `FORK.md` and `PROJECT-STATE.md` first. Read
+  `FORK-DELTA.md` before any upstream sync or conflict. Do not interpret an
+  upstream roadmap task as an approved fork change.
 - Use `SPEC.md` for durable product requirements and compatibility contracts.
 - Use `ROADMAP.md` for ordered phase objectives and exit criteria.
 - Use `TASKS.md` only for detailed work in the active phase. Replace its task
