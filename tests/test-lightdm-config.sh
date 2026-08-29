@@ -26,6 +26,7 @@ greeter-session=slick-greeter
 user-session=dwm
 CONF
 cmp -s "$work/fedora.expected" "$fedora_stage/etc/lightdm/lightdm.conf"
+cmp -s "$repo/lightdm/lightdm.conf" "$fedora_stage/etc/lightdm/lightdm.conf"
 
 grep -Fqx 'xft-dpi=96' "$fedora_stage/etc/lightdm/slick-greeter.conf"
 grep -Fqx 'activate-numlock=false' "$fedora_stage/etc/lightdm/slick-greeter.conf"

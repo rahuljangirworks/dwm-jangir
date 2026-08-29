@@ -398,6 +398,7 @@ env "${env_common[@]}" TEST_PROPERTIES="$work/properties-unsupported" \
 grep -Fq 'MatchDriver "nvidia-drm"' "$work/generated-nvidia.conf"
 grep -Fq 'Driver "nvidia"' "$work/generated-nvidia.conf"
 grep -Fq 'Option "ForceFullCompositionPipeline" "true"' "$work/generated-nvidia.conf"
+grep -Fq 'Option "MetaModes" "HDMI-1: 1920x1080 +0+0 {rotation=normal}, DP-1: 2560x1440 +1920+0 {rotation=left}"' "$work/generated-nvidia.conf"
 if grep -Fq 'Option "TearFree" "true"' "$work/generated-nvidia.conf"; then
 	printf '%s\n' 'TearFree was emitted for the NVIDIA Xorg driver' >&2
 	exit 1

@@ -752,6 +752,7 @@ resolved_full_composition_pipeline() {
 generate_config() {
 	local destination=$1
 	local index output identifier mode_name timing
+	local metamodes metamode_entry
 	local clock hdisplay hstart hend htotal vdisplay vstart vend vtotal flags hsync rate
 	local hlow hhigh vlow vhigh
 	local tearfree_enabled=0
@@ -780,6 +781,23 @@ generate_config() {
 		for driver in "${!output_drivers[@]}"; do
 			xorg_driver=$(xorg_driver_for_kernel "$driver")
 			match_driver=$(xorg_match_driver_for_kernel "$driver")
+			metamodes=
+			if [[ $driver == nvidia ]]; then
+				for index in "${!cfg_outputs[@]}"; do
+					[[ ${cfg_kernel_drivers[$index]} == "$driver" ]] || continue
+					[[ ${cfg_enabled[$index]} == 1 ]] || continue
+					# NVIDIA MetaModes reference the driver's existing mode-pool name.
+					# The generated modeline name includes a refresh suffix for
+					# generic Xorg Monitor sections, but NVIDIA does not expose that
+					# synthetic name in its MetaMode pool.
+					metamode_entry="${cfg_outputs[$index]}: ${cfg_modes[$index]} +${cfg_x[$index]}+${cfg_y[$index]} {rotation=${cfg_rotations[$index]}}"
+					if [[ -n $metamodes ]]; then
+						metamodes="$metamodes, $metamode_entry"
+					else
+						metamodes=$metamode_entry
+					fi
+				done
+			fi
 			printf '\nSection "OutputClass"\n'
 			printf '\tIdentifier "dwm-titus-display-map-%s"\n' "$driver"
 			printf '\tMatchDriver "%s"\n' "$match_driver"
@@ -790,6 +808,9 @@ generate_config() {
 				identifier="dwm-titus-$output"
 				printf '\tOption "Monitor-%s" "%s"\n' "$output" "$identifier"
 			done
+			if [[ -n $metamodes ]]; then
+				printf '\tOption "MetaModes" "%s"\n' "$metamodes"
+			fi
 			if [[ $full_composition_pipeline_enabled == 1 ]] &&
 				driver_full_composition_pipeline_compatible "$driver"; then
 				printf '\tOption "ForceFullCompositionPipeline" "true"\n'
