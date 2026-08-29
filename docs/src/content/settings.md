@@ -30,6 +30,8 @@ The machine-oriented `dwm-settings-display` helper exposes `discover` and
 `keep`, `revert`, and `preview-status`, plus authorized `install-profile` and
 `rollback-system` actions. Named layouts live under the dwm-jangir XDG config
 directory. Legacy incomplete layouts remain available to
+`rollback-system` actions. Named profiles live under the dwm-jangir XDG config
+directory. Legacy incomplete profiles remain available to
 `dwm-display-profile`, but Settings requires them to be resaved as complete
 layouts before preview or persistent installation.
 
@@ -81,6 +83,7 @@ Saving the file applies the rule through dwm's normal hot reload. A customized
 rule with the same title can be retained instead.
 
 The **Use at next login** display action writes only the managed
+Persistent display installation writes only the managed
 `90-dwm-jangir-display.conf` fragment after a separate confirmation and polkit
 authorization. The installed helper accepts validated display records only,
 backs up the previous managed next-login fragment, and offers **Restore login

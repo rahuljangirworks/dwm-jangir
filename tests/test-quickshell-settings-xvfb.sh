@@ -506,9 +506,9 @@ exec "$(dirname -- "$0")/dwm-settings-appearance.real" "$@"
 SH
 chmod +x "$data_home/dwm-jangir/scripts/dwm-settings-appearance"
 
-mv "$data_home/dwm-titus/scripts/dwm-settings-personalization" \
-	"$data_home/dwm-titus/scripts/dwm-settings-personalization.real"
-cat >"$data_home/dwm-titus/scripts/dwm-settings-personalization" <<'SH'
+mv "$data_home/dwm-jangir/scripts/dwm-settings-personalization" \
+	"$data_home/dwm-jangir/scripts/dwm-settings-personalization.real"
+cat >"$data_home/dwm-jangir/scripts/dwm-settings-personalization" <<'SH'
 #!/bin/sh
 set -eu
 fixture=${DWM_SETTINGS_TEST_APPEARANCE_FAILURE:?}
@@ -539,7 +539,7 @@ if [ "${1:-}" = status ] && [ -f "$fixture" ]; then
 fi
 exec "$(dirname -- "$0")/dwm-settings-personalization.real" "$@"
 SH
-chmod +x "$data_home/dwm-titus/scripts/dwm-settings-personalization"
+chmod +x "$data_home/dwm-jangir/scripts/dwm-settings-personalization"
 
 wallpaper_status_fixture=$work/wallpaper-status
 mv "$data_home/dwm-jangir/scripts/dwm-settings-wallpaper" \
@@ -833,6 +833,19 @@ HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 config=$config_home/quickshell/shell.qml
 : >"$work/quickshell.log"
 start_quickshell
+env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
+	QT_QPA_PLATFORMTHEME= \
+	TMPDIR="$helper_tmp" \
+	DWM_SETTINGS_TEST_POWER_STATE="$power_state" DWM_SETTINGS_TEST_DELAY_POWER=1 \
+	DWM_SETTINGS_TEST_MALFORMED_POWER_SNAPSHOT="$malformed_power_snapshot" \
+	DWM_SETTINGS_TEST_APPEARANCE_FAILURE="$appearance_failure_fixture" \
+	DWM_SETTINGS_TEST_WALLPAPER_STATUS="$wallpaper_status_fixture" \
+	DWM_SETTINGS_TEST_THEME_STATUS="$theme_status_fixture" \
+	PATH="$data_home/dwm-jangir/scripts:$PATH" \
+	quickshell --no-duplicate >"$work/quickshell.log" 2>&1 &
+quickshell_pid=$!
+quickshell_identity=$(capture_process_identity "$quickshell_pid")
 test_stage='waiting for Quickshell IPC'
 
 settings_power_watch_count() {
@@ -1924,7 +1937,7 @@ panel_volume=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA
 
 panel_status_ready=$work/panel-status.ready
 panel_status_used=$work/panel-status.used
-managed_panel_helper=$data_home/dwm-titus/scripts/dwm-panel-settings
+managed_panel_helper=$data_home/dwm-jangir/scripts/dwm-panel-settings
 mv "$managed_panel_helper" "$managed_panel_helper.real"
 cat >"$managed_panel_helper" <<EOF
 #!/bin/sh
@@ -1968,7 +1981,7 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$panel_volume" = false ]
 expected=$(printf 'volume\tdisabled')
-grep -Fqx "$expected" "$config_home/dwm-titus/panel-widgets.conf"
+grep -Fqx "$expected" "$config_home/dwm-jangir/panel-widgets.conf"
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings panelWidgetsReset >/dev/null
 i=0
@@ -3486,7 +3499,6 @@ if [ "$appearance_status" != unavailable ] ||
 	exit 1
 fi
 
-<<<<<<< HEAD
 test_stage='validating legacy appearance sentinel'
 cat >"$config_home/dwm-jangir/themes.toml" <<'EOF'
 [colors]
