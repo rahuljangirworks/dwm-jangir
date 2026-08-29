@@ -2,8 +2,8 @@
 title: DWM-Jangir Project State
 type: live-project-state
 project: dwm-jangir
-status: active
-last-verified: 2026-08-30
+status: active-wip
+last-verified: 2026-08-29
 ---
 
 # DWM-Jangir Project State
@@ -15,53 +15,37 @@ and dedicated documentation; do not use this file as a diary.
 
 ## Verified Git Snapshot
 
-Verified on 2026-08-30 after successful upstream sync:
+Verified on 2026-08-29 without modifying Git history or remote configuration:
 
 | Item | Verified value |
 | --- | --- |
-| Current branch | `sync/2026-08-30`, clean worktree |
-| Public fork repository | `https://github.com/rahuljangirworks/dwm-jangir` |
-| Read-only upstream repository | `https://github.com/ChrisTitusTech/dwm-titus` |
-| Published `origin/dev` commit | `8cc8ed4` (`feat: complete dwm-titus → dwm-jangir runtime identity migration`) |
-| Sync branch tip | `c60c139` (`feat: complete dwm-titus → dwm-jangir runtime identity migration` rebased) |
-| Upstream sync base | `97f1ed9` (`feat(settings): persist panel widgets and compact Settings`) |
-| Common ancestor (previous) | `46991ca` |
-| Current upstream base | `97f1ed9` (fully synced) |
-| GitHub default branch | `dev` at `8cc8ed4` (before sync) |
-| Legacy branch | `origin/main` at `0bea4f6`; do not use |
+| Current branch | `dev`, tracking `origin/dev` |
+| Current `dev` commit | `3b1f179` (`synced-with-upstream-20260827`) |
+| Locally fetched upstream base | `46991ca` |
+| Live `upstream/main` | `97f1ed9` |
+| Live comparison | `dev` has 2 fork commits; upstream has 5 newer commits; histories diverge at `46991ca` |
+| GitHub default branch | `dev` at `3b1f179`; it matches `origin/dev` |
+| Legacy branch | `origin/main` at `0bea4f6`; it is 98 commits behind `dev` |
 
-The fork commits on `sync/2026-08-30` above `upstream/main` (97f1ed9):
+The two fork commits are:
 
-1. `14f1f52 feat: add personal branding and display config`
-2. `4579a77 docs: restore project state after upstream sync`
-3. `db280a2 fix(display): persist NVIDIA layouts through Xorg`
-4. `91db491 docs(fork): record upstream-safe display workflow`
-5. `430c1f4 docs(fork): record display recovery verification`
-6. `c60c139 feat: complete dwm-titus → dwm-jangir runtime identity migration`
+1. `1a68941 feat: add personal branding and display config`
+2. `3b1f179 docs: restore project state after upstream sync`
 
-## Verified Upstream Sync (2026-08-30)
+## Current Worktree
 
-Successfully rebased all 6 fork commits onto `upstream/main` (97f1ed9) on branch `sync/2026-08-30`.
+The worktree contains a validated display/session repair and the related
+governance documentation. It is ready for focused commits before the next
+upstream synchronization:
 
-**Conflicts resolved:**
-- Makefile: D-007 runtime identity preserved (all `dwm-jangir` paths)
-- CHANGELOG.md: Merged upstream + fork additions
-- README.md: D-002 branding preserved (dwm-jangir logo)
-
-**Validation passed:**
-- `bash -n install.sh scripts/dwm-display-setup` — clean
-- `git diff --check` — no whitespace errors
-- Runtime identity: All active paths use `dwm-jangir`
-- Legacy `dwm-titus` only in migration logic (correct per D-007)
-
-All seven maintained deltas (D-001 through D-007) preserved correctly.
-
-## Verified Display Recovery
-
-The current local commits remove the old static monitor command, add one
-D-Bus-backed `dwm-session` entry for LightDM and `startx`, and generate generic
-NVIDIA MetaModes for persistent mode, position, and rotation. The unsafe local
-LightDM root-hook scripts were removed. `.agent` remains a local, ignored link.
+- Fork-governance documentation: `AGENTS.md`, `FORK.md`, `FORK-DELTA.md`,
+  `PROJECT-STATE.md`, `CONTRIBUTING.md`, and `.gitignore`. This is a separate
+  documentation change that should be reviewed independently of runtime work.
+- Display/session repair: `scripts/.xinitrc` and `scripts/autostart.sh` remove
+  the old static monitor command; `scripts/dwm-session` gives LightDM and
+  `startx` one D-Bus-backed session entry; `dwm-display-setup` generates generic
+  NVIDIA MetaModes for persistent mode, position, and rotation.
+- `.agent` is a local workspace link and is intentionally ignored.
 
 `bash -n`/`sh -n` passed for the relevant shell files on 2026-08-29.
 `tests/test-dwm-display-setup.sh` and `tests/test-lightdm-config.sh` passed.
@@ -77,46 +61,22 @@ the user verified this X11 layout:
 The managed shell check could not run because `shellcheck` is not installed;
 `shfmt` and the full suite remain unrun.
 
-## Current Local Worktree
-
-The `sync/2026-08-30` branch is clean with all fork commits successfully rebased
-onto latest upstream. The runtime-identity migration is complete: `dwm-jangir` is
-the active name for all XDG, session, helper, Xorg, LightDM, release, and
-source-asset paths. Legacy `dwm-titus` user directories have been removed from
-the live system.
-
 ## Next Required Action
 
-Review and merge the upstream sync:
-
-1. Review the sync result:
-   ```bash
-   git log --oneline upstream/main..sync/2026-08-30
-   git diff dev sync/2026-08-30
-   ```
-
-2. Merge sync branch to dev:
-   ```bash
-   git switch dev
-   git merge --ff-only sync/2026-08-30
-   ```
-
-3. Update FORK-DELTA.md and PROJECT-STATE.md if needed
-
-4. Push to origin (after Rahul's confirmation):
-   ```bash
-   git push origin dev
-   ```
-
-5. Clean up sync branch:
-   ```bash
-   git branch -d sync/2026-08-30
-   ```
-
-Install ShellCheck and shfmt before the next upstream sync to enable managed
+Commit the validated display/session repair and fork-governance records. Then
+install ShellCheck and shfmt before the next upstream sync and run the managed
 shell and format checks. The supported monitor path is `dwm-display-setup` from
 a logged-in X11 session, with reversible preview and persistent Xorg
-configuration.
+configuration. Do not restore a LightDM display hook, `.bashrc` profile
+selection, static monitor layout, or emergency repair script.
+
+After the worktree is clean and reviewed:
+
+1. Fetch upstream and create a dated `sync/YYYY-MM-DD` branch.
+2. Rebase the integration branch onto the exact `upstream/main` SHA.
+3. Preserve only the allowed branding and portable governance deltas.
+4. Run the required validation.
+5. Update this record with the resulting SHA, validation, and one next action.
 
 ## Public Branch Policy
 

@@ -3,33 +3,27 @@
 ## Purpose
 
 This is the version-controlled record of every current, intentional difference
-between the public `rahuljangirworks/dwm-jangir` fork and its read-only
-`ChrisTitusTech/dwm-titus` upstream. Read it for every upstream sync, rebase,
-conflict, or review of fork-owned behavior.
+between `dwm-jangir` and `ChrisTitusTech/dwm-titus`. Read it for every upstream
+sync, rebase, conflict, or review of fork-owned behavior.
 
 `FORK.md` defines the policy. `PROJECT-STATE.md` records the current live
 state. This file maps that policy to exact files and conflict decisions.
 
 ## Verified Baseline
 
-Verified on 2026-08-30:
+Verified on 2026-08-29:
 
 | Ref | Commit | Meaning |
 | --- | --- | --- |
-| `sync/2026-08-30` | `c60c139` | Upstream sync branch with all fork commits rebased onto latest upstream. |
-| `dev` / GitHub default branch | `8cc8ed4` | Public fork branch with completed runtime migration (not yet synced). |
-| Common ancestor (previous) | `46991ca` | Upstream base before 2026-08-30 sync. |
-| Current upstream base | `97f1ed9` | Latest upstream incorporated by sync/2026-08-30. |
+| `dev` / GitHub default branch | `3b1f179` | Public fork branch before the current local worktree changes. |
+| Common ancestor | `46991ca` | Last upstream base incorporated by `dev`. |
+| Live `upstream/main` | `97f1ed9` | Upstream has five commits not yet incorporated. |
 | `origin/main` | `0bea4f6` | Legacy branch; do not use for new work. |
 
-The committed fork history on `sync/2026-08-30` above upstream/main:
+The committed fork-only history above the common ancestor is:
 
-1. `14f1f52 feat: add personal branding and display config`
-2. `4579a77 docs: restore project state after upstream sync`
-3. `db280a2 fix(display): persist NVIDIA layouts through Xorg`
-4. `91db491 docs(fork): record upstream-safe display workflow`
-5. `430c1f4 docs(fork): record display recovery verification`
-6. `c60c139 feat: complete dwm-titus → dwm-jangir runtime identity migration`
+1. `1a68941 feat: add personal branding and display config`
+2. `3b1f179 docs: restore project state after upstream sync`
 
 ## Current Maintained Delta
 
@@ -37,13 +31,11 @@ The committed fork history on `sync/2026-08-30` above upstream/main:
 | --- | --- | --- | --- | --- |
 | D-001 | `config/quickshell/assets/rahuljangirwork.svg` | Ship Rahul Jangir branding. | Keep the fork SVG. | Confirm the SVG exists and the panel loads it. |
 | D-002 | `config/quickshell/panel/LogoButton.qml` | Point the existing upstream logo control at the Rahul SVG. | Start with upstream's file; reapply only the asset reference using its current API. Do not keep unrelated fork edits. | Diff must show only the asset-reference change. |
-| D-003 | `scripts/dwm-display-setup`, display setup tests, `CHANGELOG.md` | Persist generic NVIDIA layouts through generated Xorg `MetaModes`, including output position and rotation, and provide a rotation-aware automatic wizard layout. | Preserve the generic MetaModes generator and wizard behavior; never add Rahul-specific connector names, modes, or positions to generic setup. | Run display setup tests; verify a real X11 layout after reboot when NVIDIA is used. |
-| D-004 | `scripts/dwm-session`, `scripts/.xinitrc`, `dwm-jangir.desktop`, `Makefile`, `lightdm/lightdm.conf`, `tests/test-lightdm-config.sh`, `CHANGELOG.md` | Give LightDM and `startx` one safe D-Bus-backed `dwm` session entry. | Preserve only the no-nested-bus guard and `exec dwm`; keep LightDM configuration aligned with the Fedora installer. | Run `sh -n scripts/dwm-session scripts/.xinitrc`, `tests/test-lightdm-config.sh`, and verify login/reboot. |
+| D-003 | `scripts/dwm-display-setup`, `tests/test-dwm-display-setup.sh`, `CHANGELOG.md` | Persist generic NVIDIA layouts through generated Xorg `MetaModes`, including output position and rotation. | Preserve the generic MetaModes generator and its test; never add Rahul-specific connector names, modes, or positions. | Run `tests/test-dwm-display-setup.sh`; verify a real X11 layout after reboot when NVIDIA is used. |
+| D-004 | `scripts/dwm-session`, `scripts/.xinitrc`, `dwm.desktop`, `Makefile`, `lightdm/lightdm.conf`, `tests/test-lightdm-config.sh`, `CHANGELOG.md` | Give LightDM and `startx` one safe D-Bus-backed `dwm` session entry. | Preserve only the no-nested-bus guard and `exec dwm`; keep LightDM configuration aligned with the Fedora installer. | Run `sh -n scripts/dwm-session scripts/.xinitrc`, `tests/test-lightdm-config.sh`, and verify login/reboot. |
 | D-005 | `AGENTS.md`, `FORK.md`, `FORK-DELTA.md`, `PROJECT-STATE.md`, `CONTRIBUTING.md`, `.gitignore` | Make the public fork and its agent workflow understandable and portable. | Keep the fork governance intent, but manually incorporate upstream documentation or ignore-rule improvements. | Read links and run `git diff --check`. |
-| D-006 | `profiles/dell-5820.conf`, `scripts/dwm-personal-display-profile`, `install.sh`, focused tests, install docs | Provide Rahul's Dell Precision 5820 layout only as an explicit installer option. | Seed only the invoking user's XDG profile; require connected `DVI-D-0` and `DP-0`; use `dwm-display-setup` for preview/persistent Xorg configuration; never select or apply it automatically. | Run focused profile/installer/display tests and verify the generated NVIDIA MetaModes contain real mode-pool names. |
-| D-007 | Runtime paths, installer, session entry, LightDM assets, Xorg helpers, release helper, and migration tests/docs | Make `dwm-jangir` the installed fork identity and migrate the former namespace safely. | Keep the current `dwm-jangir` name in active runtime paths. Treat `dwm-titus` only as the named read-only upstream or explicit legacy-migration source. Move a legacy user directory only when unambiguous; preserve it if files diverge. Rename the managed Xorg fragment only when safe, and remove legacy system files only after the new helper is installed. | Run runtime-identity, install-manifest, installer preservation, display, and shell checks; confirm the installed session and Xorg fragment on a real Fedora system. |
 
-Only D-001 through D-007 are approved. A new difference must be assigned a new
+Only D-001 through D-005 are approved. A new difference must be assigned a new
 ID here before it becomes a permanent fork change.
 
 ## Display Configuration Boundary
@@ -54,10 +46,7 @@ it is run from the logged-in X11 session. D-003 extends the generated NVIDIA
 configuration with generic MetaModes so saved position and rotation also apply
 at the next LightDM/Xorg start. Do not add a LightDM `display-setup-script`, a
 root script that reads user configuration, automatic profile selection,
-`.bashrc` mutation, or static output layout to the repository. D-006 is the
-single explicit opt-in exception: it stores its layout under the user's XDG
-directory, checks required outputs in the active X11 session, and calls this
-same setup tool rather than any LightDM or login hook.
+`.bashrc` mutation, or static output layout to the repository.
 
 The local LightDM workaround scripts and automatic profile code were removed
 from the worktree on 2026-08-29 because they ran before the greeter as root and
@@ -99,7 +88,6 @@ changed. State any unavailable environment or tool in `PROJECT-STATE.md`.
 | 2026-08-29 | GitHub `dev` became the default public branch; fork policy was consolidated in version-controlled repository files. | Active. |
 | 2026-08-29 | Removed the non-upstream LightDM display hook and automatic profile scripts; monitor persistence returns to upstream `dwm-display-setup`. | Active. |
 | 2026-08-29 | Generated NVIDIA MetaModes and a shared D-Bus session launcher were validated; a real reboot confirmed DP-0 primary 2560x1440 and DVI-D-0 900x1440 rotated left. | Active. |
-| 2026-08-30 | Synced fork with upstream `97f1ed9` via rebase on `sync/2026-08-30`. Resolved conflicts in Makefile (D-007 runtime identity), CHANGELOG.md, and README.md (D-002 branding). All seven maintained deltas preserved correctly. Validation passed: shell syntax clean, runtime paths verified, no whitespace errors. | Active. |
 
 Historical material must never override this file, `FORK.md`, or
 `PROJECT-STATE.md` during a merge.
