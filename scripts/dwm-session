@@ -1,14 +1,25 @@
 #!/bin/sh
-set -eu
+# dwm-jangir session launcher for LightDM and startx
+
+# Source system profile for environment setup
+if [ -f /etc/profile ]; then
+	. /etc/profile
+fi
+
+# Source user profile if it exists
+if [ -f "$HOME/.profile" ]; then
+	. "$HOME/.profile"
+fi
 
 # LightDM and startx must enter the same D-Bus-backed X11 session. LightDM
 # normally provides a session bus, but older or locally configured PAM stacks
 # may not. Do not nest a second bus when one is already available.
-if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] &&
-	[ "${DWM_SESSION_BUS_STARTED:-0}" != 1 ] &&
-	command -v dbus-run-session >/dev/null 2>&1; then
+if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && \
+   [ "${DWM_SESSION_BUS_STARTED:-0}" != "1" ] && \
+   command -v dbus-run-session >/dev/null 2>&1; then
 	export DWM_SESSION_BUS_STARTED=1
 	exec dbus-run-session -- "$0" "$@"
 fi
 
+# Start dwm
 exec dwm "$@"
