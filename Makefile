@@ -177,8 +177,9 @@ install-system:
 	@echo "==> Installing system files..."
 	install -Dm755 dwm ${DESTDIR}${PREFIX}/bin/dwm
 	sed "s/VERSION/${VERSION}/g" dwm.1 | install -Dm644 /dev/stdin ${DESTDIR}${MANPREFIX}/man1/dwm.1
-	sed "s|@PREFIX@|${PREFIX}|g" dwm.desktop | \
-		install -Dm644 /dev/stdin ${DESTDIR}${XSESSIONSDIR}/dwm.desktop
+	sed "s|@PREFIX@|${PREFIX}|g" dwm-jangir.desktop | \
+		install -Dm644 /dev/stdin ${DESTDIR}${XSESSIONSDIR}/dwm-jangir.desktop
+	ln -sf dwm-jangir.desktop ${DESTDIR}${XSESSIONSDIR}/dwm.desktop
 	@echo "==> Installing scripts to PATH..."
 	for f in ${INSTALL_COMMANDS}; do \
 		install -Dm755 "$$f" ${DESTDIR}${PREFIX}/bin/$$(basename "$$f"); \
