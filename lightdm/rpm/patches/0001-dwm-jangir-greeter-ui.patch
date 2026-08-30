@@ -1,0 +1,1178 @@
+diff --git a/src/dash-box.vala b/src/dash-box.vala
+index ac7397d..3363481 100644
+--- a/src/dash-box.vala
++++ b/src/dash-box.vala
+@@ -230,12 +230,33 @@ public class DashBox : Gtk.Box
+         else
+         {
+             if (pushed == null)
++            {
+                 orig.get_preferred_height (out min, out nat);
++                /* Error feedback is rendered directly below the password
++                 * field.  The legacy grid leaves an extra blank track below
++                 * it, so trim only that unused visual space. */
++                var prompt = orig as PromptBox;
++                if (prompt != null && prompt.has_errors)
++                {
++                    min = int.max (min - 18, 1);
++                    nat = int.max (nat - 18, 1);
++                }
++            }
+             else
+             {
+                 pushed.selected_entry.get_preferred_height (out min, out nat);
+                 min = int.max (orig_height, min);
+                 nat = int.max (orig_height, nat);
++
++                /* The session picker has a compact list.  Gtk keeps a
++                 * legacy spare track below it; remove that track so its
++                 * bottom inset matches the 18px top inset. */
++                var session_prompt = pushed.selected_entry as SessionPrompt;
++                if (session_prompt != null)
++                {
++                    min = int.max (min - 26, 1);
++                    nat = int.max (nat - 26, 1);
++                }
+             }
+         }
+     }
+@@ -252,13 +273,20 @@ public class DashBox : Gtk.Box
+         var height = get_allocated_height ();
+
+         /* Draw darker background with a rounded border */
+-        var box_r = 0.3 * grid_size;
++        var box_r = 8;
+         int box_y = 0;
+         int box_w;
+         int box_h;
+         get_preferred_width (null, out box_w);
+         get_preferred_height (null, out box_h);
+
++        /* SessionPrompt is allocated on Slick Greeter's legacy three-grid
++         * track.  Its content is compact, so paint the card to its content
++         * bounds rather than leaving an empty lower band. */
++        if (orig is SessionPrompt ||
++            (pushed != null && pushed.selected_entry is SessionPrompt))
++            box_h = int.max (box_h - 26, 1);
++
+         if (mode == Mode.PUSH_FADE_OUT || mode == Mode.POP_FADE_IN)
+         {
+             var new_box_h = box_h - (int) ((box_h - orig_height) * base_alpha);
+@@ -311,9 +339,9 @@ public class DashBox : Gtk.Box
+         /* Draw darker background with a rounded border */
+         c.save ();
+         CairoUtils.rounded_rectangle (c, 0, box_y, box_w, box_h, box_r);
+-        c.set_source_rgba (0.1, 0.1, 0.1, 0.55);
++        c.set_source_rgba (0.06, 0.08, 0.10, 0.98);
+         c.fill_preserve ();
+-        c.set_source_rgba (0.4, 0.4, 0.4, 0.4);
++        c.set_source_rgba (0.17, 0.21, 0.26, 1.0);
+         c.set_line_width (1);
+         c.stroke ();
+         c.restore ();
+diff --git a/src/dash-entry.vala b/src/dash-entry.vala
+index d92dff0..545c0b4 100644
+--- a/src/dash-entry.vala
++++ b/src/dash-entry.vala
+@@ -23,7 +23,8 @@ extern bool gtk_style_context_lookup_color (Gtk.StyleContext ctx, string color_n
+
+ public class DashEntry : Gtk.Entry, Fadable
+ {
+-    public static string font = "Ubuntu 14";
++    // Keep password glyphs compact and consistent with the greeter theme.
++    public static string font = "Cantarell 11";
+     public signal void respond ();
+
+     public string constant_placeholder_text { get; set; }
+@@ -136,8 +137,10 @@ public class DashEntry : Gtk.Entry, Fadable
+         c.save ();
+
+         var arrow_size = get_arrow_size ();
++        var arrow_scale = arrow_size / (double) arrow_pixbuf.get_height ();
+         Gtk.cairo_transform_to_window (c, this, arrow_win);
+-        c.translate (arrow_size - arrow_pixbuf.get_width () - 1, 0); // right align
++        c.translate (arrow_size - (arrow_pixbuf.get_width () * arrow_scale) - 1, 0); // right align
++        c.scale (arrow_scale, arrow_scale);
+         Gdk.cairo_set_source_pixbuf (c, arrow_pixbuf, 0, 0);
+
+         c.paint ();
+@@ -153,7 +156,7 @@ public class DashEntry : Gtk.Entry, Fadable
+         Gdk.Rectangle rect;
+
+         var layout = create_pango_layout (constant_placeholder_text);
+-        layout.set_font_description (Pango.FontDescription.from_string ("Ubuntu 13"));
++        layout.set_font_description (Pango.FontDescription.from_string (font));
+         layout.get_pixel_size (out layout_width, out layout_height);
+
+         get_text_area (out rect);
+@@ -202,9 +205,9 @@ public class DashEntry : Gtk.Entry, Fadable
+     {
+         // height is larger than width for the arrow, so we measure using that
+         if (arrow_pixbuf != null)
+-            return arrow_pixbuf.get_height ();
++            return int.min (16, arrow_pixbuf.get_height ());
+         else
+-            return 20; // Shouldn't happen
++            return 16; // Shouldn't happen
+     }
+
+     private void get_arrow_location (out int x, out int y)
+diff --git a/src/greeter-list.vala b/src/greeter-list.vala
+index a756ae2..5af434f 100644
+--- a/src/greeter-list.vala
++++ b/src/greeter-list.vala
+@@ -105,7 +105,8 @@ public abstract class GreeterList : FadableBox
+     protected Mode mode = Mode.ENTRY;
+
+     public const int BORDER = 4;
+-    public const int BOX_WIDTH = 9; /* in grid_size blocks */
++    // A compact, focused authentication surface.
++    public const int BOX_WIDTH = 8; /* in grid_size blocks */
+     public const int DEFAULT_BOX_HEIGHT = 3; /* in grid_size blocks */
+
+     private uint n_above = 4;
+diff --git a/src/main-window.vala b/src/main-window.vala
+index b275ff7..ce8eb8b 100644
+--- a/src/main-window.vala
++++ b/src/main-window.vala
+@@ -38,7 +38,7 @@ public class MainWindow : Gtk.Window
+     public ListStack stack;
+
+     // Menubar is smaller, but with shadow, we reserve more space
+-    public const int MENUBAR_HEIGHT = 32;
++    public const int MENUBAR_HEIGHT = 36;
+
+     construct
+     {
+@@ -54,6 +54,206 @@ public class MainWindow : Gtk.Window
+         has_resize_grip = false;
+         SlickGreeter.add_style_class (this);
+
++        /* Keep the small set of greeter controls visually consistent. */
++        try
++        {
++            var style = new Gtk.CssProvider ();
++            style.load_from_data ("""
++                menu, tooltip {
++                    background-color: #151b23;
++                    color: #e6edf3;
++                    border: 1px solid #2b3542;
++                    box-shadow: none;
++                }
++                menu menuitem {
++                    background-color: transparent;
++                    color: #e6edf3;
++                    padding: 6px 12px;
++                }
++                menu menuitem:hover {
++                    background-color: #202a36;
++                    color: #ffffff;
++                }
++                tooltip label, menu menuitem label {
++                    color: #e6edf3;
++                }
++                menubar {
++                    background-color: transparent;
++                    border: 0;
++                    padding: 0 16px;
++                }
++                menubar > menuitem.topbar-power {
++                    background-image: none;
++                    background-color: transparent;
++                    border: 1px solid transparent;
++                    border-radius: 6px;
++                    min-width: 34px;
++                    min-height: 30px;
++                    padding: 0;
++                    margin: 1px 0;
++                }
++                menubar > menuitem.topbar-power:hover,
++                menubar > menuitem.topbar-power:active,
++                menubar > menuitem.topbar-power:focus {
++                    background-color: rgba(34, 51, 74, 0.94);
++                    border-color: #3d5066;
++                }
++                menu.topbar-power-menu {
++                    background-image: none;
++                    background-color: #151b23;
++                    border: 1px solid #2b3542;
++                    border-radius: 8px;
++                    background-clip: padding-box;
++                    box-shadow: none;
++                    outline: none;
++                    padding: 4px;
++                }
++                menu.topbar-power-menu:backdrop {
++                    background-image: none;
++                    background-color: #151b23;
++                    border: 1px solid #2b3542;
++                    border-radius: 8px;
++                    box-shadow: none;
++                }
++                menu.topbar-power-menu menuitem {
++                    border-radius: 5px;
++                    min-width: 112px;
++                    padding: 7px 12px;
++                }
++                entry.lightdm {
++                    background-image: none;
++                    background-color: #10161d;
++                    color: #e6edf3;
++                    caret-color: #e6edf3;
++                    border: 1px solid #2b3542;
++                    border-radius: 6px;
++                    box-shadow: none;
++                    min-height: 32px;
++                    padding: 5px 10px;
++                }
++                entry.lightdm:focus {
++                    border-color: #5e9cff;
++                    box-shadow: 0 0 0 1px rgba(94, 156, 255, 0.45);
++                }
++                entry.lightdm selection {
++                    background-color: #315d9d;
++                    color: #ffffff;
++                }
++                entry.lightdm:disabled {
++                    color: #8b949e;
++                }
++                label.login-error {
++                    color: #ff7b72;
++                }
++                button.session-switcher {
++                    background-image: none;
++                    background-color: transparent;
++                    color: #9fb4cc;
++                    border: 1px solid #2b3542;
++                    border-radius: 5px;
++                    box-shadow: none;
++                    min-height: 24px;
++                    padding: 2px 6px;
++                }
++                button.session-switcher:hover,
++                button.session-switcher:focus {
++                    background-color: #1a2430;
++                    border-color: #5e9cff;
++                    box-shadow: none;
++                }
++                button.session-switcher label {
++                    color: #b9c8d8;
++                    font-size: 10px;
++                }
++                button.back-button {
++                    background-image: none;
++                    background-color: #111820;
++                    border: 1px solid #2b3542;
++                    border-radius: 6px;
++                    box-shadow: none;
++                    padding: 0;
++                }
++                button.back-button:hover,
++                button.back-button:focus {
++                    background-color: #1a2430;
++                    border-color: #5e9cff;
++                    box-shadow: none;
++                }
++                button.session-dialog-close {
++                    background-image: none;
++                    background-color: #111820;
++                    color: #9aa7b7;
++                    border: 1px solid #2b3542;
++                    border-radius: 14px;
++                    box-shadow: none;
++                    min-width: 28px;
++                    min-height: 28px;
++                    padding: 0;
++                    font-size: 18px;
++                }
++                button.session-dialog-close:hover,
++                button.session-dialog-close:focus {
++                    background-color: #22334a;
++                    border-color: #5e9cff;
++                    color: #ffffff;
++                    box-shadow: 0 0 0 1px rgba(94, 156, 255, 0.25);
++                }
++                button.session-dialog-close label {
++                    color: #b9c8d8;
++                }
++                button.session-dialog-close:hover label,
++                button.session-dialog-close:focus label {
++                    color: #ffffff;
++                }
++                label.session-description {
++                    color: #8b98a8;
++                    font-size: 10px;
++                    padding: 0 0 6px 0;
++                }
++                .toggle-box {
++                    background-color: #0f151c;
++                    border: 1px solid #2b3542;
++                    border-radius: 7px;
++                    padding: 5px;
++                }
++                button.toggle-button {
++                    background-image: none;
++                    background-color: transparent;
++                    color: #c9d1d9;
++                    border: 1px solid transparent;
++                    border-radius: 5px;
++                    box-shadow: none;
++                    padding: 7px 9px;
++                }
++                button.toggle-button:hover,
++                button.toggle-button:focus {
++                    background-color: #172230;
++                    border-color: #344456;
++                    color: #ffffff;
++                    box-shadow: none;
++                }
++                button.toggle-button.selected {
++                    background-color: #18283a;
++                    border-color: #5e9cff;
++                    color: #ffffff;
++                    box-shadow: none;
++                }
++                button.toggle-button label {
++                    color: #c9d1d9;
++                    font-size: 11px;
++                }
++                button.toggle-button.selected label {
++                    color: #ffffff;
++                }
++            """, -1);
++            Gtk.StyleContext.add_provider_for_screen (get_screen (), style,
++                Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
++        }
++        catch (Error e)
++        {
++            debug ("Unable to load dwm-jangir menu styling: %s", e.message);
++        }
++
+         background = new Background ();
+         add (background);
+         SlickGreeter.add_style_class (background);
+@@ -65,13 +265,8 @@ public class MainWindow : Gtk.Window
+         /* Box for menubar shadow */
+         var menubox = new Gtk.EventBox ();
+         var menualign = new Gtk.Alignment (0.0f, 0.0f, 1.0f, 0.0f);
+-        var shadow_path = Path.build_filename (Config.PKGDATADIR,
+-                                               "shadow.png", null);
++        // dwm-jangir preview: keep the panel visually flush with the canvas.
+         var shadow_style = "";
+-        if (FileUtils.test (shadow_path, FileTest.EXISTS))
+-        {
+-            shadow_style = "background-image: url('%s');background-repeat: repeat;".printf(shadow_path);
+-        }
+         try
+         {
+             var style = new Gtk.CssProvider ();
+@@ -139,11 +334,13 @@ public class MainWindow : Gtk.Window
+         hbox.add (align);
+
+         back_button = new FlatButton ();
++        back_button.get_style_context ().add_class ("back-button");
+         back_button.get_accessible ().set_name (_("Back"));
+         Gtk.button_set_focus_on_click (back_button, false);
++        back_button.relief = Gtk.ReliefStyle.NONE;
+         var image = new Gtk.Image.from_file (Path.build_filename (Config.PKGDATADIR, "arrow_left.svg", null));
+         image.show ();
+-        back_button.set_size_request (grid_size - GreeterList.BORDER * 2, grid_size - GreeterList.BORDER * 2);
++        back_button.set_size_request (36, 36);
+         back_button.add (image);
+         back_button.clicked.connect (pop_list);
+         align.add (back_button);
+@@ -197,8 +394,10 @@ public class MainWindow : Gtk.Window
+     {
+         stack.push (widget);
+
+-        if (stack.num_children > 1)
++        if (stack.num_children > 1 && !(widget is SessionList))
+             back_button.show ();
++        else
++            back_button.hide ();
+     }
+
+     public void pop_list ()
+@@ -476,6 +675,9 @@ public class MainWindow : Gtk.Window
+
+         /* Stop input to login box */
+         login_box.sensitive = false;
++        // The shutdown dialog is a complete modal surface.  Hiding the login
++        // layer prevents its card from being painted over the confirmation UI.
++        login_box.visible = false;
+
+         shutdown_dialog = new ShutdownDialog (type, background);
+         shutdown_dialog.closed.connect (close_shutdown_dialog);
+@@ -492,6 +694,7 @@ public class MainWindow : Gtk.Window
+         shutdown_dialog.destroy ();
+         shutdown_dialog = null;
+
++        login_box.visible = true;
+         login_box.sensitive = true;
+     }
+ }
+diff --git a/src/menubar.vala b/src/menubar.vala
+index ba32502..913a266 100644
+--- a/src/menubar.vala
++++ b/src/menubar.vala
+@@ -75,6 +75,38 @@
+     }
+ }
+
++/* A small Cairo-drawn power mark.  The previous SVG was only 16px and can
++ * be reduced or rendered indistinctly by some greeter themes.  Drawing it
++ * here keeps the control crisp and independent of the host icon theme. */
++private class PowerMark : Gtk.DrawingArea
++{
++    construct
++    {
++        set_size_request (24, 24);
++    }
++
++    public override bool draw (Cairo.Context cr)
++    {
++        var width = get_allocated_width ();
++        var height = get_allocated_height ();
++        var center_x = width / 2.0;
++        var center_y = height / 2.0;
++        var radius = double.min (width, height) / 2.0 - 4.0;
++
++        cr.set_source_rgba (0.78, 0.83, 0.89, 1.0);
++        cr.set_line_width (2.0);
++        cr.set_line_cap (Cairo.LineCap.ROUND);
++        /* Draw the long lower arc, leaving a deliberate opening at the top. */
++        cr.arc (center_x, center_y, radius, 5.50, 10.20);
++        cr.stroke ();
++        cr.move_to (center_x, center_y - radius - 1.0);
++        cr.line_to (center_x, center_y);
++        cr.stroke ();
++
++        return false;
++    }
++}
++
+ public class MenuBar : Gtk.MenuBar
+ {
+     public Background? background { get; construct; default = null; }
+@@ -83,7 +115,9 @@ public class MenuBar : Gtk.MenuBar
+     public Gtk.AccelGroup? accel_group { get; construct; }
+     public MainWindow? main_window { get; construct; default = null; }
+
+-    private const int HEIGHT = 24;
++    /* Keep the 30px power button inside the panel instead of letting it
++     * overflow below a 24px menubar. */
++    private const int HEIGHT = 36;
+
+     public MenuBar (Background bg, Gtk.AccelGroup ag, MainWindow mw)
+     {
+@@ -92,51 +126,8 @@ public class MenuBar : Gtk.MenuBar
+
+     public override bool draw (Cairo.Context c)
+     {
+-        var width = get_allocated_width ();
+-        var height = get_allocated_height ();
+-
+-        // Check if we need to recreate the blurred surface
+-        if (bg_surface == null || bg_surface.get_width () != width || bg_surface.get_height () != height)
+-        {
+-            if (width > 0 && height > 0)
+-            {
+-                try
+-                {
+-                    bg_surface = new Cairo.ImageSurface (Cairo.Format.ARGB32, width, height);
+-                    var bg_cr = new Cairo.Context (bg_surface);
+-
+-                    // Draw background in temporary surface
+-            if (background != null)
+-            {
+-                int x, y;
+-                background.translate_coordinates (this, 0, 0, out x, out y);
+-                        bg_cr.save ();
+-                        bg_cr.translate (x, y);
+-                        background.draw_full (bg_cr, Background.DrawFlags.NONE);
+-                        bg_cr.restore ();
+-                    }
+-
+-                    // Apply blur effect
+-                    CairoUtils.ExponentialBlur.surface (bg_surface, BLUR_RADIUS);
+-                }
+-                catch (Error e)
+-                {
+-                    warning ("Failed to create background surface: %s", e.message);
+-                    bg_surface = null;
+-                }
+-            }
+-        }
+-
+-        // Draw blurred background
+-        if (bg_surface != null)
+-        {
+-            c.set_source_surface (bg_surface, 0, 0);
+-            c.paint ();
+-        }
+-
+-        c.set_source_rgb (0.1, 0.1, 0.1);
+-        c.paint_with_alpha (0.55);
+-
++        // dwm-jangir preview: draw only the panel controls.  The background
++        // remains the same as the login canvas, with no blur or dark overlay.
+         foreach (var child in get_children ())
+         {
+             propagate_draw (child, c);
+@@ -466,16 +457,15 @@ public class MenuBar : Gtk.MenuBar
+     private Gtk.MenuItem make_session_item ()
+     {
+         var item = new Gtk.MenuItem ();
++        item.get_style_context ().add_class ("topbar-power");
+         item.set_tooltip_text(_("Quit..."));
+-        var hbox = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 3);
+-        hbox.show ();
+-        item.add (hbox);
+-        var image = new Gtk.Image.from_file (Path.build_filename (Config.PKGDATADIR, "shutdown.svg"));
+-        image.show ();
+-        hbox.add (image);
++        var power_mark = new PowerMark ();
++        power_mark.show ();
++        item.add (power_mark);
+         item.show ();
+         item.set_submenu (new Gtk.Menu ());
+         unowned Gtk.Menu submenu = item.submenu;
++        submenu.get_style_context ().add_class ("topbar-power-menu");
+
+         if (LightDM.get_can_suspend ())
+         {
+diff --git a/src/prompt-box.vala b/src/prompt-box.vala
+index f6f9789..eb30ee9 100644
+--- a/src/prompt-box.vala
++++ b/src/prompt-box.vala
+@@ -18,6 +18,53 @@
+  *          Michael Terry <michael.terry@canonical.com>
+  */
+
++public class LoginMark : Gtk.DrawingArea
++{
++    public bool is_user { get; construct; }
++
++    public LoginMark (bool is_user)
++    {
++        Object (is_user: is_user);
++    }
++
++    construct
++    {
++        set_size_request (20, 20);
++        get_accessible ().set_name (is_user ? _("User") : _("dwm-jangir"));
++    }
++
++    public override bool draw (Cairo.Context c)
++    {
++        var width = get_allocated_width ();
++        var height = get_allocated_height ();
++        var cx = width / 2.0;
++        var cy = height / 2.0;
++
++        c.save ();
++        c.set_source_rgba (0.55, 0.59, 0.64, 0.95);
++        c.set_line_width (1.4);
++
++        if (is_user)
++        {
++            c.arc (cx, cy - 4.0, 3.0, 0, 2 * Math.PI);
++            c.stroke ();
++            c.arc (cx, cy + 7.0, 5.5, Math.PI, 2 * Math.PI);
++            c.stroke ();
++        }
++        else
++        {
++            // A tiny tiling-window mark for dwm-jangir.
++            c.rectangle (cx - 7.0, cy - 6.0, 8.0, 12.0);
++            c.rectangle (cx + 3.0, cy - 6.0, 4.0, 5.0);
++            c.rectangle (cx + 3.0, cy + 1.0, 4.0, 5.0);
++            c.stroke ();
++        }
++
++        c.restore ();
++        return false;
++    }
++}
++
+ public class PromptBox : FadableBox
+ {
+     public signal void respond (string[] response);
+@@ -48,10 +95,12 @@ public class PromptBox : FadableBox
+     protected Gtk.Grid name_grid;
+     private ActiveIndicator active_indicator;
+     protected FadingLabel name_label;
+-    protected FlatButton option_button;
+-    private CachedImage option_image;
++    private Gtk.Button session_button;
++    private Gtk.Label session_label;
++    private Gtk.Box identity_marks;
+     private CachedImage message_image;
+     private UserAvatar avatar_image;
++    private Gtk.Widget? latest_error_label = null;
+
+     /* Condensed widgets */
+     protected Gtk.Widget small_box_widget;
+@@ -108,7 +157,9 @@ public class PromptBox : FadableBox
+         box_grid.row_spacing = 3;
+         box_grid.margin_top = GreeterList.BORDER;
+         box_grid.margin_bottom = 4;
+-        box_grid.expand = true;
++        /* Let the card follow its content height.  Expanding this grid made a
++         * short error message reserve an entire extra row of empty space. */
++        box_grid.expand = false;
+
+         /** Grid layout:
+           0 1     2      3 4
+@@ -214,9 +265,10 @@ public class PromptBox : FadableBox
+         name_grid.attach (avatar_image, COL_AVATAR, ROW_NAME, 1, 1);
+
+         name_label = new FadingLabel ("");
+-        name_label.override_font (Pango.FontDescription.from_string ("Ubuntu 13"));
++        name_label.override_font (Pango.FontDescription.from_string ("Cantarell 11"));
+         name_label.override_color (Gtk.StateFlags.NORMAL, { 1.0f, 1.0f, 1.0f, 1.0f });
+         name_label.halign = Gtk.Align.START;
++        name_label.hexpand = true;
+         name_label.valign = Gtk.Align.START;
+         name_label.vexpand = false;
+         name_label.margin_left = 2;
+@@ -237,23 +289,24 @@ public class PromptBox : FadableBox
+         align.show ();
+         name_grid.attach (align, COL_NAME_MESSAGE, ROW_NAME, 1, 1);
+
+-        option_button = new FlatButton ();
+-        option_button.get_style_context ().add_class ("option-button");
+-        option_button.hexpand = true;
+-        option_button.vexpand = true;
+-        option_button.halign = Gtk.Align.END;
+-        option_button.valign = Gtk.Align.START;
+-        // Keep as much space on top as on the right
+-        option_button.margin_top = (ActiveIndicator.WIDTH + box_grid.column_spacing) - ActiveIndicator.MARGIN;
+-        Gtk.button_set_focus_on_click (option_button, false);
+-        option_button.relief = Gtk.ReliefStyle.NONE;
+-        option_button.get_accessible ().set_name (_("Session Options"));
+-        option_button.clicked.connect (option_button_clicked_cb);
+-        option_image = new CachedImage (null);
+-        option_image.show ();
+-
+-        option_button.add (option_image);
+-        name_grid.attach (option_button, COL_NAME_OPTIONS, ROW_NAME, 1, 1);
++        session_button = new Gtk.Button ();
++        session_button.get_style_context ().add_class ("session-switcher");
++        session_button.halign = Gtk.Align.END;
++        session_button.valign = Gtk.Align.CENTER;
++        Gtk.button_set_focus_on_click (session_button, false);
++        session_button.relief = Gtk.ReliefStyle.NONE;
++        session_button.get_accessible ().set_name (_("Switch desktop session"));
++        session_button.clicked.connect (option_button_clicked_cb);
++        session_label = new Gtk.Label ("");
++        session_label.show ();
++        session_button.add (session_label);
++        name_grid.attach (session_button, COL_NAME_OPTIONS, ROW_NAME, 1, 1);
++
++        /* The session switcher is the only control needed on the login card.
++         * Do not add decorative identity icons beside it. */
++        identity_marks = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
++        identity_marks.no_show_all = true;
++        identity_marks.hide ();
+
+         name_grid.show ();
+
+@@ -272,7 +325,7 @@ public class PromptBox : FadableBox
+         small_name_grid.attach (small_avatar_image, 0, 0, 1, 1);
+
+         small_name_label = new FadingLabel ("");
+-        small_name_label.override_font (Pango.FontDescription.from_string ("Ubuntu 13"));
++        small_name_label.override_font (Pango.FontDescription.from_string ("Cantarell 11"));
+         small_name_label.override_color (Gtk.StateFlags.NORMAL, { 1.0f, 1.0f, 1.0f, 1.0f });
+         small_name_label.valign = Gtk.Align.CENTER;
+         small_name_label.yalign = 0.5f;
+@@ -335,20 +388,33 @@ public class PromptBox : FadableBox
+
+     public void set_options_image (Gdk.Pixbuf? image, string? tooltip)
+     {
+-        if (option_button == null)
++        if (session_button == null)
+             return;
+
+-        option_image.set_pixbuf (image);
+-
+-        if (tooltip == null)
+-            option_image.set_tooltip_text("");
++        if (image == null)
++        {
++            session_button.hide ();
++        }
+         else
+-            option_image.set_tooltip_text(tooltip);
++        {
++            var session_name = tooltip ?? _("Session");
++            if (session_name == "dwm-jangir")
++                session_name = "DWM";
++            else if (session_name.has_prefix ("KDE Plasma (session-selector test)"))
++                session_name = "KDE (test)";
++            session_label.label = "%s  ▾".printf (session_name);
++            session_button.show ();
++        }
++    }
+
+-        if (image == null)
+-            option_button.hide ();
++    public void set_show_identity_marks (bool show)
++    {
++        if (identity_marks == null)
++            return;
++        if (show)
++            identity_marks.show ();
+         else
+-            option_button.show ();
++            identity_marks.hide ();
+     }
+
+     private void option_button_clicked_cb (Gtk.Button button)
+@@ -407,12 +473,14 @@ public class PromptBox : FadableBox
+
+         reset_last_row ();
+         has_errors = false;
++        latest_error_label = null;
+     }
+
+     /* Clears error messages */
+     public void reset_messages ()
+     {
+         has_errors = false;
++        latest_error_label = null;
+         foreach_prompt_widget ((w) =>
+         {
+             var is_error = w.get_data<bool> ("prompt-box-is-error");
+@@ -499,12 +567,13 @@ public class PromptBox : FadableBox
+     {
+         var label = new FadingLabel (text);
+
+-        label.override_font (Pango.FontDescription.from_string ("Ubuntu Bold 10"));
++        label.override_font (Pango.FontDescription.from_string ("Cantarell 10"));
+
+         Gdk.RGBA color = { 1.0f, 1.0f, 1.0f, 1.0f };
+         if (is_error)
+-            color.parse ("#ffd64d");
++            color.parse ("#ff7b72");
+         label.override_color (Gtk.StateFlags.NORMAL, color);
++        label.get_style_context ().add_class (is_error ? "login-error" : "login-message");
+
+         label.xalign = 0.0f;
+         label.set_data<bool> ("prompt-box-is-error", is_error);
+@@ -512,7 +581,10 @@ public class PromptBox : FadableBox
+         attach_item (label);
+
+         if (is_error)
++        {
+             has_errors = true;
++            latest_error_label = label;
++        }
+     }
+
+     public DashEntry add_prompt (string text, string? accessible_text, bool is_secret)
+@@ -557,54 +629,37 @@ public class PromptBox : FadableBox
+         if (is_secret)
+         {
+             entry.visibility = false;
++            /* Keep the field label compact, but make entered password dots
++             * clearly legible in the generously sized login field. */
++            entry.set_invisible_char (0x2022); /* • */
++            entry.override_font (Pango.FontDescription.from_string ("Cantarell 20"));
++            entry.set_size_request (-1, 44);
++            entry.valign = Gtk.Align.CENTER;
+             entry.caps_lock_warning = true;
+-            entry.button_release_event.connect ((widget, event) => {
+-                if (event.button == 1)
+-                    show_toggle_visibility_icon (entry);
+-                return false;
+-            });
+-            entry.key_press_event.connect ((widget, event) => {
+-                switch (event.keyval) {
+-                    case Gdk.Key.Left:
+-                    case Gdk.Key.KP_Left:
+-                    case Gdk.Key.Right:
+-                    case Gdk.Key.KP_Right:
+-                        show_toggle_visibility_icon (entry);
+-                        return false;
+-                    case Gdk.Key.F8:
+-                        if (Gdk.ModifierType.MOD1_MASK in event.state) {
+-                            entry.set_visibility (!entry.get_visibility ());
+-                            show_toggle_visibility_icon (entry);
+-                            return true;
+-                        }
+-                        break;
+-                }
+-                return base.key_press_event (event);
+-            });
+-            entry.icon_press.connect(entry_icon_press_cb);
+         }
+
+         entry.respond.connect (entry_activate_cb);
+
+-        attach_item (entry);
++        // LightDM reports an authentication error before it emits the next
++        // password prompt.  Reinsert the error after that prompt so it is
++        // always read as feedback for the field, not as a heading.
++        var error_to_reposition = latest_error_label;
++        if (error_to_reposition != null)
++        {
++            box_grid.remove (error_to_reposition);
++            latest_error_label = null;
++            last_row -= 1;
++        }
+
+-        return entry;
+-    }
++        attach_item (entry);
+
+-    public void show_toggle_visibility_icon (Gtk.Entry entry)
+-    {
+-        if (entry.get_visibility ()) {
+-            entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, "xsi-view-conceal-symbolic");
+-        }
+-        else {
+-            entry.set_icon_from_icon_name(Gtk.EntryIconPosition.PRIMARY, "xsi-view-reveal-symbolic");
++        if (error_to_reposition != null)
++        {
++            attach_item (error_to_reposition, false);
++            latest_error_label = error_to_reposition;
+         }
+-    }
+
+-    public void entry_icon_press_cb (Gtk.Entry entry, Gtk.EntryIconPosition position, Gdk.Event event)
+-    {
+-        entry.set_visibility (!entry.get_visibility ());
+-        show_toggle_visibility_icon (entry);
++        return entry;
+     }
+
+     public Gtk.ComboBox add_combo (GenericArray<string> texts, bool read_only)
+diff --git a/src/session-list.vala b/src/session-list.vala
+index d55dc00..ef8669c 100644
+--- a/src/session-list.vala
++++ b/src/session-list.vala
+@@ -19,6 +19,7 @@
+
+ public class SessionPrompt : PromptBox
+ {
++    public signal void cancel_requested ();
+     public string session { get; construct; }
+     public string default_session { get; construct; }
+
+@@ -31,9 +32,28 @@ public class SessionPrompt : PromptBox
+
+     construct
+     {
+-        label = _("Select desktop environment");
++        label = _("Desktop session");
+         name_label.vexpand = false;
+         hide_avatar();
++        set_show_identity_marks (false);
++
++        var close_button = new Gtk.Button.with_label ("×");
++        close_button.get_style_context ().add_class ("session-dialog-close");
++        close_button.get_accessible ().set_name (_("Close session chooser"));
++        Gtk.button_set_focus_on_click (close_button, false);
++        close_button.relief = Gtk.ReliefStyle.NONE;
++        close_button.halign = Gtk.Align.END;
++        close_button.valign = Gtk.Align.CENTER;
++        close_button.set_size_request (28, 28);
++        close_button.clicked.connect (() => { cancel_requested (); });
++        close_button.show ();
++        name_grid.attach (close_button, COL_NAME_OPTIONS, ROW_NAME, 1, 1);
++
++        var description = new Gtk.Label (_("Choose the environment for this login."));
++        description.get_style_context ().add_class ("session-description");
++        description.halign = Gtk.Align.START;
++        description.show ();
++        attach_item (description, false);
+
+         box = new ToggleBox (default_session, session);
+
+@@ -51,7 +71,7 @@ public class SessionPrompt : PromptBox
+             foreach (var session in LightDM.get_sessions ())
+             {
+                 debug ("Adding session %s (%s)", session.key, session.name);
+-                box.add_item (session.key, session.name, SessionList.get_badge (session.key));
++                box.add_item (session.key, display_name (session.key, session.name), SessionList.get_badge (session.key));
+             }
+         }
+
+@@ -61,6 +81,15 @@ public class SessionPrompt : PromptBox
+         attach_item (box);
+     }
+
++    private string display_name (string key, string name)
++    {
++        if (key == "dwm-jangir")
++            return "DWM";
++        if (key == "kde-plasma-session-selector-test")
++            return "KDE Plasma — test";
++        return name;
++    }
++
+     private void selected_cb ()
+     {
+         respond ({ box.selected_key });
+@@ -70,6 +99,7 @@ public class SessionPrompt : PromptBox
+ public class SessionList : GreeterList
+ {
+     public signal void session_clicked (string session);
++    public signal void cancel_requested ();
+     public string session { get; construct; }
+     public string default_session { get; construct; }
+
+@@ -91,6 +121,7 @@ public class SessionList : GreeterList
+     {
+         var e = new SessionPrompt (id, session, default_session);
+         e.respond.connect ((responses) => { session_clicked (responses[0]); });
++        e.cancel_requested.connect (() => { cancel_requested (); });
+         add_entry (e);
+         return e;
+     }
+diff --git a/src/shutdown-dialog.vala b/src/shutdown-dialog.vala
+index 34d7cf3..8c106ab 100644
+--- a/src/shutdown-dialog.vala
++++ b/src/shutdown-dialog.vala
+@@ -105,7 +105,8 @@ public class ShutdownDialog : Gtk.Fixed
+             var title_label = new Gtk.Label (_("Shut Down"));
+             title_label.visible = true;
+             title_label.override_font (Pango.FontDescription.from_string ("Ubuntu Light 15"));
+-            title_label.override_color (Gtk.StateFlags.NORMAL, { 1.0f, 1.0f, 1.0f, 1.0f });
++            title_label.override_color (Gtk.StateFlags.NORMAL, { 0.90f, 0.93f, 0.96f, 1.0f });
++            title_label.override_color (Gtk.StateFlags.INSENSITIVE, { 0.90f, 0.93f, 0.96f, 1.0f });
+             title_label.set_alignment (0.0f, 0.5f);
+             vbox.pack_start (title_label, false, false, 0);
+
+@@ -139,7 +140,8 @@ public class ShutdownDialog : Gtk.Fixed
+         var label = new Gtk.Label (text);
+         label.set_line_wrap (true);
+         label.override_font (Pango.FontDescription.from_string ("Ubuntu Light 12"));
+-        label.override_color (Gtk.StateFlags.NORMAL, { 1.0f, 1.0f, 1.0f, 1.0f });
++        label.override_color (Gtk.StateFlags.NORMAL, { 0.90f, 0.93f, 0.96f, 1.0f });
++        label.override_color (Gtk.StateFlags.INSENSITIVE, { 0.90f, 0.93f, 0.96f, 1.0f });
+         label.set_alignment (0.0f, 0.5f);
+         label.visible = true;
+         vbox.pack_start (label, false, false, 0);
+@@ -225,7 +227,9 @@ public class ShutdownDialog : Gtk.Fixed
+         close_button = new DialogButton (Path.build_filename (Config.PKGDATADIR, "dialog_close.svg"), Path.build_filename (Config.PKGDATADIR, "dialog_close_highlight.svg"), Path.build_filename (Config.PKGDATADIR, "dialog_close_press.svg"));
+         close_button.can_focus = false;
+         close_button.clicked.connect (() => { close (); });
+-        close_button.visible = true;
++        // Click outside the card or press Escape to cancel.  Avoid the large
++        // legacy close ornament so the dialog remains a single clean card.
++        close_button.visible = false;
+         add (close_button);
+
+         animation = new AnimateTimer ((x) => { return x; }, AnimateTimer.INSTANT);
+@@ -380,18 +384,6 @@ public class ShutdownDialog : Gtk.Fixed
+
+     public override bool draw (Cairo.Context c)
+     {
+-        if (corner_surface == null)
+-        {
+-            corner_surface = new Cairo.ImageSurface.from_png (Path.build_filename (Config.PKGDATADIR, "switcher_corner.png"));
+-            left_surface = new Cairo.ImageSurface.from_png (Path.build_filename (Config.PKGDATADIR, "switcher_left.png"));
+-            top_surface = new Cairo.ImageSurface.from_png (Path.build_filename (Config.PKGDATADIR, "switcher_top.png"));
+-            corner_pattern = new Cairo.Pattern.for_surface (corner_surface);
+-            left_pattern = new Cairo.Pattern.for_surface (left_surface);
+-            left_pattern.set_extend (Cairo.Extend.REPEAT);
+-            top_pattern = new Cairo.Pattern.for_surface (top_surface);
+-            top_pattern.set_extend (Cairo.Extend.REPEAT);
+-        }
+-
+         int width = vbox_events.get_allocated_width ();
+         int height = vbox_events.get_allocated_height ();
+         int x = (get_allocated_width () - width) / 2;
+@@ -404,105 +396,16 @@ public class ShutdownDialog : Gtk.Fixed
+         c.set_source_rgba (0, 0, 0, 0.25);
+         c.paint ();
+
+-        if (bg_surface == null || animation.is_running)
+-        {
+-            /* Create a new blurred surface of the current surface */
+-            bg_surface = new Cairo.ImageSurface (Cairo.Format.ARGB32, width, height);
+-            var bg_cr = new Cairo.Context (bg_surface);
+-
+-            bg_cr.set_source_surface (c.get_target (), -x - monitor.x, -y - monitor.y);
+-            bg_cr.rectangle (0, 0, width, height);
+-            bg_cr.fill ();
+-
+-            CairoUtils.ExponentialBlur.surface (bg_surface, BLUR_RADIUS);
+-        }
+-
+-        /* Background */
++        /* One quiet, code-drawn card: no legacy texture or heavy frame. */
+         c.save ();
+         c.translate (x, y);
+
+-        CairoUtils.rounded_rectangle (c, 0, 0, width, height, 4);
+-        c.set_source_surface (bg_surface, 0, 0);
++        CairoUtils.rounded_rectangle (c, 0, 0, width, height, 10);
++        c.set_source_rgba (0.06, 0.08, 0.10, 0.98);
+         c.fill_preserve ();
+-        c.set_source_rgba (avg_color.red, avg_color.green, avg_color.blue, avg_color.alpha);
+-        c.fill ();
+-
+-        c.restore();
+-
+-        /* Draw borders */
+-        x -= BORDER_EXTERNAL_SIZE;
+-        y -= BORDER_EXTERNAL_SIZE;
+-        width += BORDER_EXTERNAL_SIZE * 2;
+-        height += BORDER_EXTERNAL_SIZE * 2;
+-
+-        c.save ();
+-        c.translate (x, y);
+-
+-        /* Top left */
+-        var m = Cairo.Matrix.identity ();
+-        corner_pattern.set_matrix (m);
+-        c.set_source (corner_pattern);
+-        c.rectangle (0, 0, BORDER_SIZE, BORDER_SIZE);
+-        c.fill ();
+-
+-        /* Top right */
+-        m = Cairo.Matrix.identity ();
+-        m.translate (width, 0);
+-        m.scale (-1, 1);
+-        corner_pattern.set_matrix (m);
+-        c.set_source (corner_pattern);
+-        c.rectangle (width - BORDER_SIZE, 0, BORDER_SIZE, BORDER_SIZE);
+-        c.fill ();
+-
+-        /* Bottom left */
+-        m = Cairo.Matrix.identity ();
+-        m.translate (0, height);
+-        m.scale (1, -1);
+-        corner_pattern.set_matrix (m);
+-        c.set_source (corner_pattern);
+-        c.rectangle (0, height - BORDER_SIZE, BORDER_SIZE, BORDER_SIZE);
+-        c.fill ();
+-
+-        /* Bottom right */
+-        m = Cairo.Matrix.identity ();
+-        m.translate (width, height);
+-        m.scale (-1, -1);
+-        corner_pattern.set_matrix (m);
+-        c.set_source (corner_pattern);
+-        c.rectangle (width - BORDER_SIZE, height - BORDER_SIZE, BORDER_SIZE, BORDER_SIZE);
+-        c.fill ();
+-
+-        /* Left */
+-        m = Cairo.Matrix.identity ();
+-        left_pattern.set_matrix (m);
+-        c.set_source (left_pattern);
+-        c.rectangle (0, BORDER_SIZE, BORDER_SIZE, height - BORDER_SIZE * 2);
+-        c.fill ();
+-
+-        /* Right */
+-        m = Cairo.Matrix.identity ();
+-        m.translate (width, 0);
+-        m.scale (-1, 1);
+-        left_pattern.set_matrix (m);
+-        c.set_source (left_pattern);
+-        c.rectangle (width - BORDER_SIZE, BORDER_SIZE, BORDER_SIZE, height - BORDER_SIZE * 2);
+-        c.fill ();
+-
+-        /* Top */
+-        m = Cairo.Matrix.identity ();
+-        top_pattern.set_matrix (m);
+-        c.set_source (top_pattern);
+-        c.rectangle (BORDER_SIZE, 0, width - BORDER_SIZE * 2, BORDER_SIZE);
+-        c.fill ();
+-
+-        /* Bottom */
+-        m = Cairo.Matrix.identity ();
+-        m.translate (0, height);
+-        m.scale (1, -1);
+-        top_pattern.set_matrix (m);
+-        c.set_source (top_pattern);
+-        c.rectangle (BORDER_SIZE, height - BORDER_SIZE, width - BORDER_SIZE * 2, BORDER_SIZE);
+-        c.fill ();
++        c.set_source_rgba (0.17, 0.21, 0.26, 1.0);
++        c.set_line_width (1.0);
++        c.stroke ();
+
+         c.restore ();
+
+@@ -524,6 +427,8 @@ public class ShutdownDialog : Gtk.Fixed
+         button_box.pack_start (b, false, false, 0);
+
+         var label = new Gtk.Label (text);
++        label.override_color (Gtk.StateFlags.NORMAL, { 0.90f, 0.93f, 0.96f, 1.0f });
++        label.override_color (Gtk.StateFlags.INSENSITIVE, { 0.90f, 0.93f, 0.96f, 1.0f });
+         var button = new DialogButton (inactive_filename, active_filename, null, label);
+         button.visible = true;
+
+diff --git a/src/toggle-box.vala b/src/toggle-box.vala
+index b70915c..1592324 100644
+--- a/src/toggle-box.vala
++++ b/src/toggle-box.vala
+@@ -58,6 +58,7 @@ public class ToggleBox : Gtk.Box
+     construct
+     {
+         orientation = Gtk.Orientation.VERTICAL;
++        get_style_context ().add_class ("toggle-box");
+     }
+
+     public override bool draw (Cairo.Context c)
+@@ -65,12 +66,6 @@ public class ToggleBox : Gtk.Box
+         Gtk.Allocation allocation;
+         get_allocation (out allocation);
+
+-        CairoUtils.rounded_rectangle (c, 0, 0, allocation.width,
+-                                      allocation.height, 0.1 * grid_size);
+-        c.set_source_rgba (0.5, 0.5, 0.5, 0.5);
+-        c.set_line_width (1);
+-        c.stroke ();
+-
+         return base.draw (c);
+     }
+
+@@ -96,21 +91,10 @@ public class ToggleBox : Gtk.Box
+
+         var hbox = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 6);
+
+-        if (icon != null)
+-        {
+-            var image = new CachedImage (icon);
+-            hbox.pack_start (image, false, false, 0);
+-        }
+-
+         var name = name_in;
+-        if (key == default_key)
+-        {
+-            /* Translators: %s is a session name like KDE or Ubuntu */
+-            name = _("%s (Default)").printf (name);
+-        }
+
+         var label = new Gtk.Label (null);
+-        label.set_markup ("<span font=\"Ubuntu 12.5\">%s</span>".printf (name));
++        label.set_markup ("<span font=\"Cantarell 11\">%s</span>".printf (name));
+         label.halign = Gtk.Align.START;
+         hbox.pack_start (label, true, true, 0);
+
+@@ -122,7 +106,7 @@ public class ToggleBox : Gtk.Box
+         {
+             /* Tighten padding on buttons to not be so large */
+             var style = new Gtk.CssProvider ();
+-            style.load_from_data ("* {padding: 8px 3px;}", -1);
++            style.load_from_data ("* {padding: 0;}", -1);
+             item.get_style_context ().add_provider (style, Gtk.STYLE_PROVIDER_PRIORITY_APPLICATION);
+         }
+         catch (Error e)
+diff --git a/src/user-list.vala b/src/user-list.vala
+index 6d8a177..3638ae7 100644
+--- a/src/user-list.vala
++++ b/src/user-list.vala
+@@ -933,6 +933,7 @@ public class UserList : GreeterList
+     {
+         var session_chooser = new SessionList (background, menubar, session, default_session);
+         session_chooser.session_clicked.connect (session_clicked_cb);
++        session_chooser.cancel_requested.connect (() => { SlickGreeter.singleton.pop_list (); });
+         SlickGreeter.singleton.push_list (session_chooser);
+     }

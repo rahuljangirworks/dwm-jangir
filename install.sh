@@ -863,14 +863,21 @@ print_install_preflight() {
 install_lightdm_config() {
 	local lightdm_config="/etc/lightdm/lightdm.conf"
 	local lightdm_seat_section="SeatDefaults"
-	local lightdm_greeter_session="lightdm-slick-greeter"
+	local lightdm_greeter_session="dwm-jangir-slick-greeter"
 	local lightdm_session_wrapper="/etc/lightdm/Xsession"
 	local lightdm_logind_check=false
 
 	lightdm_seat_section="Seat:*"
-	lightdm_greeter_session="slick-greeter"
+	# The wrapper selects a random bundled background and launches the
+	# version-pinned patched Slick Greeter when its RPM is installed.
+	lightdm_greeter_session="dwm-jangir-slick-greeter"
 	lightdm_session_wrapper=""
 	lightdm_logind_check=true
+
+	if [[ ! -x /usr/libexec/dwm-jangir-slick-greeter-bin ]]; then
+		warn "The custom Slick Greeter RPM is not installed; LightDM will use the safe Fedora greeter fallback until it is installed."
+		warn "Build it with: make -C lightdm rpm"
+	fi
 
 	sudo make -C "$REPO_DIR/lightdm" \
 		LIGHTDM_SEAT_SECTION="$lightdm_seat_section" \
@@ -882,6 +889,10 @@ install_lightdm_config() {
 		sudo restorecon \
 			"$lightdm_config" \
 			/etc/lightdm/slick-greeter.conf \
+			/usr/libexec/dwm-jangir-slick-greeter \
+			/usr/share/xgreeters/dwm-jangir-slick-greeter.desktop \
+			/usr/share/themes/dwm-jangir-dark/gtk-3.0/gtk.css \
+			/usr/share/dwm-jangir/lightdm-backgrounds \
 			/usr/share/pixmaps/dwm-jangir.jpg \
 			/usr/share/pixmaps/dwm-jangir-logo.png
 	fi
