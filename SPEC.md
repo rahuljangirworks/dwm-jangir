@@ -203,7 +203,7 @@ The supported installation flow must:
     X11 session is available, print the deferred setup command instead.
 
 The existing-system installer may enable RPM Fusion nonfree and the
-`christitustech/copr-fedora` COPR only for the explicitly requested gaming
+`rahuljangirworks/copr-fedora` COPR only for the explicitly requested gaming
 profile. Interactive runs require a direct confirmation; non-interactive runs
 require the explicit `--enable-fedora-gaming-repos` approval flag. Recommended
 and full profiles may also add the official Flathub remote for the target user
@@ -212,7 +212,7 @@ It must not enable any other third-party repository.
 
 The Fedora Kickstart image profiles separately predeclare the four image
 repository groups required by that product: RPM Fusion, Brave Browser, MWT
-Packages, and `christitustech/copr-fedora`. Their inclusion is validated as
+Packages, and `rahuljangirworks/copr-fedora`. Their inclusion is validated as
 part of the reviewed ISO profile rather than inferred from existing-system
 installer approval.
 

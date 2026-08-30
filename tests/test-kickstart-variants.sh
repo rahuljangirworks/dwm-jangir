@@ -24,7 +24,7 @@ required_repos=(
 	'repo --name="rpmfusion-nonfree-tainted"'
 	'repo --name="brave-browser"'
 	'repo --name="mwt-packages"'
-	'repo --name="christitustech-copr-fedora"'
+	'repo --name="rahuljangirworks-copr-fedora"'
 )
 
 required_packages=(
