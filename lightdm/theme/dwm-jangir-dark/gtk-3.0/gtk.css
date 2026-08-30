@@ -1,0 +1,63 @@
+/* dwm-jangir minimal LightDM preview.
+ *
+ * This system-level GTK override is read by Slick Greeter only.  It uses
+ * no image assets and does not affect a logged-in dwm-jangir desktop.
+ */
+
+@define-color window_bg_color #0b0f14;
+@define-color view_bg_color #0b0f14;
+@define-color card_bg_color #151b23;
+@define-color accent_bg_color #6ea8fe;
+@define-color accent_fg_color #0b0f14;
+@define-color window_fg_color #e6edf3;
+@define-color borders #2b3542;
+
+/* Slick Greeter draws its configured wallpaper on the window itself. Keep
+ * this transparent so the fallback theme cannot paint over that surface. */
+window,
+window.background {
+    background-color: transparent;
+    color: #e6edf3;
+}
+
+label {
+    color: #e6edf3;
+}
+
+entry {
+    min-height: 42px;
+    padding: 0 12px;
+    border: 1px solid #2b3542;
+    border-radius: 8px;
+    background-image: none;
+    background-color: #151b23;
+    color: #e6edf3;
+    box-shadow: none;
+}
+
+entry:focus {
+    border-color: #6ea8fe;
+    box-shadow: 0 0 0 1px #6ea8fe;
+}
+
+button {
+    min-height: 34px;
+    padding: 0 14px;
+    border: 1px solid #2b3542;
+    border-radius: 8px;
+    background-image: none;
+    background-color: #151b23;
+    color: #e6edf3;
+    box-shadow: none;
+}
+
+button:hover {
+    background-color: #202a36;
+    border-color: #6ea8fe;
+}
+
+button:active,
+button:checked {
+    background-color: #6ea8fe;
+    color: #0b0f14;
+}
