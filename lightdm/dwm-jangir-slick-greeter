@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+# Pick one local wallpaper, then hand off to Slick Greeter.
+# This runs as the lightdm user and never contacts the network.
+set -euo pipefail
+
+readonly asset_dir=/usr/share/dwm-jangir/lightdm-backgrounds
+readonly current_link=/run/lightdm/dwm-jangir-background
+readonly previous_file=/run/lightdm/dwm-jangir-last-background
+readonly greeter_bin=/usr/libexec/dwm-jangir-slick-greeter-bin
+
+shopt -s nullglob
+backgrounds=(
+  "$asset_dir"/*.webp
+  "$asset_dir"/*.jpg
+  "$asset_dir"/*.jpeg
+)
+
+if (( ${#backgrounds[@]} > 0 )); then
+  previous=""
+  if [[ -r "$previous_file" ]]; then
+    IFS= read -r previous < "$previous_file" || true
+  fi
+
+  # Avoid the same wallpaper twice in a row when there is more than one choice.
+  candidates=()
+  for background in "${backgrounds[@]}"; do
+    [[ "$background" != "$previous" ]] && candidates+=("$background")
+  done
+  if (( ${#candidates[@]} == 0 )); then
+    candidates=("${backgrounds[@]}")
+  fi
+
+  selected="${candidates[RANDOM % ${#candidates[@]}]}"
+  ln -sfn -- "$selected" "$current_link"
+
+  state_file=$(mktemp /run/lightdm/dwm-jangir-last-background.XXXXXX)
+  printf '%s\n' "$selected" > "$state_file"
+  mv -f -- "$state_file" "$previous_file"
+fi
+
+if [[ -x "$greeter_bin" ]]; then
+  exec "$greeter_bin" "$@"
+fi
+
+logger -t dwm-jangir-slick-greeter \
+  'Patched greeter binary is missing; falling back to Fedora slick-greeter.'
+exec /usr/sbin/slick-greeter "$@"
