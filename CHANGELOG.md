@@ -8,6 +8,11 @@ versions from `config.mk`.
 
 ### Changed
 
+- Make LightDM select the installed `dwm-jangir` session by default instead
+  of the removed legacy `dwm` session. The generated Fedora configuration and
+  its regression test now use the same runtime identity; a Fedora 44 VM full
+  installation and graphical LightDM login were verified successfully.
+
 - Use the fork-owned `rahuljangirworks/background` wallpaper repository and
   `rahuljangirworks/copr-fedora` Gamescope COPR in the existing-system
   installer and Fedora image profiles.
