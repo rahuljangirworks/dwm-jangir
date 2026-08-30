@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=dwm-jangir Slick Greeter
+Comment=Minimal Slick Greeter with local randomized backgrounds
+Exec=/usr/libexec/dwm-jangir-slick-greeter
+Type=Application

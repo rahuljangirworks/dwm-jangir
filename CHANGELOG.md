@@ -43,6 +43,11 @@ versions from `config.mk`.
   only a complete versioned personalization response, and unavailable or
   malformed providers degrade independently without adding polling or mutation.
 
+- Add a version-pinned Slick Greeter overlay for LightDM: a compact branded
+  login flow, accessible session selection, local random backgrounds, and a
+  minimal hostname/power header. The greeter uses only bundled assets and has
+  a safe Fedora Slick Greeter fallback when the custom RPM is unavailable.
+
 - Persist workspace, volume, Bluetooth, network, and power panel visibility in
   one versioned user-owned state file shared by every monitor, Control Center,
   and Settings. An absent file migrates from the prior implicit all-on state;
