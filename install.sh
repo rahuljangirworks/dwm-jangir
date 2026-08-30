@@ -110,7 +110,7 @@ MESLO_SHA256="13b502ac8c2bd9d3161018064560e23cd42b175bb730780a270975265a19ad57"
 NORDIC_THEME_URL="https://github.com/EliverLara/Nordic.git"
 NORDIC_THEME_REF="master"
 ARCH="$(uname -m)"
-FEDORA_GAMING_COPR="christitustech/copr-fedora"
+FEDORA_GAMING_COPR="rahuljangirworks/copr-fedora"
 INSTALL_PROFILE="${DWM_INSTALL_PROFILE:-full}"
 HERDR_INSTALL_MODE="${DWM_INSTALL_HERDR:-false}"
 NON_INTERACTIVE=false
@@ -1039,7 +1039,7 @@ if install_optional_profile; then
 	mkdir -p "$HOME/Pictures"
 	if [ ! -d "$BG_DIR" ]; then
 		info "Downloading Nord wallpapers..."
-		if git clone https://github.com/ChrisTitusTech/nord-background.git "$BG_DIR" 2>/dev/null; then
+		if git clone https://github.com/rahuljangirworks/background.git "$BG_DIR" 2>/dev/null; then
 			ok "Wallpapers downloaded to $BG_DIR"
 		else
 			warn "Failed to download wallpapers. Add your own to $BG_DIR."

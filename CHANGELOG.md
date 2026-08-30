@@ -113,6 +113,9 @@ versions from `config.mk`.
   Clipboard history and reminders are deferred pending explicit privacy,
   lifecycle, and recovery contracts; emoji/symbol and generic image pickers are
   rejected because no current product workflow requires them.
+- Use the fork-owned `rahuljangirworks/background` wallpaper repository and
+  `rahuljangirworks/copr-fedora` Gamescope COPR in the existing-system
+  installer and Fedora image profiles.
 
 ### Added
 
