@@ -6,6 +6,12 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Changed
+
+- Use the fork-owned `rahuljangirworks/background` wallpaper repository and
+  `rahuljangirworks/copr-fedora` Gamescope COPR in the existing-system
+  installer and Fedora image profiles.
+
 ### Added
 
 - Persist workspace, volume, Bluetooth, network, and power panel visibility in

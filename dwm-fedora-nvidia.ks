@@ -33,7 +33,7 @@ gaming_packages=/tmp/dwm-jangir-gaming-packages
 case "$(uname -m)" in
 x86_64)
 	cat >"$gaming_repo" <<'EOF'
-repo --name="christitustech-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/christitustech/copr-fedora/fedora-$releasever-$basearch/" --install
+repo --name="rahuljangirworks-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/rahuljangirworks/copr-fedora/fedora-$releasever-$basearch/" --install
 EOF
 	cat >"$gaming_packages" <<'EOF'
 steam
