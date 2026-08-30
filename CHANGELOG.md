@@ -18,6 +18,10 @@ versions from `config.mk`.
   display and capability cards, and using dense text-scale-aware rows while
   preserving the existing navigation, context, and controls.
 
+- Use the fork-owned `rahuljangirworks/background` wallpaper repository and
+  `rahuljangirworks/copr-fedora` Gamescope COPR in the existing-system
+  installer and Fedora image profiles.
+
 ### Added
 
 - Group the existing bounded application text-scale choices under a dedicated
