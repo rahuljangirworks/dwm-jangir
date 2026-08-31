@@ -340,10 +340,10 @@ index a756ae2..1b3b8b0 100644
          redraw_greeter_box ();
      }
 diff --git a/src/main-window.vala b/src/main-window.vala
-index b275ff7..bede7a9 100644
+index b275ff7..cf79b00 100644
 --- a/src/main-window.vala
 +++ b/src/main-window.vala
-@@ -18,6 +18,343 @@
+@@ -18,6 +18,345 @@
   *          Michael Terry <michael.terry@canonical.com>
   */
  
@@ -377,7 +377,9 @@ index b275ff7..bede7a9 100644
 +        can_focus = false;
 +        /* A tiny Cairo-only pulse makes the path feel alive without another
 +         * widget, image, or network request. */
-+        Timeout.add (40, () => {
++        /* Six frames per second is smooth enough for the small travelling
++         * dash, and avoids repainting the full transparent greeter at 25 FPS. */
++        Timeout.add (160, () => {
 +            if (visible)
 +                queue_draw ();
 +            return true;
@@ -687,12 +689,13 @@ index b275ff7..bede7a9 100644
  public class MainWindow : Gtk.Window
  {
      public MenuBar menubar;
-@@ -31,6 +368,19 @@ public class MainWindow : Gtk.Window
+@@ -31,6 +370,21 @@ public class MainWindow : Gtk.Window
      private Gtk.Box login_box;
      private Gtk.Box hbox;
      private Gtk.Box content_box;
 +    private Gtk.Label greeter_date;
 +    private Gtk.Label greeter_clock;
++    private Gtk.Label greeter_local_status;
 +    private Gtk.Box solar_box;
 +    private Gtk.Box solar_sunrise_event;
 +    private Gtk.Box solar_sunset_event;
@@ -703,11 +706,12 @@ index b275ff7..bede7a9 100644
 +    private int solar_sunset_minutes = -1;
 +    private string solar_sunrise_text = "";
 +    private string solar_sunset_text = "";
++    private string weather_location = "";
 +    private bool weather_fetch_active = false;
      private Gtk.Button back_button;
      private ShutdownDialog? shutdown_dialog = null;
      private bool do_resize;
-@@ -38,11 +388,11 @@ public class MainWindow : Gtk.Window
+@@ -38,11 +392,11 @@ public class MainWindow : Gtk.Window
      public ListStack stack;
  
      // Menubar is smaller, but with shadow, we reserve more space
@@ -721,7 +725,7 @@ index b275ff7..bede7a9 100644
  
          var accel_group = new Gtk.AccelGroup ();
          add_accel_group (accel_group);
-@@ -54,24 +404,427 @@ public class MainWindow : Gtk.Window
+@@ -54,24 +408,437 @@ public class MainWindow : Gtk.Window
          has_resize_grip = false;
          SlickGreeter.add_style_class (this);
  
@@ -770,6 +774,16 @@ index b275ff7..bede7a9 100644
 +                    color: #e5eaf0;
 +                    font-size: 24px;
 +                    font-weight: 500;
++                }
++                label.greeter-local-status {
++                    color: #8997aa;
++                    font-size: 14px;
++                    font-weight: 400;
++                }
++                label.greeter-system-name {
++                    color: #8997aa;
++                    font-size: 14px;
++                    font-weight: 400;
 +                }
 +                label.greeter-weather {
 +                    color: #c4ceda;
@@ -1155,7 +1169,18 @@ index b275ff7..bede7a9 100644
          try
          {
              var style = new Gtk.CssProvider ();
-@@ -98,9 +851,156 @@ public class MainWindow : Gtk.Window
+@@ -85,7 +852,9 @@ public class MainWindow : Gtk.Window
+             debug ("Internal error loading menubox style: %s", e.message);
+         }
+         menubox.set_size_request (-1, MENUBAR_HEIGHT);
+-        menubox.show ();
++        /* Keep MenuBar alive for its existing greeter hooks, but do not
++         * render the legacy top panel. */
++        menubox.no_show_all = true;
+         menualign.show ();
+         menubox.add (menualign);
+         login_box.add (menubox);
+@@ -98,9 +867,175 @@ public class MainWindow : Gtk.Window
          SlickGreeter.add_style_class (menubar);
  
          content_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
@@ -1179,7 +1204,7 @@ index b275ff7..bede7a9 100644
 +        var clock_box = new Gtk.Box (Gtk.Orientation.VERTICAL, 4);
 +        clock_box.halign = Gtk.Align.CENTER;
 +        clock_box.valign = Gtk.Align.START;
-+        clock_box.margin_top = 16;
++        clock_box.margin_top = 64;
 +        clock_box.show ();
 +
 +        greeter_date = new Gtk.Label ("");
@@ -1264,6 +1289,25 @@ index b275ff7..bede7a9 100644
 +
 +        content_overlay.add_overlay (clock_box);
 +
++        greeter_local_status = new Gtk.Label ("");
++        greeter_local_status.get_style_context ().add_class ("greeter-local-status");
++        greeter_local_status.halign = Gtk.Align.START;
++        greeter_local_status.valign = Gtk.Align.END;
++        /* Match the bottom-right power action group's outer inset. */
++        greeter_local_status.margin_start = 32;
++        greeter_local_status.margin_bottom = 28;
++        greeter_local_status.xalign = 0.0f;
++        greeter_local_status.show ();
++        content_overlay.add_overlay (greeter_local_status);
++
++        var greeter_system_name = new Gtk.Label (Posix.utsname ().nodename);
++        greeter_system_name.get_style_context ().add_class ("greeter-system-name");
++        greeter_system_name.halign = Gtk.Align.CENTER;
++        greeter_system_name.valign = Gtk.Align.END;
++        greeter_system_name.margin_bottom = 28;
++        greeter_system_name.show ();
++        content_overlay.add_overlay (greeter_system_name);
++
 +        var power_actions = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 20);
 +        power_actions.get_style_context ().add_class ("bottom-power-actions");
 +        power_actions.halign = Gtk.Align.END;
@@ -1313,7 +1357,7 @@ index b275ff7..bede7a9 100644
  
          var content_align = UGSettings.get_string(UGSettings.KEY_CONTENT_ALIGN);
          var x_align = 0.5f;
-@@ -139,16 +1039,20 @@ public class MainWindow : Gtk.Window
+@@ -139,16 +1074,20 @@ public class MainWindow : Gtk.Window
          hbox.add (align);
  
          back_button = new FlatButton ();
@@ -1335,7 +1379,7 @@ index b275ff7..bede7a9 100644
          align.show ();
          hbox.add (align);
  
-@@ -197,8 +1101,10 @@ public class MainWindow : Gtk.Window
+@@ -197,8 +1136,10 @@ public class MainWindow : Gtk.Window
      {
          stack.push (widget);
  
@@ -1347,7 +1391,7 @@ index b275ff7..bede7a9 100644
      }
  
      public void pop_list ()
-@@ -367,6 +1273,154 @@ public class MainWindow : Gtk.Window
+@@ -367,6 +1308,179 @@ public class MainWindow : Gtk.Window
          push_list (greeter_list);
      }
  
@@ -1357,6 +1401,7 @@ index b275ff7..bede7a9 100644
 +        var clock_format = UGSettings.get_string (UGSettings.KEY_CLOCK_FORMAT);
 +        greeter_date.set_label (current_time.format ("%A, %d %B %Y"));
 +        greeter_clock.set_label (current_time.format (clock_format));
++        update_greeter_local_status (current_time);
 +        if (solar_sunrise_minutes >= 0 && solar_sunset_minutes > solar_sunrise_minutes)
 +        {
 +            var minutes = current_time.get_hour () * 60 + current_time.get_minute ();
@@ -1365,6 +1410,28 @@ index b275ff7..bede7a9 100644
 +            solar_timeline.set_current_time (precise_minutes);
 +        }
 +        return true;
++    }
++
++    private string format_local_offset (DateTime current_time)
++    {
++        var offset = current_time.format ("%z");
++        if (offset.length == 5)
++        {
++            var sign = offset.substring (0, 1);
++            var hour = int.parse (offset.substring (1, 2));
++            return "GMT%s%d:%s".printf (sign, hour, offset.substring (3, 2));
++        }
++        return current_time.format ("%Z");
++    }
++
++    private void update_greeter_local_status (DateTime current_time)
++    {
++        var local_time = current_time.format ("%I:%M %p");
++        var status = "Local time: %s %s".printf (local_time,
++            format_local_offset (current_time));
++        if (weather_location != "")
++            status = "%s • %s".printf (weather_location, status);
++        greeter_local_status.set_label (status);
 +    }
 +
 +    private void update_solar_next_event (int current_minutes)
@@ -1474,6 +1541,8 @@ index b275ff7..bede7a9 100644
 +                        if (sunrise >= 0 && sunset > sunrise)
 +                        {
 +                            var now = new DateTime.now_local ();
++                            weather_location = weather_data.location;
++                            update_greeter_local_status (now);
 +                            solar_sunrise_minutes = sunrise;
 +                            solar_sunset_minutes = sunset;
 +                            solar_sunrise_text = format_solar_time (weather_data.sunrise);
@@ -1502,7 +1571,7 @@ index b275ff7..bede7a9 100644
      public override bool key_press_event (Gdk.EventKey event)
      {
          var top = stack.top ();
-@@ -400,6 +1454,7 @@ public class MainWindow : Gtk.Window
+@@ -400,6 +1514,7 @@ public class MainWindow : Gtk.Window
          switch (event.keyval)
          {
          case Gdk.Key.Escape:
@@ -1510,7 +1579,7 @@ index b275ff7..bede7a9 100644
              if (login_box.sensitive)
                  top.cancel_authentication ();
              if (shutdown_dialog != null)
-@@ -464,11 +1519,62 @@ public class MainWindow : Gtk.Window
+@@ -464,11 +1579,62 @@ public class MainWindow : Gtk.Window
          return base.key_press_event (event);
      }
  
@@ -1573,7 +1642,7 @@ index b275ff7..bede7a9 100644
      public void show_shutdown_dialog (ShutdownDialogType type)
      {
          if (shutdown_dialog != null)
-@@ -476,6 +1582,9 @@ public class MainWindow : Gtk.Window
+@@ -476,6 +1642,9 @@ public class MainWindow : Gtk.Window
  
          /* Stop input to login box */
          login_box.sensitive = false;
@@ -1583,7 +1652,7 @@ index b275ff7..bede7a9 100644
  
          shutdown_dialog = new ShutdownDialog (type, background);
          shutdown_dialog.closed.connect (close_shutdown_dialog);
-@@ -492,6 +1601,7 @@ public class MainWindow : Gtk.Window
+@@ -492,6 +1661,7 @@ public class MainWindow : Gtk.Window
          shutdown_dialog.destroy ();
          shutdown_dialog = null;
  
