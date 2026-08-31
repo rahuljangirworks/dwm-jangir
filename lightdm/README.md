@@ -1,10 +1,10 @@
 # LightDM Slick Greeter - dwm-jangir
 
-The dwm-jangir login screen is a small, version-pinned overlay for Fedora's
-Slick Greeter 2.2.6. It provides a compact dark login card, a desktop-session
-selector, a minimal hostname/power panel, and a random local background chosen
-at each greeter start. It does not force a display mode or make network calls
-from the login screen.
+The dwm-jangir login screen is a small, version-pinned GTK/Vala overlay for
+Fedora's Slick Greeter 2.2.6. It provides a compact dark login card, a
+desktop-session selector, centered date/time and a solar timeline, plus
+bottom-corner status/actions. It does not force a display mode or alter
+LightDM authentication or session handling.
 
 ## Files
 
@@ -30,12 +30,30 @@ the default card compact while errors and signing-in feedback have room.
 The large clock also shows the local date and, when networking is available,
 a compact sunrise/sunset timeline. Solar times are fetched from the free
 `wttr.in` endpoint without an API key in a background worker, with a
-four-second timeout and a fifteen-minute refresh interval. If the request
-fails, the greeter keeps working and simply hides the solar panel.
+four-second timeout and a fifteen-minute refresh interval. It shows one next
+solar event, using the sun by day and a moon by night. If the request fails,
+the greeter keeps working and simply hides the solar panel.
 
-The greeter also applies a lightweight, deterministic film-grain veil above
-the selected wallpaper and below the GTK controls. It softens bright images
-without replacing, downloading, or changing the random-wallpaper logic.
+The greeter also applies a lightweight, deterministic code-pattern and
+film-grain veil below the GTK controls. It preserves the random-wallpaper
+selection logic without making a wallpaper the visible UI surface. Keep these
+effects static and low-cost; do not introduce full-screen per-frame redraws.
+
+## Session inventory and UI maintenance
+
+LightDM lists real `.desktop` files from `/usr/share/xsessions/` (and, where
+used, `/usr/share/wayland-sessions/`). Do not leave test-only desktop entries
+installed: they appear as real login choices. Remove or move an exactly
+identified test entry only after confirming the real `dwm-jangir.desktop`
+entry remains.
+
+The source of truth for GTK/Vala UI changes is
+`rpm/patches/0001-dwm-jangir-greeter-ui.patch`, not the installed binary.
+Recreate the patch from the pinned Slick Greeter source, run the LightDM
+configuration test, build/install the RPM, restart LightDM, and inspect the
+actual `1920x1080` VM render. The solar timeline intentionally redraws at a
+modest six FPS; check that the active greeter remains lightweight before
+handoff.
 
 ## Build the patched greeter RPM
 
@@ -78,3 +96,15 @@ Edit `slick-greeter.conf` before running `sudo make install`:
 
 Do not add `display-setup-script` or a static `xrandr` command to LightDM.
 Use `dwm-display-setup` from an X11 session for persistent display settings.
+
+## Verification checklist
+
+- The login screen renders at the expected `1920x1080` VM resolution.
+- The DWM selector shows the DWM mark and opens the session picker.
+- Every remaining real desktop session can be selected and launched; no
+  temporary/test desktop session is listed.
+- Invalid passwords and signing-in feedback remain readable below the entry.
+- Bottom-right Suspend, Restart, and Shut Down controls each request
+  confirmation before action.
+- `systemctl is-active lightdm` succeeds and the current-boot LightDM journal
+  has no new warnings or errors after the test restart.
