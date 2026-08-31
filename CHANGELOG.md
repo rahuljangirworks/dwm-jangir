@@ -217,8 +217,10 @@ versions from `config.mk`.
 - Add a version-pinned Slick Greeter overlay for LightDM: a compact branded
   login flow, accessible session selection, local random backgrounds, and a
   minimal hostname/power header. The DWM session selector now uses a compact
-  official DWM mark. The greeter uses only bundled assets and has a safe Fedora
-  Slick Greeter fallback when the custom RPM is unavailable.
+  official DWM mark. Default, focused, invalid-password, session-picker,
+  power-menu, confirmation, and signing-in states now share one stable modern
+  layout. The greeter uses only bundled assets and has a safe Fedora Slick
+  Greeter fallback when the custom RPM is unavailable.
 
 - Persist workspace, volume, Bluetooth, network, and power panel visibility in
   one versioned user-owned state file shared by every monitor, Control Center,
