@@ -18,6 +18,7 @@ BuildRequires:  pkgconfig(libcanberra)
 BuildRequires:  pkgconfig(xapp)
 BuildRequires:  vala
 Requires:       slick-greeter = %{version}
+Requires:       curl
 
 %description
 The dwm-jangir visual overlay for Slick Greeter 2.2.6. It installs only the

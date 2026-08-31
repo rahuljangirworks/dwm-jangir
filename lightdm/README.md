@@ -27,6 +27,16 @@ power menu, shutdown/restart confirmation, and the signing-in state. The
 authentication status row is created only while feedback is visible, keeping
 the default card compact while errors and signing-in feedback have room.
 
+The large clock also shows the local date and, when networking is available,
+a compact sunrise/sunset timeline. Solar times are fetched from the free
+`wttr.in` endpoint without an API key in a background worker, with a
+four-second timeout and a fifteen-minute refresh interval. If the request
+fails, the greeter keeps working and simply hides the solar panel.
+
+The greeter also applies a lightweight, deterministic film-grain veil above
+the selected wallpaper and below the GTK controls. It softens bright images
+without replacing, downloading, or changing the random-wallpaper logic.
+
 ## Build the patched greeter RPM
 
 The UI patch targets exactly Slick Greeter 2.2.6, matching Fedora 44. Build it
