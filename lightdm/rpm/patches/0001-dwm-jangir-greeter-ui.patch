@@ -1,8 +1,17 @@
 diff --git a/src/background.vala b/src/background.vala
-index 29fdf84..78b40e1 100644
+index 29fdf84..cd12bd0 100644
 --- a/src/background.vala
 +++ b/src/background.vala
-@@ -491,6 +491,8 @@ public class Background : Gtk.Fixed
+@@ -394,6 +394,8 @@ public class Background : Gtk.Fixed
+         SPAN,
+     }
+     private DrawFlags flags = DrawFlags.NONE;
++    /* Pick one image-free background treatment for this greeter instance. */
++    private int minimal_pattern = -1;
+ 
+     /* Fallback color - shown upon first startup, until an async background loader finishes,
+      * or until a user background or default background is loaded.
+@@ -491,6 +493,8 @@ public class Background : Gtk.Fixed
      public Gdk.RGBA average_color { get { return current.average_color; } }
  
      private Cairo.Surface target_surface;
@@ -11,10 +20,21 @@ index 29fdf84..78b40e1 100644
  
      private List<Monitor> monitors = null;
      private Monitor? active_monitor = null;
-@@ -671,12 +673,53 @@ public class Background : Gtk.Fixed
+@@ -528,6 +532,7 @@ public class Background : Gtk.Fixed
+     public void set_surface (Cairo.Surface target_surface)
+     {
+         this.target_surface = target_surface;
++        minimal_pattern = Random.int_range (0, 5);
+ 
+         timer = new AnimateTimer (AnimateTimer.ease_in_out, 700);
+ 
+@@ -671,12 +676,140 @@ public class Background : Gtk.Fixed
          if (current.load () && alpha > 0.0)
              draw_background (c, current, old_painted ? alpha : 1.0);
  
++        /* Preserve wallpaper selection/loading for compatibility, while the
++         * visible greeter surface is intentionally image-free. */
++        draw_minimal_line_background (c);
 +        overlay_film_grain (c);
 +
          c.restore ();
@@ -23,8 +43,92 @@ index 29fdf84..78b40e1 100644
              overlay_grid (c);
      }
  
-+    /* A single small, deterministic texture softens every local wallpaper
-+     * without changing wallpaper selection or requiring another image asset. */
++    /* Image-free Cairo equivalents of the supplied CSS line treatments. */
++    private void draw_minimal_line_background (Cairo.Context c)
++    {
++        var width = get_allocated_width ();
++        var height = get_allocated_height ();
++        if (width <= 0 || height <= 0)
++            return;
++
++        c.save ();
++        c.set_source_rgb (0.059, 0.082, 0.114); /* #0f151d */
++        c.rectangle (0, 0, width, height);
++        c.fill ();
++
++        c.set_line_width (1.0);
++
++        if (minimal_pattern == 0)
++        {
++            /* Vertical 8px grid, fading toward the bottom. */
++            var lines = new Cairo.Pattern.linear (0, 0, 0, height);
++            lines.add_color_stop_rgba (0.0, 0.37, 0.61, 1.0, 0.50);
++            lines.add_color_stop_rgba (0.80, 0.37, 0.61, 1.0, 0.0);
++            lines.add_color_stop_rgba (1.0, 0.37, 0.61, 1.0, 0.0);
++            c.set_source (lines);
++            for (var x = 0; x <= width; x += 8)
++            {
++                c.move_to (x + 0.5, 0);
++                c.line_to (x + 0.5, height);
++            }
++        }
++        else if (minimal_pattern == 1 || minimal_pattern == 2)
++        {
++            /* Mirrored 45-degree marks with a left/right fade. */
++            var diagonal_fade = new Cairo.Pattern.linear (0, 0, width, 0);
++            if (minimal_pattern == 1)
++            {
++                diagonal_fade.add_color_stop_rgba (0.0, 0.37, 0.61, 1.0, 0.50);
++                diagonal_fade.add_color_stop_rgba (0.75, 0.37, 0.61, 1.0, 0.0);
++                diagonal_fade.add_color_stop_rgba (1.0, 0.37, 0.61, 1.0, 0.0);
++            }
++            else
++            {
++                diagonal_fade.add_color_stop_rgba (0.0, 0.37, 0.61, 1.0, 0.0);
++                diagonal_fade.add_color_stop_rgba (0.25, 0.37, 0.61, 1.0, 0.0);
++                diagonal_fade.add_color_stop_rgba (1.0, 0.37, 0.61, 1.0, 0.50);
++            }
++            c.set_source (diagonal_fade);
++            for (var x = -height; x <= width + height; x += 12)
++            {
++                c.move_to (x, 0);
++                c.line_to (minimal_pattern == 1 ? x + height : x - height, height);
++            }
++        }
++        else if (minimal_pattern == 3)
++        {
++            /* Four-pixel scan-lines, fading toward the bottom. */
++            var scan_fade = new Cairo.Pattern.linear (0, 0, 0, height);
++            scan_fade.add_color_stop_rgba (0.0, 0.37, 0.61, 1.0, 0.50);
++            scan_fade.add_color_stop_rgba (0.75, 0.37, 0.61, 1.0, 0.0);
++            scan_fade.add_color_stop_rgba (1.0, 0.37, 0.61, 1.0, 0.0);
++            c.set_source (scan_fade);
++            for (var y = 3; y <= height; y += 4)
++            {
++                c.move_to (0, y + 0.5);
++                c.line_to (width, y + 0.5);
++            }
++        }
++        else
++        {
++            /* Wider vertical grid with the centered radial-style fade. */
++            var centered_fade = new Cairo.Pattern.linear (0, 0, width, 0);
++            centered_fade.add_color_stop_rgba (0.0, 0.37, 0.61, 1.0, 0.0);
++            centered_fade.add_color_stop_rgba (0.10, 0.37, 0.61, 1.0, 0.18);
++            centered_fade.add_color_stop_rgba (0.50, 0.37, 0.61, 1.0, 0.50);
++            centered_fade.add_color_stop_rgba (0.90, 0.37, 0.61, 1.0, 0.18);
++            centered_fade.add_color_stop_rgba (1.0, 0.37, 0.61, 1.0, 0.0);
++            c.set_source (centered_fade);
++            for (var x = 0; x <= width; x += 15)
++            {
++                c.move_to (x + 0.5, 0);
++                c.line_to (x + 0.5, height);
++            }
++        }
++        c.stroke ();
++        c.restore ();
++    }
++
 +    private void overlay_film_grain (Cairo.Context c)
 +    {
 +        var width = get_allocated_width ();
@@ -107,10 +211,10 @@ index ac7397d..1855690 100644
          c.stroke ();
          c.restore ();
 diff --git a/src/dash-entry.vala b/src/dash-entry.vala
-index d92dff0..545c0b4 100644
+index d92dff0..a1f7ff8 100644
 --- a/src/dash-entry.vala
 +++ b/src/dash-entry.vala
-@@ -23,7 +23,8 @@ extern bool gtk_style_context_lookup_color (Gtk.StyleContext ctx, string color_n
+@@ -23,10 +23,14 @@ extern bool gtk_style_context_lookup_color (Gtk.StyleContext ctx, string color_n
  
  public class DashEntry : Gtk.Entry, Fadable
  {
@@ -120,7 +224,21 @@ index d92dff0..545c0b4 100644
      public signal void respond ();
  
      public string constant_placeholder_text { get; set; }
-@@ -136,8 +137,10 @@ public class DashEntry : Gtk.Entry, Fadable
++    /* The greeter paints the placeholder itself, so it must use the same
++     * font as the entry text when a password field changes its text size. */
++    public string placeholder_font { get; set; }
+     public bool can_respond { get; set; default = true; }
+ 
+     private bool _did_respond;
+@@ -54,6 +58,7 @@ public class DashEntry : Gtk.Entry, Fadable
+     construct
+     {
+         fade_tracker = new FadeTracker (this);
++        placeholder_font = font;
+ 
+         notify["can-respond"].connect (queue_draw);
+         button_press_event.connect (button_press_event_cb);
+@@ -136,8 +141,10 @@ public class DashEntry : Gtk.Entry, Fadable
          c.save ();
  
          var arrow_size = get_arrow_size ();
@@ -132,16 +250,16 @@ index d92dff0..545c0b4 100644
          Gdk.cairo_set_source_pixbuf (c, arrow_pixbuf, 0, 0);
  
          c.paint ();
-@@ -153,7 +156,7 @@ public class DashEntry : Gtk.Entry, Fadable
+@@ -153,7 +160,7 @@ public class DashEntry : Gtk.Entry, Fadable
          Gdk.Rectangle rect;
  
          var layout = create_pango_layout (constant_placeholder_text);
 -        layout.set_font_description (Pango.FontDescription.from_string ("Ubuntu 13"));
-+        layout.set_font_description (Pango.FontDescription.from_string (font));
++        layout.set_font_description (Pango.FontDescription.from_string (placeholder_font));
          layout.get_pixel_size (out layout_width, out layout_height);
  
          get_text_area (out rect);
-@@ -202,9 +205,9 @@ public class DashEntry : Gtk.Entry, Fadable
+@@ -202,9 +209,9 @@ public class DashEntry : Gtk.Entry, Fadable
      {
          // height is larger than width for the arrow, so we measure using that
          if (arrow_pixbuf != null)
@@ -222,10 +340,10 @@ index a756ae2..1b3b8b0 100644
          redraw_greeter_box ();
      }
 diff --git a/src/main-window.vala b/src/main-window.vala
-index b275ff7..0acf5c5 100644
+index b275ff7..bede7a9 100644
 --- a/src/main-window.vala
 +++ b/src/main-window.vala
-@@ -18,6 +18,140 @@
+@@ -18,6 +18,343 @@
   *          Michael Terry <michael.terry@canonical.com>
   */
  
@@ -249,7 +367,7 @@ index b275ff7..0acf5c5 100644
 +{
 +    private int sunrise_minutes = -1;
 +    private int sunset_minutes = -1;
-+    private int current_minutes = -1;
++    private double current_minutes = -1;
 +
 +    public SolarTimeline ()
 +    {
@@ -257,9 +375,16 @@ index b275ff7..0acf5c5 100644
 +        halign = Gtk.Align.FILL;
 +        hexpand = true;
 +        can_focus = false;
++        /* A tiny Cairo-only pulse makes the path feel alive without another
++         * widget, image, or network request. */
++        Timeout.add (40, () => {
++            if (visible)
++                queue_draw ();
++            return true;
++        });
 +    }
 +
-+    public void set_times (int sunrise, int sunset, int current)
++    public void set_times (int sunrise, int sunset, double current)
 +    {
 +        sunrise_minutes = sunrise;
 +        sunset_minutes = sunset;
@@ -267,10 +392,49 @@ index b275ff7..0acf5c5 100644
 +        queue_draw ();
 +    }
 +
-+    public void set_current_time (int current)
++    public void set_current_time (double current)
 +    {
 +        current_minutes = current;
 +        queue_draw ();
++    }
++
++    private double cubic_bezier (double p0, double p1, double p2,
++                                 double p3, double t)
++    {
++        var inverse = 1.0 - t;
++        return inverse * inverse * inverse * p0 +
++            3.0 * inverse * inverse * t * p1 +
++            3.0 * inverse * t * t * p2 + t * t * t * p3;
++    }
++
++    /* Match the exact two-part Cairo path below.  Every moving body and the
++     * animation dash use this one calculation, so neither can drift away
++     * from the visible line. */
++    private void get_path_point (bool daytime, double progress,
++                                 double width, double baseline, double peak,
++                                 double night_floor,
++                                 out double x, out double y)
++    {
++        progress = Math.fmax (0.0, Math.fmin (1.0, progress));
++        var t = progress <= 0.5 ? progress * 2.0 : (progress - 0.5) * 2.0;
++        if (progress <= 0.5)
++        {
++            x = cubic_bezier (0.0, width * 0.20, width * 0.32,
++                              width * 0.50, t);
++            y = daytime
++                ? cubic_bezier (baseline, baseline - 18, peak, peak, t)
++                : cubic_bezier (peak + 16, peak + 38, night_floor,
++                                night_floor, t);
++        }
++        else
++        {
++            x = cubic_bezier (width * 0.50, width * 0.68, width * 0.80,
++                              width, t);
++            y = daytime
++                ? cubic_bezier (peak, peak, baseline - 18, baseline, t)
++                : cubic_bezier (night_floor, night_floor, peak + 38,
++                                peak + 16, t);
++        }
 +    }
 +
 +    public override bool draw (Cairo.Context c)
@@ -284,31 +448,188 @@ index b275ff7..0acf5c5 100644
 +        var right = (double) width;
 +        var baseline = height * 0.90;
 +        var peak = height * 0.18;
++        /* Leave room below the low point for a complete moonlight bloom. */
++        var night_floor = height - 42.0;
 +        var noon_x = (left + right) / 2.0;
++
++        var raw_progress = (current_minutes - sunrise_minutes) /
++            (sunset_minutes - sunrise_minutes);
++        var is_daytime = raw_progress >= 0.0 && raw_progress <= 1.0;
++        var night_progress = 0.0;
 +
 +        c.save ();
 +        c.set_line_cap (Cairo.LineCap.ROUND);
 +        c.set_line_width (3.2);
-+        var daylight = new Cairo.Pattern.linear (left, 0, right, 0);
-+        daylight.add_color_stop_rgba (0.0, 0.36, 0.22, 0.09, 0.10);
-+        daylight.add_color_stop_rgba (0.36, 0.83, 0.52, 0.21, 0.88);
-+        daylight.add_color_stop_rgba (0.50, 1.0, 0.72, 0.34, 1.0);
-+        daylight.add_color_stop_rgba (0.64, 0.83, 0.52, 0.21, 0.88);
-+        daylight.add_color_stop_rgba (1.0, 0.36, 0.22, 0.09, 0.10);
-+        c.set_source (daylight);
-+        c.move_to (left, baseline);
-+        c.curve_to (width * 0.20, baseline - 18,
-+                    width * 0.32, peak,
-+                    noon_x, peak);
-+        c.curve_to (width * 0.68, peak,
-+                    width * 0.80, baseline - 18,
-+                    right, baseline);
-+        c.stroke ();
++        if (is_daytime)
++        {
++            var daylight = new Cairo.Pattern.linear (left, 0, right, 0);
++            daylight.add_color_stop_rgba (0.0, 0.36, 0.22, 0.09, 0.10);
++            daylight.add_color_stop_rgba (0.36, 0.83, 0.52, 0.21, 0.88);
++            daylight.add_color_stop_rgba (0.50, 1.0, 0.72, 0.34, 1.0);
++            daylight.add_color_stop_rgba (0.64, 0.83, 0.52, 0.21, 0.88);
++            daylight.add_color_stop_rgba (1.0, 0.36, 0.22, 0.09, 0.10);
++            c.set_source (daylight);
++            c.move_to (left, baseline);
++            c.curve_to (width * 0.20, baseline - 18,
++                        width * 0.32, peak,
++                        noon_x, peak);
++            c.curve_to (width * 0.68, peak,
++                        width * 0.80, baseline - 18,
++                        right, baseline);
++            c.stroke ();
++        }
++        else
++        {
++            /* At night the moon travels a low, concave trajectory from
++             * sunset until the following sunrise. */
++            var night_duration = (24 * 60 - sunset_minutes) + sunrise_minutes;
++            var night_elapsed = current_minutes >= sunset_minutes
++                ? current_minutes - sunset_minutes
++                : current_minutes + (24 * 60 - sunset_minutes);
++            night_progress = (double) night_elapsed / night_duration;
++            night_progress = Math.fmax (0.0, Math.fmin (1.0, night_progress));
++
++            var moon_path = new Cairo.Pattern.linear (left, 0, right, 0);
++            moon_path.add_color_stop_rgba (0.0, 0.20, 0.28, 0.56, 0.20);
++            moon_path.add_color_stop_rgba (0.50, 0.56, 0.62, 1.0, 0.92);
++            moon_path.add_color_stop_rgba (1.0, 0.20, 0.28, 0.56, 0.20);
++            c.set_source (moon_path);
++            c.move_to (left, peak + 16);
++            c.curve_to (width * 0.20, peak + 38,
++                        width * 0.32, night_floor,
++                        noon_x, night_floor);
++            c.curve_to (width * 0.68, night_floor,
++                        width * 0.80, peak + 38,
++                        right, peak + 16);
++            c.stroke ();
++
++            double moon_x, moon_y;
++            get_path_point (false, 1.0 - night_progress, width, baseline,
++                            peak, night_floor, out moon_x, out moon_y);
++            var moon_fade = Math.fmin (1.0, Math.fmin (
++                night_elapsed / 45.0, (night_duration - night_elapsed) / 45.0));
++            if (moon_fade > 0.0)
++            {
++                var halo_radius = Math.fmin (42.0, Math.fmin (
++                    moon_y - 2.0, height - moon_y - 2.0));
++                /* Keep a broad moonlight bloom visible around the travelling
++                 * moon.  It is deliberately separate from the sharper halo
++                 * below, so the atmosphere never disappears into the line. */
++                var moonlight = new Cairo.Pattern.radial (moon_x, moon_y, 0,
++                    moon_x, moon_y, halo_radius);
++                moonlight.add_color_stop_rgba (0.0, 0.58, 0.68, 1.0,
++                                                0.50 * moon_fade);
++                moonlight.add_color_stop_rgba (0.22, 0.42, 0.54, 1.0,
++                                                0.30 * moon_fade);
++                moonlight.add_color_stop_rgba (0.58, 0.28, 0.38, 0.82,
++                                                0.12 * moon_fade);
++                moonlight.add_color_stop_rgba (1.0, 0.24, 0.32, 0.72, 0.0);
++                c.set_source (moonlight);
++                c.arc (moon_x, moon_y, halo_radius, 0, 2 * Math.PI);
++                c.fill ();
++                /* A broad, cool halo gives the moon a gentle night-light
++                 * effect, while the disc remains small and readable. */
++                var glow = new Cairo.Pattern.radial (moon_x, moon_y, 0,
++                    moon_x, moon_y, halo_radius);
++                glow.add_color_stop_rgba (0.0, 0.72, 0.80, 1.0, 0.78 * moon_fade);
++                glow.add_color_stop_rgba (0.20, 0.48, 0.58, 1.0, 0.42 * moon_fade);
++                glow.add_color_stop_rgba (0.58, 0.32, 0.40, 0.88, 0.12 * moon_fade);
++                glow.add_color_stop_rgba (1.0, 0.32, 0.38, 0.78, 0.0);
++                c.set_source (glow);
++                c.arc (moon_x, moon_y, 46.0, 0, 2 * Math.PI);
++                c.fill ();
++
++                const double moon_radius = 16.0;
++                var surface = new Cairo.Pattern.radial (moon_x - 6.0, moon_y - 7.0,
++                    1.0, moon_x, moon_y, moon_radius);
++                surface.add_color_stop_rgba (0.0, 1.0, 1.0, 1.0, 0.99 * moon_fade);
++                surface.add_color_stop_rgba (0.62, 0.89, 0.92, 1.0, 0.99 * moon_fade);
++                surface.add_color_stop_rgba (1.0, 0.58, 0.66, 0.86, 0.99 * moon_fade);
++                c.set_source (surface);
++                c.arc (moon_x, moon_y, moon_radius, 0, 2 * Math.PI);
++                c.fill ();
++
++                /* Keep every crater inside one complete moon disc. */
++                c.save ();
++                c.arc (moon_x, moon_y, moon_radius, 0, 2 * Math.PI);
++                c.clip ();
++                c.set_source_rgba (0.34, 0.40, 0.59, 0.26 * moon_fade);
++                c.arc (moon_x - 5.0, moon_y - 4.0, 3.6, 0, 2 * Math.PI);
++                c.fill ();
++                c.set_source_rgba (0.31, 0.37, 0.55, 0.22 * moon_fade);
++                c.arc (moon_x + 4.5, moon_y + 5.0, 4.5, 0, 2 * Math.PI);
++                c.fill ();
++                c.set_source_rgba (0.38, 0.44, 0.64, 0.22 * moon_fade);
++                c.arc (moon_x - 2.0, moon_y + 7.0, 2.7, 0, 2 * Math.PI);
++                c.fill ();
++                var shade = new Cairo.Pattern.linear (moon_x - moon_radius,
++                    moon_y - moon_radius, moon_x + moon_radius, moon_y + moon_radius);
++                shade.add_color_stop_rgba (0.0, 0.10, 0.13, 0.24, 0.0);
++                shade.add_color_stop_rgba (0.64, 0.12, 0.16, 0.30, 0.0);
++                shade.add_color_stop_rgba (1.0, 0.10, 0.13, 0.24, 0.26 * moon_fade);
++                c.set_source (shade);
++                c.rectangle (moon_x - moon_radius, moon_y - moon_radius,
++                    moon_radius * 2.0, moon_radius * 2.0);
++                c.fill ();
++                var limb_shadow = new Cairo.Pattern.radial (moon_x + 8.0,
++                    moon_y + 8.0, 1.0, moon_x + 4.0, moon_y + 4.0,
++                    moon_radius * 1.45);
++                limb_shadow.add_color_stop_rgba (0.0, 0.09, 0.12, 0.22, 0.0);
++                limb_shadow.add_color_stop_rgba (0.58, 0.10, 0.14, 0.28,
++                                                  0.10 * moon_fade);
++                limb_shadow.add_color_stop_rgba (1.0, 0.08, 0.11, 0.20,
++                                                  0.42 * moon_fade);
++                c.set_source (limb_shadow);
++                c.rectangle (moon_x - moon_radius, moon_y - moon_radius,
++                    moon_radius * 2.0, moon_radius * 2.0);
++                c.fill ();
++                c.restore ();
++                c.set_line_width (1.5);
++                c.set_source_rgba (0.94, 0.96, 1.0, 0.82 * moon_fade);
++                c.arc (moon_x, moon_y, moon_radius, 0, 2 * Math.PI);
++                c.stroke ();
++            }
++        }
++
++        /* A short luminous dash travels from the current body toward the
++         * next horizon.  Day moves left-to-right toward sunset; night moves
++         * right-to-left toward sunrise. */
++        var marker_progress = is_daytime ? Math.fmax (0.0, Math.fmin (1.0, raw_progress))
++            : 1.0 - night_progress;
++        var target_progress = is_daytime ? 1.0 : 0.0;
++        if (Math.fabs (target_progress - marker_progress) > 0.015)
++        {
++            var pulse = ((double) (GLib.get_monotonic_time () % 3400000)) / 3400000.0;
++            var dash_progress = marker_progress + (target_progress - marker_progress) *
++                (0.08 + 0.84 * pulse);
++            var direction = target_progress > marker_progress ? 1.0 : -1.0;
++            var tail_progress = dash_progress - direction * 0.025;
++            double dash_x, dash_y, tail_x, tail_y;
++            get_path_point (is_daytime, dash_progress, width, baseline, peak,
++                            night_floor, out dash_x, out dash_y);
++            get_path_point (is_daytime, tail_progress, width, baseline, peak,
++                            night_floor, out tail_x, out tail_y);
++            /* Fade completely at each loop edge, so the next pass begins
++             * beside the celestial body instead of visibly jumping back. */
++            var dash_alpha = 0.78 * Math.sin (Math.PI * pulse);
++            var red = is_daytime ? 1.0 : 0.70;
++            var green = is_daytime ? 0.72 : 0.80;
++            var blue = is_daytime ? 0.36 : 1.0;
++            var dash_glow = new Cairo.Pattern.radial (dash_x, dash_y, 0,
++                dash_x, dash_y, 13.0);
++            dash_glow.add_color_stop_rgba (0.0, red, green, blue, dash_alpha * 0.46);
++            dash_glow.add_color_stop_rgba (1.0, red, green, blue, 0.0);
++            c.set_source (dash_glow);
++            c.arc (dash_x, dash_y, 13.0, 0, 2 * Math.PI);
++            c.fill ();
++            c.set_line_width (3.4);
++            c.set_source_rgba (red, green, blue, dash_alpha);
++            c.move_to (tail_x, tail_y);
++            c.line_to (dash_x, dash_y);
++            c.stroke ();
++        }
 +
 +        const int sun_fade_minutes = 60;
-+        var raw_progress = ((double) current_minutes - sunrise_minutes) /
-+            (sunset_minutes - sunrise_minutes);
-+        var is_daytime = raw_progress >= 0.0 && raw_progress <= 1.0;
 +        var progress = raw_progress;
 +        if (progress < 0.0)
 +            progress = 0.0;
@@ -366,23 +687,27 @@ index b275ff7..0acf5c5 100644
  public class MainWindow : Gtk.Window
  {
      public MenuBar menubar;
-@@ -31,6 +165,15 @@ public class MainWindow : Gtk.Window
+@@ -31,6 +368,19 @@ public class MainWindow : Gtk.Window
      private Gtk.Box login_box;
      private Gtk.Box hbox;
      private Gtk.Box content_box;
 +    private Gtk.Label greeter_date;
 +    private Gtk.Label greeter_clock;
 +    private Gtk.Box solar_box;
-+    private Gtk.Label solar_sunrise;
-+    private Gtk.Label solar_sunset;
++    private Gtk.Box solar_sunrise_event;
++    private Gtk.Box solar_sunset_event;
++    private Gtk.Label solar_sunrise_time;
++    private Gtk.Label solar_sunset_time;
 +    private SolarTimeline solar_timeline;
 +    private int solar_sunrise_minutes = -1;
 +    private int solar_sunset_minutes = -1;
++    private string solar_sunrise_text = "";
++    private string solar_sunset_text = "";
 +    private bool weather_fetch_active = false;
      private Gtk.Button back_button;
      private ShutdownDialog? shutdown_dialog = null;
      private bool do_resize;
-@@ -38,11 +181,11 @@ public class MainWindow : Gtk.Window
+@@ -38,11 +388,11 @@ public class MainWindow : Gtk.Window
      public ListStack stack;
  
      // Menubar is smaller, but with shadow, we reserve more space
@@ -396,7 +721,7 @@ index b275ff7..0acf5c5 100644
  
          var accel_group = new Gtk.AccelGroup ();
          add_accel_group (accel_group);
-@@ -54,24 +197,388 @@ public class MainWindow : Gtk.Window
+@@ -54,24 +404,427 @@ public class MainWindow : Gtk.Window
          has_resize_grip = false;
          SlickGreeter.add_style_class (this);
  
@@ -437,8 +762,8 @@ index b275ff7..0acf5c5 100644
 +                    font-size: 10px;
 +                }
 +                label.greeter-clock {
-+                    color: #e5eaf0;
-+                    font-size: 160px;
++                    color: #d6dee8;
++                    font-size: 128px;
 +                    font-weight: 500;
 +                }
 +                label.greeter-date {
@@ -465,6 +790,45 @@ index b275ff7..0acf5c5 100644
 +                    color: #c78d49;
 +                    font-size: 14px;
 +                    font-weight: 600;
++                }
++                label.greeter-solar-direction {
++                    color: #aebaff;
++                    font-size: 22px;
++                    font-weight: 500;
++                }
++                button.bottom-power-action {
++                    background-image: none;
++                    background-color: transparent;
++                    border: 0;
++                    border-radius: 0;
++                    box-shadow: none;
++                    min-width: 64px;
++                    padding: 0;
++                }
++                button.bottom-power-action:hover,
++                button.bottom-power-action:active {
++                    background-color: transparent;
++                    border-color: transparent;
++                    box-shadow: none;
++                }
++                box.bottom-power-icon {
++                    background-color: rgba(17, 25, 35, 0.84);
++                    border: 1px solid #263445;
++                    border-radius: 24px;
++                    min-width: 48px;
++                    min-height: 48px;
++                    padding: 0;
++                }
++                button.bottom-power-action:hover box.bottom-power-icon,
++                button.bottom-power-action:focus box.bottom-power-icon {
++                    background-color: #182433;
++                    border-color: #5e9cff;
++                    box-shadow: 0 0 0 1px rgba(94, 156, 255, 0.35);
++                }
++                label.bottom-power-label {
++                    color: #e5eaf0;
++                    font-size: 14px;
++                    font-weight: 500;
 +                }
 +                menubar > menuitem.topbar-power {
 +                    background-image: none;
@@ -791,7 +1155,7 @@ index b275ff7..0acf5c5 100644
          try
          {
              var style = new Gtk.CssProvider ();
-@@ -98,9 +605,120 @@ public class MainWindow : Gtk.Window
+@@ -98,9 +851,156 @@ public class MainWindow : Gtk.Window
          SlickGreeter.add_style_class (menubar);
  
          content_box = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
@@ -841,65 +1205,101 @@ index b275ff7..0acf5c5 100644
 +        solar_timeline.show ();
 +        solar_box.add (solar_timeline);
 +
-+        var solar_times = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
-+        // Fill the solar area and use matching flexible spacers.  This keeps
-+        // the complete sunrise/sunset group on the same centre axis as the
-+        // date, clock and solar arc at every screen width.
++        var solar_times = new Gtk.Grid ();
++        solar_times.column_homogeneous = true;
 +        solar_times.hexpand = true;
 +        solar_times.halign = Gtk.Align.FILL;
 +        solar_times.show ();
 +
-+        var solar_times_left_spacer = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
-+        solar_times_left_spacer.hexpand = true;
-+        solar_times_left_spacer.show ();
-+        solar_times.pack_start (solar_times_left_spacer, true, true, 0);
-+
-+        var sunrise_stack = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
-+        sunrise_stack.set_size_request (178, -1);
-+        sunrise_stack.show ();
++        solar_sunrise_event = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
++        solar_sunrise_event.halign = Gtk.Align.CENTER;
++        solar_sunrise_event.show ();
++        var sunrise_header = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 6);
++        sunrise_header.halign = Gtk.Align.START;
++        sunrise_header.show ();
++        var sunrise_arrow = new Gtk.Label ("↑");
++        sunrise_arrow.get_style_context ().add_class ("greeter-solar-direction");
++        sunrise_arrow.valign = Gtk.Align.CENTER;
++        sunrise_arrow.show ();
++        sunrise_header.add (sunrise_arrow);
 +        var sunrise_label = new Gtk.Label ("SUNRISE");
 +        sunrise_label.get_style_context ().add_class ("greeter-solar-label");
-+        sunrise_label.halign = Gtk.Align.CENTER;
++        sunrise_label.valign = Gtk.Align.CENTER;
 +        sunrise_label.show ();
-+        sunrise_stack.add (sunrise_label);
-+        solar_sunrise = new Gtk.Label ("");
-+        solar_sunrise.get_style_context ().add_class ("greeter-solar-time");
-+        solar_sunrise.halign = Gtk.Align.CENTER;
-+        solar_sunrise.show ();
-+        sunrise_stack.add (solar_sunrise);
-+        solar_times.add (sunrise_stack);
++        sunrise_header.add (sunrise_label);
++        solar_sunrise_event.add (sunrise_header);
++        solar_sunrise_time = new Gtk.Label ("");
++        solar_sunrise_time.get_style_context ().add_class ("greeter-solar-time");
++        solar_sunrise_time.halign = Gtk.Align.START;
++        solar_sunrise_time.show ();
++        solar_sunrise_event.add (solar_sunrise_time);
++        solar_times.attach (solar_sunrise_event, 0, 0, 1, 1);
 +
-+        var solar_separator = new Gtk.Separator (Gtk.Orientation.VERTICAL);
-+        solar_separator.set_size_request (1, 54);
-+        solar_separator.margin_start = 28;
-+        solar_separator.margin_end = 28;
-+        solar_separator.show ();
-+        solar_times.add (solar_separator);
-+
-+        var sunset_stack = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
-+        sunset_stack.set_size_request (178, -1);
-+        sunset_stack.show ();
++        solar_sunset_event = new Gtk.Box (Gtk.Orientation.VERTICAL, 0);
++        solar_sunset_event.halign = Gtk.Align.CENTER;
++        solar_sunset_event.show ();
++        var sunset_header = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 6);
++        sunset_header.halign = Gtk.Align.START;
++        sunset_header.show ();
++        var sunset_arrow = new Gtk.Label ("↓");
++        sunset_arrow.get_style_context ().add_class ("greeter-solar-direction");
++        sunset_arrow.valign = Gtk.Align.CENTER;
++        sunset_arrow.show ();
++        sunset_header.add (sunset_arrow);
 +        var sunset_label = new Gtk.Label ("SUNSET");
 +        sunset_label.get_style_context ().add_class ("greeter-solar-label");
-+        sunset_label.halign = Gtk.Align.CENTER;
++        sunset_label.valign = Gtk.Align.CENTER;
 +        sunset_label.show ();
-+        sunset_stack.add (sunset_label);
-+        solar_sunset = new Gtk.Label ("");
-+        solar_sunset.get_style_context ().add_class ("greeter-solar-time");
-+        solar_sunset.halign = Gtk.Align.CENTER;
-+        solar_sunset.show ();
-+        sunset_stack.add (solar_sunset);
-+        solar_times.add (sunset_stack);
-+
-+        var solar_times_right_spacer = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
-+        solar_times_right_spacer.hexpand = true;
-+        solar_times_right_spacer.show ();
-+        solar_times.pack_end (solar_times_right_spacer, true, true, 0);
++        sunset_header.add (sunset_label);
++        solar_sunset_event.add (sunset_header);
++        solar_sunset_time = new Gtk.Label ("");
++        solar_sunset_time.get_style_context ().add_class ("greeter-solar-time");
++        solar_sunset_time.halign = Gtk.Align.START;
++        solar_sunset_time.show ();
++        solar_sunset_event.add (solar_sunset_time);
++        solar_times.attach (solar_sunset_event, 1, 0, 1, 1);
 +        solar_box.add (solar_times);
 +
 +        clock_box.add (solar_box);
 +
 +        content_overlay.add_overlay (clock_box);
++
++        var power_actions = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 20);
++        power_actions.get_style_context ().add_class ("bottom-power-actions");
++        power_actions.halign = Gtk.Align.END;
++        power_actions.valign = Gtk.Align.END;
++        power_actions.margin_end = 32;
++        power_actions.margin_bottom = 28;
++        power_actions.show ();
++
++        if (LightDM.get_can_suspend ())
++        {
++            var suspend_action = make_bottom_power_action (_("Suspend"), "media-playback-pause-symbolic");
++            suspend_action.clicked.connect (() => {
++                show_shutdown_dialog (ShutdownDialogType.SUSPEND);
++            });
++            power_actions.add (suspend_action);
++        }
++
++        if (LightDM.get_can_restart ())
++        {
++            var restart_action = make_bottom_power_action (_("Restart"), "view-refresh-symbolic");
++            restart_action.clicked.connect (() => {
++                show_shutdown_dialog (ShutdownDialogType.RESTART);
++            });
++            power_actions.add (restart_action);
++        }
++
++        if (LightDM.get_can_shutdown ())
++        {
++            var shutdown_action = make_bottom_power_action (_("Shut Down"), "system-shutdown-symbolic");
++            shutdown_action.clicked.connect (() => {
++                show_shutdown_dialog (ShutdownDialogType.SHUTDOWN);
++            });
++            power_actions.add (shutdown_action);
++        }
++
++        content_overlay.add_overlay (power_actions);
 +        update_greeter_clock ();
 +        Timeout.add (1000, update_greeter_clock);
 +        Timeout.add_seconds (1, () => {
@@ -913,7 +1313,7 @@ index b275ff7..0acf5c5 100644
  
          var content_align = UGSettings.get_string(UGSettings.KEY_CONTENT_ALIGN);
          var x_align = 0.5f;
-@@ -139,16 +757,20 @@ public class MainWindow : Gtk.Window
+@@ -139,16 +1039,20 @@ public class MainWindow : Gtk.Window
          hbox.add (align);
  
          back_button = new FlatButton ();
@@ -935,7 +1335,7 @@ index b275ff7..0acf5c5 100644
          align.show ();
          hbox.add (align);
  
-@@ -197,8 +819,10 @@ public class MainWindow : Gtk.Window
+@@ -197,8 +1101,10 @@ public class MainWindow : Gtk.Window
      {
          stack.push (widget);
  
@@ -947,7 +1347,7 @@ index b275ff7..0acf5c5 100644
      }
  
      public void pop_list ()
-@@ -367,6 +991,138 @@ public class MainWindow : Gtk.Window
+@@ -367,6 +1273,154 @@ public class MainWindow : Gtk.Window
          push_list (greeter_list);
      }
  
@@ -959,10 +1359,22 @@ index b275ff7..0acf5c5 100644
 +        greeter_clock.set_label (current_time.format (clock_format));
 +        if (solar_sunrise_minutes >= 0 && solar_sunset_minutes > solar_sunrise_minutes)
 +        {
-+            solar_timeline.set_current_time (
-+                current_time.get_hour () * 60 + current_time.get_minute ());
++            var minutes = current_time.get_hour () * 60 + current_time.get_minute ();
++            var precise_minutes = minutes + current_time.get_second () / 60.0;
++            update_solar_next_event (minutes);
++            solar_timeline.set_current_time (precise_minutes);
 +        }
 +        return true;
++    }
++
++    private void update_solar_next_event (int current_minutes)
++    {
++        var is_daytime = current_minutes >= solar_sunrise_minutes &&
++            current_minutes < solar_sunset_minutes;
++        /* Retain each grid column even while the other event is invisible,
++         * so sunrise stays at the left and sunset stays at the right. */
++        solar_sunrise_event.opacity = is_daytime ? 0.0 : 1.0;
++        solar_sunset_event.opacity = is_daytime ? 1.0 : 0.0;
 +    }
 +
 +    private SolarWeatherData? parse_weather_response (string response)
@@ -1064,8 +1476,12 @@ index b275ff7..0acf5c5 100644
 +                            var now = new DateTime.now_local ();
 +                            solar_sunrise_minutes = sunrise;
 +                            solar_sunset_minutes = sunset;
-+                            solar_sunrise.set_label (format_solar_time (weather_data.sunrise));
-+                            solar_sunset.set_label (format_solar_time (weather_data.sunset));
++                            solar_sunrise_text = format_solar_time (weather_data.sunrise);
++                            solar_sunset_text = format_solar_time (weather_data.sunset);
++                            solar_sunrise_time.set_label (solar_sunrise_text);
++                            solar_sunset_time.set_label (solar_sunset_text);
++                            update_solar_next_event (
++                                now.get_hour () * 60 + now.get_minute ());
 +                            solar_timeline.set_times (sunrise, sunset,
 +                                now.get_hour () * 60 + now.get_minute ());
 +                            solar_box.visible = true;
@@ -1086,7 +1502,7 @@ index b275ff7..0acf5c5 100644
      public override bool key_press_event (Gdk.EventKey event)
      {
          var top = stack.top ();
-@@ -400,6 +1156,7 @@ public class MainWindow : Gtk.Window
+@@ -400,6 +1454,7 @@ public class MainWindow : Gtk.Window
          switch (event.keyval)
          {
          case Gdk.Key.Escape:
@@ -1094,7 +1510,7 @@ index b275ff7..0acf5c5 100644
              if (login_box.sensitive)
                  top.cancel_authentication ();
              if (shutdown_dialog != null)
-@@ -464,6 +1221,19 @@ public class MainWindow : Gtk.Window
+@@ -464,11 +1519,62 @@ public class MainWindow : Gtk.Window
          return base.key_press_event (event);
      }
  
@@ -1114,7 +1530,50 @@ index b275ff7..0acf5c5 100644
      public void set_keyboard_state ()
      {
          menubar.set_keyboard_state ();
-@@ -476,6 +1246,9 @@ public class MainWindow : Gtk.Window
+     }
+ 
++    private Gtk.Button make_bottom_power_action (string text, string icon_name)
++    {
++        var action = new Gtk.Button ();
++        action.get_style_context ().add_class ("bottom-power-action");
++        action.relief = Gtk.ReliefStyle.NONE;
++        action.set_tooltip_text (text);
++        action.get_accessible ().set_name (text);
++
++        var contents = new Gtk.Box (Gtk.Orientation.VERTICAL, 6);
++        contents.halign = Gtk.Align.CENTER;
++        contents.show ();
++
++        var icon_surface = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 0);
++        icon_surface.get_style_context ().add_class ("bottom-power-icon");
++        icon_surface.set_size_request (48, 48);
++        icon_surface.halign = Gtk.Align.CENTER;
++        icon_surface.valign = Gtk.Align.CENTER;
++        icon_surface.show ();
++
++        var icon = new Gtk.Image.from_icon_name (icon_name, Gtk.IconSize.BUTTON);
++        icon.pixel_size = 21;
++        icon.halign = Gtk.Align.CENTER;
++        icon.valign = Gtk.Align.CENTER;
++        icon.show ();
++        icon_surface.pack_start (icon, true, true, 0);
++        contents.pack_start (icon_surface, false, false, 0);
++
++        var label = new Gtk.Label (text);
++        label.get_style_context ().add_class ("bottom-power-label");
++        label.halign = Gtk.Align.CENTER;
++        label.show ();
++        contents.pack_start (label, false, false, 0);
++
++        action.add (contents);
++        action.show ();
++        return action;
++    }
++
+     public void show_shutdown_dialog (ShutdownDialogType type)
+     {
+         if (shutdown_dialog != null)
+@@ -476,6 +1582,9 @@ public class MainWindow : Gtk.Window
  
          /* Stop input to login box */
          login_box.sensitive = false;
@@ -1124,7 +1583,7 @@ index b275ff7..0acf5c5 100644
  
          shutdown_dialog = new ShutdownDialog (type, background);
          shutdown_dialog.closed.connect (close_shutdown_dialog);
-@@ -492,6 +1265,7 @@ public class MainWindow : Gtk.Window
+@@ -492,6 +1601,7 @@ public class MainWindow : Gtk.Window
          shutdown_dialog.destroy ();
          shutdown_dialog = null;
  
@@ -1133,7 +1592,7 @@ index b275ff7..0acf5c5 100644
      }
  }
 diff --git a/src/menubar.vala b/src/menubar.vala
-index ba32502..1b2fcd2 100644
+index ba32502..47dd596 100644
 --- a/src/menubar.vala
 +++ b/src/menubar.vala
 @@ -75,6 +75,38 @@
@@ -1248,7 +1707,21 @@ index ba32502..1b2fcd2 100644
      private Gtk.Label power_label;
      private Gtk.Image power_icon;
  
-@@ -466,24 +458,65 @@ public class MenuBar : Gtk.MenuBar
+@@ -189,11 +181,8 @@ public class MenuBar : Gtk.MenuBar
+             background.notify["average-color"].connect (rebuild_background);
+         }
+ 
+-        if (UGSettings.get_boolean (UGSettings.KEY_SHOW_QUIT))
+-        {
+-            var session_menu = make_session_item ();
+-            append (session_menu);
+-        }
++        /* Power actions live in MainWindow's persistent bottom-right action
++         * group.  Do not add the legacy top-bar trigger or popup here. */
+ 
+         if (UGSettings.get_boolean (UGSettings.KEY_SHOW_CLOCK))
+         {
+@@ -466,24 +455,65 @@ public class MenuBar : Gtk.MenuBar
      private Gtk.MenuItem make_session_item ()
      {
          var item = new Gtk.MenuItem ();
@@ -1327,7 +1800,7 @@ index ba32502..1b2fcd2 100644
                  try
                  {
                      LightDM.suspend ();
-@@ -495,29 +528,136 @@ public class MenuBar : Gtk.MenuBar
+@@ -495,32 +525,139 @@ public class MenuBar : Gtk.MenuBar
              });
          }
  
@@ -1370,10 +1843,10 @@ index ba32502..1b2fcd2 100644
 +                    main_window.show_shutdown_dialog (ShutdownDialogType.SHUTDOWN);
 +            });
 +        }
-+
-+        return item;
-+    }
-+
+ 
+         return item;
+     }
+ 
 +    public void close_power_menu ()
 +    {
 +        if (power_popup != null)
@@ -1420,7 +1893,7 @@ index ba32502..1b2fcd2 100644
 +         * normal Tab/arrow navigation and pointer hover remains visible. */
 +        power_popup.set_focus (null);
 +    }
- 
++
 +    private void shape_power_popup ()
 +    {
 +        if (power_popup == null || !power_popup.get_realized ())
@@ -1479,10 +1952,13 @@ index ba32502..1b2fcd2 100644
 +        item.add (row);
 +        item.set_size_request (-1, 40);
 +        item.show ();
-         return item;
-     }
- 
-@@ -609,13 +749,6 @@ public class MenuBar : Gtk.MenuBar
++        return item;
++    }
++
+     private Gtk.MenuItem make_keyboard_item ()
+     {
+         var item = new Gtk.MenuItem ();
+@@ -609,13 +746,6 @@ public class MenuBar : Gtk.MenuBar
          return item;
      }
  
@@ -1497,7 +1973,7 @@ index ba32502..1b2fcd2 100644
      {
          /* FIXME: The below would be sufficient if gnome-session were running
 diff --git a/src/prompt-box.vala b/src/prompt-box.vala
-index f6f9789..5c4fa34 100644
+index f6f9789..2e55dc1 100644
 --- a/src/prompt-box.vala
 +++ b/src/prompt-box.vala
 @@ -18,6 +18,53 @@
@@ -1964,14 +2440,15 @@ index f6f9789..5c4fa34 100644
      }
  
      public DashEntry add_prompt (string text, string? accessible_text, bool is_secret)
-@@ -557,54 +776,33 @@ public class PromptBox : FadableBox
+@@ -557,54 +776,34 @@ public class PromptBox : FadableBox
          if (is_secret)
          {
              entry.visibility = false;
-+            /* Keep the field label compact, but make entered password dots
-+             * clearly legible in the generously sized login field. */
-+            entry.set_invisible_char (0x2022); /* • */
-+            entry.override_font (Pango.FontDescription.from_string ("Cantarell 14"));
++            /* A filled circle gives passwords a deliberately larger, more
++             * readable mask without changing the 42px field geometry. */
++            entry.set_invisible_char (0x25CF); /* ● */
++            entry.override_font (Pango.FontDescription.from_string ("Cantarell 16"));
++            entry.placeholder_font = "Cantarell 16";
 +            entry.set_size_request (-1, 42);
 +            entry.hexpand = true;
 +            entry.halign = Gtk.Align.FILL;
@@ -2153,10 +2630,18 @@ index d55dc00..12b2299 100644
          return e;
      }
 diff --git a/src/shutdown-dialog.vala b/src/shutdown-dialog.vala
-index 34d7cf3..6b6d06e 100644
+index 34d7cf3..83c71bf 100644
 --- a/src/shutdown-dialog.vala
 +++ b/src/shutdown-dialog.vala
-@@ -41,7 +41,6 @@ public class ShutdownDialog : Gtk.Fixed
+@@ -21,6 +21,7 @@
+ public enum ShutdownDialogType
+ {
+     LOGOUT,
++    SUSPEND,
+     SHUTDOWN,
+     RESTART
+ }
+@@ -41,7 +42,6 @@ public class ShutdownDialog : Gtk.Fixed
      private const int BORDER_INTERNAL_SIZE = 10;
      private const int BORDER_EXTERNAL_SIZE = BORDER_SIZE - BORDER_INTERNAL_SIZE;
      private const int CLOSE_OFFSET = 3;
@@ -2164,7 +2649,7 @@ index 34d7cf3..6b6d06e 100644
      private const int BLUR_RADIUS = 8;
  
      private Monitor monitor;
-@@ -76,14 +75,10 @@ public class ShutdownDialog : Gtk.Fixed
+@@ -76,14 +76,10 @@ public class ShutdownDialog : Gtk.Fixed
          });
          add (monitor_events);
  
@@ -2182,17 +2667,12 @@ index 34d7cf3..6b6d06e 100644
  
          // This event box consumes the click events inside the vbox
          vbox_events = new Gtk.EventBox();
-@@ -94,23 +89,18 @@ public class ShutdownDialog : Gtk.Fixed
+@@ -94,23 +90,21 @@ public class ShutdownDialog : Gtk.Fixed
          vbox_events.add (vbox);
          monitor_events.add (vbox_events);
  
 -        string text;
-+        var restarting = type == ShutdownDialogType.RESTART;
-+        var title_text = restarting ? _("Restart?") : _("Shut down?");
-+        var body_text = restarting
-+            ? _("Are you sure you want to restart this computer?")
-+            : _("Are you sure you want to shut down this computer?");
- 
+-
 -        if (type == ShutdownDialogType.SHUTDOWN)
 -        {
 -            text = _("Goodbye. Would you like to...");
@@ -2208,6 +2688,15 @@ index 34d7cf3..6b6d06e 100644
 -
 -            text = _("Are you sure you want to shut down the computer?");
 -        }
++        var restarting = type == ShutdownDialogType.RESTART;
++        var suspending = type == ShutdownDialogType.SUSPEND;
++        var title_text = restarting ? _("Restart?")
++            : suspending ? _("Suspend?") : _("Shut down?");
++        var body_text = restarting
++            ? _("Are you sure you want to restart this computer?")
++            : suspending ? _("Are you sure you want to suspend this computer?")
++            : _("Are you sure you want to shut down this computer?");
++
 +        var title_label = new Gtk.Label (title_text);
 +        title_label.get_style_context ().add_class ("dialog-title");
 +        title_label.halign = Gtk.Align.START;
@@ -2217,7 +2706,7 @@ index 34d7cf3..6b6d06e 100644
  
          var have_open_sessions = false;
          try
-@@ -134,98 +124,58 @@ public class ShutdownDialog : Gtk.Fixed
+@@ -134,98 +128,63 @@ public class ShutdownDialog : Gtk.Fixed
              warning ("Failed to check sessions from logind: %s", e.message);
          }
          if (have_open_sessions)
@@ -2251,9 +2740,10 @@ index 34d7cf3..6b6d06e 100644
 +        cancel.visible = true;
 +        button_box.pack_start (cancel, false, false, 0);
 +
-+        var confirm = new Gtk.Button.with_label (restarting ? _("Restart") : _("Shut Down"));
++        var confirm = new Gtk.Button.with_label (restarting ? _("Restart")
++                                                 : suspending ? _("Suspend") : _("Shut Down"));
 +        confirm.get_style_context ().add_class ("dialog-action");
-+        confirm.get_style_context ().add_class (restarting ? "primary" : "destructive");
++        confirm.get_style_context ().add_class (restarting || suspending ? "primary" : "destructive");
 +        confirm.relief = Gtk.ReliefStyle.NONE;
 +        confirm.clicked.connect (() =>
          {
@@ -2275,6 +2765,8 @@ index 34d7cf3..6b6d06e 100644
 -                });
 +                if (restarting)
 +                    LightDM.restart ();
++                else if (suspending)
++                    LightDM.suspend ();
 +                else
 +                    LightDM.shutdown ();
 +                close ();
@@ -2296,7 +2788,9 @@ index 34d7cf3..6b6d06e 100644
 -                        warning ("Failed to hibernate: %s", e.message);
 -                    }
 -                });
-+                warning (restarting ? "Failed to restart: %s" : "Failed to shutdown: %s", e.message);
++                warning (restarting ? "Failed to restart: %s"
++                         : suspending ? "Failed to suspend: %s" : "Failed to shutdown: %s",
++                         e.message);
              }
 -        }
 -
@@ -2351,7 +2845,7 @@ index 34d7cf3..6b6d06e 100644
          add (close_button);
  
          animation = new AnimateTimer ((x) => { return x; }, AnimateTimer.INSTANT);
-@@ -380,18 +330,6 @@ public class ShutdownDialog : Gtk.Fixed
+@@ -380,18 +339,6 @@ public class ShutdownDialog : Gtk.Fixed
  
      public override bool draw (Cairo.Context c)
      {
@@ -2370,7 +2864,7 @@ index 34d7cf3..6b6d06e 100644
          int width = vbox_events.get_allocated_width ();
          int height = vbox_events.get_allocated_height ();
          int x = (get_allocated_width () - width) / 2;
-@@ -401,108 +339,19 @@ public class ShutdownDialog : Gtk.Fixed
+@@ -401,108 +348,19 @@ public class ShutdownDialog : Gtk.Fixed
              c.push_group ();
  
          /* Darken background */
@@ -2486,7 +2980,7 @@ index 34d7cf3..6b6d06e 100644
  
          c.restore ();
  
-@@ -517,21 +366,6 @@ public class ShutdownDialog : Gtk.Fixed
+@@ -517,21 +375,6 @@ public class ShutdownDialog : Gtk.Fixed
          return ret;
      }
  
