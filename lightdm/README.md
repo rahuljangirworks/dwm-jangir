@@ -16,6 +16,7 @@ from the login screen.
 | `dwm-jangir-slick-greeter.desktop` | `/usr/share/xgreeters/dwm-jangir-slick-greeter.desktop` |
 | `theme/` | `/usr/share/themes/dwm-jangir-dark/` |
 | `wallpapers/` | `/usr/share/dwm-jangir/lightdm-backgrounds/` |
+| `assets/dwm.svg` | `/usr/share/dwm-jangir/lightdm-assets/dwm.svg` |
 | `rpm/` | Builder for `/usr/libexec/dwm-jangir-slick-greeter-bin` |
 
 `wallpapers/SOURCES.md` records the upstream source for each bundled image.
