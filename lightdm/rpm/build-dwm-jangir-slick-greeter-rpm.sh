@@ -6,7 +6,7 @@ readonly source_name="slick-greeter-${version}.tar.gz"
 readonly source_url="https://github.com/linuxmint/slick-greeter/archive/${version}/${source_name}"
 readonly source_sha256='f967bde54b174180330e3ddc925377317ae14fe1b53cadf9b4cf11fdcb953379'
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
+script_dir=$(CDPATH='' cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)
 topdir=${RPM_TOPDIR:-"$HOME/rpmbuild"}
 source_file=${1:-"$topdir/SOURCES/$source_name"}
 
