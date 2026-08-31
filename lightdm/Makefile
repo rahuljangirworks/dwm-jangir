@@ -45,6 +45,8 @@ install:
 	install -Dm644 wallpapers/*.webp                 $(GREETER_ASSET_DIR)/
 	install -Dm644 wallpapers/SOURCES.md             $(GREETER_ASSET_DIR)/SOURCES.md
 	install -Dm644 assets/dwm.svg                     $(GREETER_UI_ASSET_DIR)/dwm.svg
+	install -Dm644 assets/kde.svg                     $(GREETER_UI_ASSET_DIR)/kde.svg
+	install -Dm644 assets/gnome.svg                   $(GREETER_UI_ASSET_DIR)/gnome.svg
 
 rpm:
 	./rpm/build-dwm-jangir-slick-greeter-rpm.sh

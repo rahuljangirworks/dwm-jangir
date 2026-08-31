@@ -4,60 +4,74 @@
  * no image assets and does not affect a logged-in dwm-jangir desktop.
  */
 
-@define-color window_bg_color #0b0f14;
-@define-color view_bg_color #0b0f14;
-@define-color card_bg_color #151b23;
-@define-color accent_bg_color #6ea8fe;
+@define-color window_bg_color #0f151d;
+@define-color view_bg_color #0f151d;
+@define-color card_bg_color #0f151d;
+@define-color accent_bg_color #5e9cff;
 @define-color accent_fg_color #0b0f14;
-@define-color window_fg_color #e6edf3;
-@define-color borders #2b3542;
+@define-color window_fg_color #e5eaf0;
+@define-color borders #263445;
 
 /* Slick Greeter draws its configured wallpaper on the window itself. Keep
  * this transparent so the fallback theme cannot paint over that surface. */
 window,
 window.background {
     background-color: transparent;
-    color: #e6edf3;
+    color: #e5eaf0;
 }
 
 label {
-    color: #e6edf3;
+    color: #e5eaf0;
 }
 
 entry {
-    min-height: 42px;
+    min-height: 40px;
     padding: 0 12px;
-    border: 1px solid #2b3542;
+    border: 1px solid #263445;
     border-radius: 8px;
     background-image: none;
-    background-color: #151b23;
-    color: #e6edf3;
+    background-color: #111923;
+    color: #e5eaf0;
     box-shadow: none;
 }
 
 entry:focus {
-    border-color: #6ea8fe;
-    box-shadow: 0 0 0 1px #6ea8fe;
+    border-color: #5e9cff;
+    box-shadow: 0 0 0 1px rgba(94, 156, 255, 0.45);
 }
 
 button {
     min-height: 34px;
     padding: 0 14px;
-    border: 1px solid #2b3542;
+    border: 1px solid #263445;
     border-radius: 8px;
     background-image: none;
-    background-color: #151b23;
-    color: #e6edf3;
+    background-color: #111923;
+    color: #e5eaf0;
     box-shadow: none;
 }
 
 button:hover {
-    background-color: #202a36;
-    border-color: #6ea8fe;
+    background-color: #1b2837;
+    border-color: #5e9cff;
 }
 
 button:active,
 button:checked {
     background-color: #6ea8fe;
     color: #0b0f14;
+}
+
+/* Keep the login session switcher a compact icon-only control.  This rule
+ * intentionally overrides the generic button padding above. */
+button.session-switcher {
+    min-width: 32px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 16px;
+}
+
+button.session-switcher label {
+    font-size: 13px;
+    font-weight: bold;
 }
