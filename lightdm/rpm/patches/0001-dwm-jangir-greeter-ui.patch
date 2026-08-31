@@ -542,7 +542,7 @@ index ba32502..913a266 100644
          if (LightDM.get_can_suspend ())
          {
 diff --git a/src/prompt-box.vala b/src/prompt-box.vala
-index f6f9789..eb30ee9 100644
+index f6f9789..382f74b 100644
 --- a/src/prompt-box.vala
 +++ b/src/prompt-box.vala
 @@ -18,6 +18,53 @@
@@ -599,13 +599,15 @@ index f6f9789..eb30ee9 100644
  public class PromptBox : FadableBox
  {
      public signal void respond (string[] response);
-@@ -48,10 +95,12 @@ public class PromptBox : FadableBox
+@@ -48,10 +95,14 @@ public class PromptBox : FadableBox
      protected Gtk.Grid name_grid;
      private ActiveIndicator active_indicator;
      protected FadingLabel name_label;
 -    protected FlatButton option_button;
 -    private CachedImage option_image;
 +    private Gtk.Button session_button;
++    private Gtk.Box session_content;
++    private Gtk.Image session_icon;
 +    private Gtk.Label session_label;
 +    private Gtk.Box identity_marks;
      private CachedImage message_image;
@@ -614,7 +616,7 @@ index f6f9789..eb30ee9 100644
 
      /* Condensed widgets */
      protected Gtk.Widget small_box_widget;
-@@ -108,7 +157,9 @@ public class PromptBox : FadableBox
+@@ -108,7 +159,9 @@ public class PromptBox : FadableBox
          box_grid.row_spacing = 3;
          box_grid.margin_top = GreeterList.BORDER;
          box_grid.margin_bottom = 4;
@@ -625,7 +627,7 @@ index f6f9789..eb30ee9 100644
 
          /** Grid layout:
            0 1     2      3 4
-@@ -214,9 +265,10 @@ public class PromptBox : FadableBox
+@@ -214,9 +267,10 @@ public class PromptBox : FadableBox
          name_grid.attach (avatar_image, COL_AVATAR, ROW_NAME, 1, 1);
 
          name_label = new FadingLabel ("");
@@ -637,7 +639,7 @@ index f6f9789..eb30ee9 100644
          name_label.valign = Gtk.Align.START;
          name_label.vexpand = false;
          name_label.margin_left = 2;
-@@ -237,23 +289,24 @@ public class PromptBox : FadableBox
+@@ -237,23 +291,46 @@ public class PromptBox : FadableBox
          align.show ();
          name_grid.attach (align, COL_NAME_MESSAGE, ROW_NAME, 1, 1);
 
@@ -666,9 +668,31 @@ index f6f9789..eb30ee9 100644
 +        session_button.relief = Gtk.ReliefStyle.NONE;
 +        session_button.get_accessible ().set_name (_("Switch desktop session"));
 +        session_button.clicked.connect (option_button_clicked_cb);
++
++        session_content = new Gtk.Box (Gtk.Orientation.HORIZONTAL, 4);
++        session_content.halign = Gtk.Align.CENTER;
++        session_content.valign = Gtk.Align.CENTER;
++
++        session_icon = new Gtk.Image ();
++        session_icon.no_show_all = true;
++        session_icon.get_style_context ().add_class ("session-mark");
++        try
++        {
++            var icon = new Gdk.Pixbuf.from_file_at_scale (
++                "/usr/share/dwm-jangir/lightdm-assets/dwm.svg", 22, 10, true);
++            session_icon.set_from_pixbuf (icon);
++        }
++        catch (Error e)
++        {
++            debug ("Unable to load DWM session mark: %s", e.message);
++        }
++        session_content.pack_start (session_icon, false, false, 0);
++
 +        session_label = new Gtk.Label ("");
 +        session_label.show ();
-+        session_button.add (session_label);
++        session_content.pack_start (session_label, false, false, 0);
++        session_content.show ();
++        session_button.add (session_content);
 +        name_grid.attach (session_button, COL_NAME_OPTIONS, ROW_NAME, 1, 1);
 +
 +        /* The session switcher is the only control needed on the login card.
@@ -679,7 +703,7 @@ index f6f9789..eb30ee9 100644
 
          name_grid.show ();
 
-@@ -272,7 +325,7 @@ public class PromptBox : FadableBox
+@@ -272,7 +349,7 @@ public class PromptBox : FadableBox
          small_name_grid.attach (small_avatar_image, 0, 0, 1, 1);
 
          small_name_label = new FadingLabel ("");
@@ -688,7 +712,7 @@ index f6f9789..eb30ee9 100644
          small_name_label.override_color (Gtk.StateFlags.NORMAL, { 1.0f, 1.0f, 1.0f, 1.0f });
          small_name_label.valign = Gtk.Align.CENTER;
          small_name_label.yalign = 0.5f;
-@@ -335,20 +388,33 @@ public class PromptBox : FadableBox
+@@ -335,20 +412,40 @@ public class PromptBox : FadableBox
 
      public void set_options_image (Gdk.Pixbuf? image, string? tooltip)
      {
@@ -709,10 +733,17 @@ index f6f9789..eb30ee9 100644
 +        {
 +            var session_name = tooltip ?? _("Session");
 +            if (session_name == "dwm-jangir")
-+                session_name = "DWM";
-+            else if (session_name.has_prefix ("KDE Plasma (session-selector test)"))
-+                session_name = "KDE (test)";
-+            session_label.label = "%s  ▾".printf (session_name);
++            {
++                session_icon.show ();
++                session_label.label = "▾";
++            }
++            else
++            {
++                session_icon.hide ();
++                if (session_name.has_prefix ("KDE Plasma (session-selector test)"))
++                    session_name = "KDE (test)";
++                session_label.label = "%s  ▾".printf (session_name);
++            }
 +            session_button.show ();
 +        }
 +    }
@@ -731,7 +762,7 @@ index f6f9789..eb30ee9 100644
      }
 
      private void option_button_clicked_cb (Gtk.Button button)
-@@ -407,12 +473,14 @@ public class PromptBox : FadableBox
+@@ -407,12 +504,14 @@ public class PromptBox : FadableBox
 
          reset_last_row ();
          has_errors = false;
@@ -746,7 +777,7 @@ index f6f9789..eb30ee9 100644
          foreach_prompt_widget ((w) =>
          {
              var is_error = w.get_data<bool> ("prompt-box-is-error");
-@@ -499,12 +567,13 @@ public class PromptBox : FadableBox
+@@ -499,12 +598,13 @@ public class PromptBox : FadableBox
      {
          var label = new FadingLabel (text);
 
@@ -762,7 +793,7 @@ index f6f9789..eb30ee9 100644
 
          label.xalign = 0.0f;
          label.set_data<bool> ("prompt-box-is-error", is_error);
-@@ -512,7 +581,10 @@ public class PromptBox : FadableBox
+@@ -512,7 +612,10 @@ public class PromptBox : FadableBox
          attach_item (label);
 
          if (is_error)
@@ -773,7 +804,7 @@ index f6f9789..eb30ee9 100644
      }
 
      public DashEntry add_prompt (string text, string? accessible_text, bool is_secret)
-@@ -557,54 +629,37 @@ public class PromptBox : FadableBox
+@@ -557,54 +660,37 @@ public class PromptBox : FadableBox
          if (is_secret)
          {
              entry.visibility = false;

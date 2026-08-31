@@ -6,6 +6,7 @@ PIXMAPS_DIR = $(DESTDIR)/usr/share/pixmaps
 GREETER_DIR = $(DESTDIR)/usr/share/xgreeters
 GREETER_LIBEXEC_DIR = $(DESTDIR)/usr/libexec
 GREETER_ASSET_DIR = $(DESTDIR)/usr/share/dwm-jangir/lightdm-backgrounds
+GREETER_UI_ASSET_DIR = $(DESTDIR)/usr/share/dwm-jangir/lightdm-assets
 GREETER_THEME_DIR = $(DESTDIR)/usr/share/themes/dwm-jangir-dark/gtk-3.0
 LIGHTDM_SEAT_SECTION ?= Seat:*
 LIGHTDM_GREETER_SESSION ?= dwm-jangir-slick-greeter
@@ -43,6 +44,7 @@ install:
 	install -d                                      $(GREETER_ASSET_DIR)
 	install -Dm644 wallpapers/*.webp                 $(GREETER_ASSET_DIR)/
 	install -Dm644 wallpapers/SOURCES.md             $(GREETER_ASSET_DIR)/SOURCES.md
+	install -Dm644 assets/dwm.svg                     $(GREETER_UI_ASSET_DIR)/dwm.svg
 
 rpm:
 	./rpm/build-dwm-jangir-slick-greeter-rpm.sh

@@ -893,6 +893,7 @@ install_lightdm_config() {
 			/usr/share/xgreeters/dwm-jangir-slick-greeter.desktop \
 			/usr/share/themes/dwm-jangir-dark/gtk-3.0/gtk.css \
 			/usr/share/dwm-jangir/lightdm-backgrounds \
+			/usr/share/dwm-jangir/lightdm-assets/dwm.svg \
 			/usr/share/pixmaps/dwm-jangir.jpg \
 			/usr/share/pixmaps/dwm-jangir-logo.png
 	fi
