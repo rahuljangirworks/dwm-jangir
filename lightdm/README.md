@@ -21,6 +21,12 @@ from the login screen.
 
 `wallpapers/SOURCES.md` records the upstream source for each bundled image.
 
+The branded patch implements one consistent seven-state login flow: default,
+password focus, invalid-password feedback, desktop-session selection, the
+power menu, shutdown/restart confirmation, and the signing-in state. The
+authentication status row is created only while feedback is visible, keeping
+the default card compact while errors and signing-in feedback have room.
+
 ## Build the patched greeter RPM
 
 The UI patch targets exactly Slick Greeter 2.2.6, matching Fedora 44. Build it
