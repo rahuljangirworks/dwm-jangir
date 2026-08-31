@@ -31,6 +31,7 @@ cmp -s "$repo/lightdm/lightdm.conf" "$fedora_stage/etc/lightdm/lightdm.conf"
 grep -Fqx 'xft-dpi=96' "$fedora_stage/etc/lightdm/slick-greeter.conf"
 grep -Fqx 'activate-numlock=false' "$fedora_stage/etc/lightdm/slick-greeter.conf"
 grep -Fqx 'show-clock=false' "$fedora_stage/etc/lightdm/slick-greeter.conf"
+grep -Fqx 'clock-format=%I:%M %p' "$fedora_stage/etc/lightdm/slick-greeter.conf"
 grep -Fqx 'show-quit=true' "$fedora_stage/etc/lightdm/slick-greeter.conf"
 test -x "$fedora_stage/usr/libexec/dwm-jangir-slick-greeter"
 test -f "$fedora_stage/usr/share/xgreeters/dwm-jangir-slick-greeter.desktop"
@@ -43,6 +44,8 @@ grep -Fq 'Desktop session' "$repo/lightdm/rpm/patches/0001-dwm-jangir-greeter-ui
 grep -Fq 'pending_error_message = text' "$repo/lightdm/rpm/patches/0001-dwm-jangir-greeter-ui.patch"
 grep -Fq 'Shut down?' "$repo/lightdm/rpm/patches/0001-dwm-jangir-greeter-ui.patch"
 grep -Fq 'Restart?' "$repo/lightdm/rpm/patches/0001-dwm-jangir-greeter-ui.patch"
+grep -Fq 'https://wttr.in/' "$repo/lightdm/rpm/patches/0001-dwm-jangir-greeter-ui.patch"
+grep -Eq '^Requires:[[:space:]]+curl' "$repo/lightdm/rpm/dwm-jangir-slick-greeter.spec"
 if grep -Fq 'display-setup-script=' "$fedora_stage/etc/lightdm/lightdm.conf"; then
 	printf '%s\n' 'LightDM display hooks are not supported.' >&2
 	exit 1
