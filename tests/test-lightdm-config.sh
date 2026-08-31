@@ -38,6 +38,11 @@ test -f "$fedora_stage/usr/share/themes/dwm-jangir-dark/gtk-3.0/gtk.css"
 test -f "$fedora_stage/usr/share/dwm-jangir/lightdm-backgrounds/SOURCES.md"
 test -f "$fedora_stage/usr/share/dwm-jangir/lightdm-assets/dwm.svg"
 test "$(find "$fedora_stage/usr/share/dwm-jangir/lightdm-backgrounds" -name '*.webp' | wc -l)" -eq 9
+grep -Fq 'Signing in…' "$repo/lightdm/rpm/patches/0001-dwm-jangir-greeter-ui.patch"
+grep -Fq 'Desktop session' "$repo/lightdm/rpm/patches/0001-dwm-jangir-greeter-ui.patch"
+grep -Fq 'pending_error_message = text' "$repo/lightdm/rpm/patches/0001-dwm-jangir-greeter-ui.patch"
+grep -Fq 'Shut down?' "$repo/lightdm/rpm/patches/0001-dwm-jangir-greeter-ui.patch"
+grep -Fq 'Restart?' "$repo/lightdm/rpm/patches/0001-dwm-jangir-greeter-ui.patch"
 if grep -Fq 'display-setup-script=' "$fedora_stage/etc/lightdm/lightdm.conf"; then
 	printf '%s\n' 'LightDM display hooks are not supported.' >&2
 	exit 1
