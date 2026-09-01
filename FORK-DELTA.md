@@ -12,14 +12,16 @@ state. This file maps that policy to exact files and conflict decisions.
 
 ## Verified Baseline
 
-Verified on 2026-08-30:
+Verified on 2026-09-01:
 
 | Ref | Commit | Meaning |
 | --- | --- | --- |
 | `sync/2026-08-30` | `c60c139` | Upstream sync branch with all fork commits rebased onto latest upstream. |
+| `sync/2026-09-01` | pending maintainer merge | Current fork work rebased onto `upstream/main` at `70e6e43`; validated in the Fedora VM. |
 | `dev` / GitHub default branch | `8cc8ed4` | Public fork branch with completed runtime migration (not yet synced). |
 | Common ancestor (previous) | `46991ca` | Upstream base before 2026-08-30 sync. |
-| Current upstream base | `97f1ed9` | Latest upstream incorporated by sync/2026-08-30. |
+| Previous upstream base | `97f1ed9` | Upstream incorporated by sync/2026-08-30. |
+| Current upstream base | `70e6e43` | Latest upstream incorporated by sync/2026-09-01. |
 | `origin/main` | `0bea4f6` | Legacy branch; do not use for new work. |
 
 The committed fork history on `sync/2026-08-30` above upstream/main:
@@ -100,6 +102,7 @@ changed. State any unavailable environment or tool in `PROJECT-STATE.md`.
 | 2026-08-29 | Removed the non-upstream LightDM display hook and automatic profile scripts; monitor persistence returns to upstream `dwm-display-setup`. | Active. |
 | 2026-08-29 | Generated NVIDIA MetaModes and a shared D-Bus session launcher were validated; a real reboot confirmed DP-0 primary 2560x1440 and DVI-D-0 900x1440 rotated left. | Active. |
 | 2026-08-30 | Synced fork with upstream `97f1ed9` via rebase on `sync/2026-08-30`. Resolved conflicts in Makefile (D-007 runtime identity), CHANGELOG.md, and README.md (D-002 branding). All seven maintained deltas preserved correctly. Validation passed: shell syntax clean, runtime paths verified, no whitespace errors. | Active. |
+| 2026-09-01 | Rebased the current fork work onto upstream `70e6e43` on `sync/2026-09-01`. Resolved Makefile, Astro documentation migration, runtime-identity test, and changelog conflicts from current upstream structure. Focused tests and a real Fedora VM LightDM/DWM installation passed; the host-wide formatter check remains unavailable because `shfmt` is not installed. | Pending maintainer merge into `dev`. |
 
 Historical material must never override this file, `FORK.md`, or
 `PROJECT-STATE.md` during a merge.
