@@ -16,15 +16,15 @@ and dedicated documentation; do not use this file as a diary.
 ## Verified Git Snapshot
 
 Verified on 2026-09-01 after rebasing the current fork work onto the latest
-upstream. The result is pending maintainer review/merge into `dev`:
+upstream and merging the validated result into `dev`:
 
 | Item | Verified value |
 | --- | --- |
-| Current branch | `sync/2026-09-01`, clean worktree |
+| Current branch | `dev`, clean worktree |
 | Public fork repository | `https://github.com/rahuljangirworks/dwm-jangir` |
 | Read-only upstream repository | `https://github.com/ChrisTitusTech/dwm-titus` |
 | Integration branch before this sync | `dev` at `91fdc55` |
-| Sync branch | `sync/2026-09-01` (rebased, not merged or pushed) |
+| Merged sync | `4153460` (`merge: sync upstream 2026-09-01`) |
 | Previous upstream base | `97f1ed9` |
 | Current upstream base | `70e6e43` (`Prefer desktop ChatGPT for legacy web hotkeys (#197)`) |
 | GitHub default branch | `dev` (not changed by this validation) |
@@ -42,7 +42,8 @@ The fork commits on `sync/2026-08-30` above `upstream/main` (97f1ed9):
 ## Verified Upstream Sync (2026-09-01)
 
 Rebased the 21 current fork commits onto `upstream/main` at `70e6e43` on
-`sync/2026-09-01`. The rebase retained upstream's Astro documentation migration,
+`sync/2026-09-01`, then merged that validated result into `dev` as `4153460`.
+The result retained upstream's Astro documentation migration,
 accessibility/settings work, and web-app compatibility changes while preserving
 the documented fork identity, display, session, branding, and LightDM deltas.
 
@@ -112,35 +113,28 @@ The managed shell check could not run because `shellcheck` is not installed;
 
 ## Current Local Worktree
 
-The `sync/2026-09-01` branch is clean with all current fork commits rebased onto
-`upstream/main` at `70e6e43`. The runtime-identity migration is complete:
+The `dev` branch contains all current fork commits rebased onto `upstream/main`
+at `70e6e43`. The runtime-identity migration is complete:
 `dwm-jangir` is the active name for all XDG, session, helper, Xorg, LightDM,
 release, and source-asset paths.
 
 ## Next Required Action
 
-Review and merge the validated upstream sync:
+The sync is merged locally and remains unpushed. Before publishing, review the
+merged result and then push only with maintainer approval:
 
-1. Review the sync result:
+1. Review the merged result:
    ```bash
-   git log --oneline upstream/main..sync/2026-09-01
-   git diff dev sync/2026-09-01
+   git log --oneline upstream/main..dev
+   git diff upstream/main...dev
    ```
 
-2. Merge sync branch to dev:
-   ```bash
-   git switch dev
-   git merge --ff-only sync/2026-09-01
-   ```
-
-3. Update FORK-DELTA.md and PROJECT-STATE.md if needed
-
-4. Push to origin (after Rahul's confirmation):
+2. Push to origin (after Rahul's confirmation):
    ```bash
    git push origin dev
    ```
 
-5. Clean up sync branch after the merge is safely published:
+3. Clean up the sync branch after the merge is safely published:
    ```bash
    git branch -d sync/2026-09-01
    ```
