@@ -2,11 +2,13 @@
 # dwm-jangir session launcher for LightDM and startx
 
 # Source system profile for environment setup
+# shellcheck disable=SC1091
 if [ -f /etc/profile ]; then
 	. /etc/profile
 fi
 
 # Source user profile if it exists
+# shellcheck disable=SC1091
 if [ -f "$HOME/.profile" ]; then
 	. "$HOME/.profile"
 fi
