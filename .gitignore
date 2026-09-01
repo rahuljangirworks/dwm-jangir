@@ -39,3 +39,4 @@ program.log
 
 # Local agent workspace link; portable agent instructions live in FORK.md.
 /.agent
+.claude/settings.local.json
