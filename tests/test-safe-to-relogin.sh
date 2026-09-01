@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Test: Verify system is safe to reboot or relogin
 # Purpose: Check all critical components are installed and configured correctly
+# shellcheck disable=SC2329
 
 set -uo pipefail
 
@@ -88,13 +89,11 @@ check_user_directories() {
         "$user_home/.local/state/${RUNTIME_ID}"
     )
 
-    local all_exist=true
     for dir in "${dirs[@]}"; do
         if [ -d "$dir" ]; then
             pass "Directory exists: $dir"
         else
             fail "Directory missing: $dir"
-            all_exist=false
         fi
     done
 }
@@ -153,13 +152,11 @@ check_critical_scripts() {
         "dwm-terminal"
     )
 
-    local all_present=true
     for script in "${critical_scripts[@]}"; do
         if command -v "$script" &>/dev/null; then
             pass "Script available: $script"
         else
             fail "Script missing: $script"
-            all_present=false
         fi
     done
 }

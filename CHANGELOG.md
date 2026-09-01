@@ -8,6 +8,16 @@ versions from `config.mk`.
 
 ### Changed
 
+- Rebuild the published documentation as a themed Astro site while preserving
+  the existing custom domain and public page URLs. Add responsive navigation,
+  light and dark themes, clearer documentation layouts, and a visual project
+  development overview grounded in the complete commit history.
+
+- Compact the Control Center and Settings detail pane by removing redundant
+  headings and duplicate power-status lines, tightening margins, gaps, and
+  display and capability cards, and using dense text-scale-aware rows while
+  preserving the existing navigation, context, and controls.
+
 - Make LightDM select the installed `dwm-jangir` session by default instead
   of the removed legacy `dwm` session. The generated Fedora configuration and
   its regression test now use the same runtime identity; a Fedora 44 VM full
@@ -18,6 +28,20 @@ versions from `config.mk`.
   installer and Fedora image profiles.
 
 ### Added
+
+- Group the existing bounded application text-scale choices under a dedicated
+  Settings Accessibility section with keyboard-focusable apply and reset
+  controls, wrapping actions for compact display sizes, and capability-scoped
+  explanations for contrast, reduced motion, notification policy, and input
+  features that are not yet managed. Event-driven personalization changes
+  coalesce a fresh strict capability snapshot so recovery cannot leave the
+  text-scale controls incorrectly disabled.
+
+- Replace the generic Phase 5 accessibility placeholder with distinct Settings
+  capability records for text scaling, high contrast, reduced motion,
+  notification policy, and keyboard or pointer access. Text scaling consumes
+  only a complete versioned personalization response, and unavailable or
+  malformed providers degrade independently without adding polling or mutation.
 
 - Add a version-pinned Slick Greeter overlay for LightDM: a compact branded
   login flow, accessible session selection, local random backgrounds, and a
@@ -234,6 +258,10 @@ versions from `config.mk`.
 
 ### Fixed
 
+- Keep visible floating windows above the tiled stack when focus changes while
+  retaining focus-based ordering within the floating layer and the existing
+  fullscreen and shell-surface priorities.
+
 - Stop automatic theme-preview status retries after their bounded failure
   budget is exhausted. Reopening Appearance or using its refresh action still
   performs one explicit retry, and successful preview lifecycle actions re-arm
@@ -242,6 +270,9 @@ versions from `config.mk`.
 - Prefer an installed ChatGPT desktop application for `Super`+`A` and hide its
   duplicate ChatGPT web entry from the managed application launcher, while
   retaining the web app as the fallback when no native desktop entry exists.
+  Existing systems with the former stock web binding now receive the same
+  native-first behavior through `webapp-launch`, without editing user-owned
+  hotkey files.
 
 - Keep the managed Quickshell recovery scoped to the exact configuration and
   display, validate fixed PID/start-time cohorts before signals, and bound
@@ -363,8 +394,8 @@ versions from `config.mk`.
   panel-triggered popups anchored to the monitor where they were opened.
 - Power actions now use the same compact menu header, flat rows, spacing, and
   confirmation layout as the Control Center.
-- Documentation is built and tested from `docs/src/`; generated mdBook output
-  is no longer version controlled.
+- Documentation is built and tested from `docs/src/` with Astro; generated
+  documentation output is no longer version controlled.
 - Release guidance requires validated, committed source and explicit platform
   coverage.
 

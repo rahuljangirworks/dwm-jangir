@@ -1,3 +1,10 @@
+---
+title: How dwm-jangir Works
+description: A plain-language guide to the window management, shell, live configuration, utilities, and multi-monitor behavior behind dwm-jangir.
+navLabel: How It Works
+eyebrow: Under the hood
+---
+
 # How dwm-jangir Works
 
 dwm-jangir uses a maintained fork of

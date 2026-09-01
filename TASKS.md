@@ -7,24 +7,19 @@ completion evidence is recorded in `ROADMAP.md`, `CHANGELOG.md`,
 
 ## Verified Checkpoint
 
-Status verified 2026-08-28 against `origin/main` at `5f806af`. Ten of the 25
-Phase 5 implementation checkboxes are merged and supported by passing hosted
-checks. The current panel-widget persistence review boundary adds one validated
-checkbox, leaving 14 open in this branch. The detailed mapping from tasks to
-pull requests, validation, and remaining work is recorded in
-`docs/P5-STATUS.md`.
+Status reconciled 2026-08-31 against `origin/main` at `63e49ab`. Thirteen of
+the 25 Phase 5 implementation checkboxes are merged. PR #190 completed the
+accessibility capability contract after PR #188 completed `APPEARANCE-001` and
+PR #189 established the automatic small-PR workflow. Only the primary worktree
+remains registered.
 
-Panel-widget persistence has passed its focused helper, Control Center,
-panel-menu, QML, shell, nested-X11, clean-build, and full-suite checks on top of
-current `main`. The exact working tree is synchronized to the live installation.
-A fresh DWM login activated the installed binary byte-for-byte, one managed
-Quickshell instance, the panel and tray, and the Control Center and Settings
-surfaces. The installed Settings window opened at 1180x760 with all nine
-sections visible, tighter display controls, and text-scale-responsive inputs.
-The current session has one active monitor, so real multi-monitor persistence
-remains untested here; the shared-state path passed nested-X11 validation. The
-branch is not on `origin/main`, has no pull request, and must be reviewed and
-merged before starting the optional-component qualification boundary.
+The current accessibility Settings boundary exposes the already-supported
+application text scale in a dedicated group with apply, reset, keyboard focus,
+and compact-width action wrapping. Contrast, reduced motion, notification
+policy, and practical keyboard or pointer access remain explanatory
+capability-scoped cards until their mutation contracts land separately. The
+overall Settings-controls checkbox remains open until those controls and the
+required interaction evidence are complete.
 
 ## Active Phase: Personalization and Accessibility
 
@@ -86,7 +81,7 @@ Acceptance:
 - [x] Move the existing in-memory panel-widget visibility controls onto shared,
   versioned user state with Settings integration, safe defaults, and migration
   that preserves the current Control Center behavior.
-- [ ] Preserve optional-component behavior: missing Picom, Feh, toolkit themes,
+- [x] Preserve optional-component behavior: missing Picom, Feh, toolkit themes,
   wallpaper directories, or delegated tools must fail only their capability.
 
 Acceptance:
@@ -102,7 +97,7 @@ Acceptance:
 
 ### ACCESSIBILITY-001: Practical X11 Accessibility and Notification Policy
 
-- [ ] Define capability records for text scaling, contrast, reduced motion,
+- [x] Define capability records for text scaling, contrast, reduced motion,
   notification policy, and practical keyboard or pointer accessibility features
   available through supported Fedora/X11 interfaces.
 - [ ] Add accessible Settings controls with keyboard navigation, visible focus,

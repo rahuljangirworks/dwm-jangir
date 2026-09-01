@@ -223,7 +223,7 @@ run_helper() {
 		DWM_TEST_MODE=1 \
 		DWM_TEST_QUICKSHELL_VERSION="${DWM_TEST_QUICKSHELL_VERSION:-0.3.0}" \
 		DWM_HEALTH_COMMAND_TIMEOUT=2 \
-		PATH="$work/bin:/usr/bin:/bin" \
+		PATH="${DWM_TEST_PATH:-$work/bin:/usr/bin:/bin}" \
 		"$repo/scripts/dwm-quickshell-controlcenter" "$@"
 }
 
@@ -429,7 +429,10 @@ run_helper action gtk-settings >"$work/gtk-settings.out"
 grep -Fqx 'action	gtk-settings' "$work/gtk-settings.out"
 grep -Fqx 'nwg-look ' "$work/actions.log"
 rm -f "$work/bin/nwg-look"
-if run_helper action gtk-settings 2>"$work/gtk-settings.err"; then
+mkdir -p "$work/no-nwg-look-bin"
+ln -s "$(command -v dirname)" "$work/no-nwg-look-bin/dirname"
+if DWM_TEST_PATH="$work/no-nwg-look-bin" \
+	run_helper action gtk-settings 2>"$work/gtk-settings.err"; then
 	exit 1
 fi
 grep -Fqx 'nwg-look is unavailable' "$work/gtk-settings.err"
@@ -536,6 +539,22 @@ grep -Fq 'readonly property int cardWidth: Theme.controlCenterWidth' "$repo/conf
 grep -Fq '? Theme.controlCenterX' "$repo/config/quickshell/power/PowerMenuWindow.qml"
 grep -Fq 'property bool navigates: false' "$repo/config/quickshell/core/MenuRow.qml"
 grep -Fq 'MenuHeader {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'readonly property int compactRowHeight: Math.max(28, Theme.fontBodySize + 12)' \
+	"$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq 'margin: Theme.spacingLg' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+if grep -Fq 'SectionLabel {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"; then
+	printf 'Control Center still renders redundant overview section headers\n' >&2
+	exit 1
+fi
+if grep -Fq 'text: root.powerModel.dpmsEnabled' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml" ||
+	grep -Fq 'text: root.powerModel.lockEnabled' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"; then
+	printf 'Control Center still renders duplicate power status labels\n' >&2
+	exit 1
+fi
+grep -Fq '? root.formatDuration(root.powerModel.dpmsTimeout) : "Off"' \
+	"$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
+grep -Fq '? root.formatDuration(root.powerModel.lockTimeout) : "Off"' \
+	"$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'MenuHeader {' "$repo/config/quickshell/power/PowerMenuWindow.qml"
 grep -Fq 'delegate: MenuRow {' "$repo/config/quickshell/power/PowerMenuWindow.qml"
 grep -Fq 'popupHeight: powerCard.implicitHeight' "$repo/config/quickshell/power/PowerMenuWindow.qml"

@@ -1,34 +1,37 @@
 # Phase 5 Project Status
 
-Date: 2026-08-28
+Date: 2026-08-31
 
 ## Verification Baseline
 
 This checkpoint was reconciled against `origin/main` at
-`5f806afec17a60d56180542dc309750b47672e69`. The panel-widget persistence
-branch is one reviewable commit directly on that baseline. GitHub had no open
-pull request targeting `main`.
+`63e49ab5dc7f1e95d1da0667560a5fe9a4c35822`. PR #190 merged the accessibility
+capability contract after PR #188 merged optional-component qualification and
+PR #189 merged the automatic small-PR workflow. The primary checkout matched
+the remote revision before this continuation branch was created, no pull
+request remained open, and only the primary checkout was registered.
 
-The active `TASKS.md` contains 25 implementation checkboxes. Ten are complete
-on `main`; this review boundary validates one additional checkbox and leaves 14
-open in the branch. The panel checkbox does not advance the merged-project
-count until the branch is reviewed and merged.
+The active `TASKS.md` contains 25 implementation checkboxes. Thirteen are
+complete on `main`, leaving 12 open.
 
-The reconciled checkpoint and these documentation changes passed:
+The merged APPEARANCE-001 boundaries and their documentation passed. The
+historical documentation build has since been replaced by the current Astro
+validation shown here:
 
 ```text
 scripts/run-tests make clean all
 scripts/run-tests
-mdbook build docs --dest-dir <temporary-output>
+npm --prefix docs ci
+npm --prefix docs run build
 git diff --check
 ```
 
-The managed suite included the current appearance provider, inventory, font,
-personalization, wallpaper, theme transaction, nested-X11, staged-install, and
-repeated-install checks. Quickshell lint retained only the already-documented
-`PanelTooltip.qml` qmltypes and `RunningAppsArea.qml` warnings. This checkpoint
-proves the currently merged baseline is healthy; it does not replace the open
-combined Phase 5 qualification tasks.
+The managed suite included the appearance provider, inventory, font,
+personalization, wallpaper, theme transaction, panel persistence, optional-loss,
+nested-X11, staged-install, and repeated-install checks. Quickshell lint retained
+only the already-documented `PanelTooltip.qml` qmltypes and
+`RunningAppsArea.qml` warnings. Exact-head hosted validation for both merged
+boundaries passed before merge.
 
 ## Merged Task Evidence
 
@@ -43,25 +46,16 @@ combined Phase 5 qualification tasks.
 | APPEARANCE-001 managed-shell font and scale | Complete | PR #181 | Six hosted checks passed; two conditional checks skipped. |
 | APPEARANCE-001 desktop font, cursor, icon, GTK, and Qt backend | Complete | PR #182 | Five hosted checks passed; one conditional check skipped. |
 | APPEARANCE-001 desktop controls | Complete | PRs #183 and #184 | All executed hosted checks passed; conditional checks skipped according to their paths. |
+| APPEARANCE-001 panel-widget persistence | Complete | PR #186 | Hosted CI, CodeQL, docs, focused panel, nested-X11, and live-session checks passed. |
+| APPEARANCE-001 optional-component isolation | Complete | PR #188 | Focused and full managed suites, nested X11, install, docs, lint, CodeQL, and hosted checks passed. |
+| ACCESSIBILITY-001 capability contract | Complete | PR #190 | Five hosted checks and exact-head Codex and CodeRabbit review passed; one conditional check skipped. |
 
 The detailed contracts and focused validation commands remain in
 `P5-THEME-TRANSACTIONS.md`, `P5-APPEARANCE-INVENTORY.md`,
 `P5-FONT-CONTROLS.md`, and `P5-APPEARANCE-CONTROLS.md`. The merged fixes and
 user-visible behavior are also recorded under the Unreleased changelog.
 
-## Current Review Boundary
-
-Panel-widget persistence is implemented on
-`codex/phase5-panel-persistence`. It adds one versioned user state file, one
-root model shared by every monitor, Control Center and Settings integration,
-safe migration and fallback behavior, and event-driven updates.
-
-The exact working tree passed the focused panel, Control Center, panel-menu,
-nested-X11, QML lint, ShellCheck, shfmt, clean-build, full managed-suite, and
-diff checks. Built-in Codex review and independent CodeRabbit review reported
-no remaining findings. The branch has been refreshed directly onto the current
-checkpoint and is not published. The panel-widget checkbox is complete in this
-review boundary but remains unmerged project work.
+## Merged Panel Live Evidence
 
 The exact working tree was synchronized through `scripts/dev-sync-install.sh`.
 All managed files match, and rollback backup
@@ -76,22 +70,36 @@ idle measured 0.000% CPU over five seconds. The current workstation session had
 one active monitor, so real multi-monitor persistence remains untested here;
 nested-X11 validation covers the shared-state path.
 
-Next action: publish a ready-for-review pull request, resolve hosted review and
-CI, and merge it before starting optional-component qualification.
+## Current Review Boundary
+
+The current `codex/phase5-accessibility-settings` boundary groups the existing
+bounded application text-scale choices under Accessibility. Its apply and
+reset actions retain the shared personalization transaction, keyboard focus,
+and visible focus border, while action rows wrap at compact widths. The four
+remaining accessibility records render in the same group with explicit
+capability-scoped explanations and no implied mutation path.
+
+Personalization selection changes coalesce a strict capability refresh, so a
+provider or XSETTINGS recovery updates the text-scale gate without polling or a
+second provider. This slice introduces no new persistent state, helper,
+watcher, polling loop, or privilege boundary. The overall Settings-controls
+checkbox stays open for dedicated contrast, reduced-motion,
+notification-policy, and practical input controls plus the required
+real-session interaction evidence.
 
 ## Open Task Boundaries
 
 | Boundary | Open checkboxes | Verified current state | Next evidence needed |
 | --- | ---: | --- | --- |
-| APPEARANCE-001 | 1 | Panel persistence is locally validated but unmerged. Cross-capability optional-component behavior is not yet qualified as one boundary. | Merge the panel slice, then test missing Picom, Feh, toolkit themes, wallpaper directories, and delegated tools without cross-capability failure. |
-| ACCESSIBILITY-001 | 4 | No checkbox is complete. Existing text-scale behavior is an appearance control and does not by itself satisfy the accessibility contract. | Define capabilities, implement Settings controls, apply contrast and reduced motion, add notification policy, and validate keyboard-only and fresh-session behavior. |
+| APPEARANCE-001 | 0 | Complete on `main` through PR #188. | Preserve the merged contracts while completing Phase 5. |
+| ACCESSIBILITY-001 | 3 | The merged boundary defines five distinct capability records; the current UI slice groups text scale and truthful unavailable states without adding mutation. | Finish dedicated controls and interaction evidence, then apply contrast and reduced motion and add notification policy. |
 | P5-UI5 | 4 | No candidate decision record is complete. | Inventory candidates, record adopt/defer/reject decisions, and qualify each adopted X11-native experience independently. |
-| P5-VALIDATE | 5 | Individual merged slices and the current panel boundary have focused and full-suite evidence, but the combined Phase 5 product is incomplete. | Run the final Fedora 44, clean build, full suite, QML, shell, install/parity, fresh-login, `startx`, multi-monitor, optional-loss, recovery, and 30-second CPU qualification after all selected Phase 5 work merges. |
+| P5-VALIDATE | 5 | Individual merged slices have focused and full-suite evidence, but the combined Phase 5 product is incomplete. | Run the final Fedora 44, clean build, full suite, QML, shell, install/parity, fresh-login, `startx`, multi-monitor, optional-loss, recovery, and 30-second CPU qualification after all selected Phase 5 work merges. |
 
 ## Phase Position
 
-Phase 5 remains active. THEME-001 is complete. APPEARANCE-001 is in progress.
-No ACCESSIBILITY-001, P5-UI5, or final Phase 5 qualification checkbox is
-complete. Phase 6 must not begin until the Phase 5 exit criteria pass or an
-explicit roadmap decision defers named work and records the resulting
-limitation.
+Phase 5 remains active. THEME-001 and APPEARANCE-001 are complete on `main`.
+The first ACCESSIBILITY-001 checkbox is complete on `main` through PR #190;
+no P5-UI5 or final Phase 5 qualification checkbox is complete. Phase 6 must not
+begin until the Phase 5 exit criteria pass or an explicit roadmap decision
+defers named work and records the resulting limitation.
