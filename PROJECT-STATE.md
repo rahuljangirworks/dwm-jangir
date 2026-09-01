@@ -3,7 +3,7 @@ title: DWM-Jangir Project State
 type: live-project-state
 project: dwm-jangir
 status: active
-last-verified: 2026-08-30
+last-verified: 2026-09-01
 ---
 
 # DWM-Jangir Project State
@@ -15,19 +15,19 @@ and dedicated documentation; do not use this file as a diary.
 
 ## Verified Git Snapshot
 
-Verified on 2026-08-30 after successful upstream sync:
+Verified on 2026-09-01 after rebasing the current fork work onto the latest
+upstream. The result is pending maintainer review/merge into `dev`:
 
 | Item | Verified value |
 | --- | --- |
-| Current branch | `sync/2026-08-30`, clean worktree |
+| Current branch | `sync/2026-09-01`, clean worktree |
 | Public fork repository | `https://github.com/rahuljangirworks/dwm-jangir` |
 | Read-only upstream repository | `https://github.com/ChrisTitusTech/dwm-titus` |
-| Published `origin/dev` commit | `8cc8ed4` (`feat: complete dwm-titus → dwm-jangir runtime identity migration`) |
-| Sync branch tip | `c60c139` (`feat: complete dwm-titus → dwm-jangir runtime identity migration` rebased) |
-| Upstream sync base | `97f1ed9` (`feat(settings): persist panel widgets and compact Settings`) |
-| Common ancestor (previous) | `46991ca` |
-| Current upstream base | `97f1ed9` (fully synced) |
-| GitHub default branch | `dev` at `8cc8ed4` (before sync) |
+| Integration branch before this sync | `dev` at `91fdc55` |
+| Sync branch | `sync/2026-09-01` (rebased, not merged or pushed) |
+| Previous upstream base | `97f1ed9` |
+| Current upstream base | `70e6e43` (`Prefer desktop ChatGPT for legacy web hotkeys (#197)`) |
+| GitHub default branch | `dev` (not changed by this validation) |
 | Legacy branch | `origin/main` at `0bea4f6`; do not use |
 
 The fork commits on `sync/2026-08-30` above `upstream/main` (97f1ed9):
@@ -39,7 +39,40 @@ The fork commits on `sync/2026-08-30` above `upstream/main` (97f1ed9):
 5. `430c1f4 docs(fork): record display recovery verification`
 6. `c60c139 feat: complete dwm-titus → dwm-jangir runtime identity migration`
 
-## Verified Upstream Sync (2026-08-30)
+## Verified Upstream Sync (2026-09-01)
+
+Rebased the 21 current fork commits onto `upstream/main` at `70e6e43` on
+`sync/2026-09-01`. The rebase retained upstream's Astro documentation migration,
+accessibility/settings work, and web-app compatibility changes while preserving
+the documented fork identity, display, session, branding, and LightDM deltas.
+
+Conflicts resolved from the current upstream structure:
+
+- Makefile check targets retained the upstream additions and fork session/display
+  helpers.
+- The docs workflow now uses upstream Astro while retaining the fork Pages
+  deployment identity; obsolete mdBook files were removed.
+- Runtime-identity docs and tests now use Astro's `docs/src/content/` layout.
+- Changelog entries retain both upstream and fork history.
+
+Validation passed:
+
+- `scripts/run-tests make clean all`, `make check-shell`, `git diff --check`.
+- Focused LightDM, runtime-identity, display, install-preservation, and web-app
+  launcher tests.
+- VM staged build and system installation at `1920x1080`; `/usr/local/bin/dwm`
+  builds as `dwm-0.7.0`, its session launcher passes `sh -n`, and only
+  `dwm-jangir.desktop` remains visible to LightDM.
+- LightDM restarted successfully with no new warning/error entries; the
+  installed branded greeter rendered correctly and averaged about 1% CPU over
+  15 seconds (about 54 MiB RSS).
+
+The host's complete test runner is blocked only at `make check-format` because
+`shfmt` is not installed. Do not treat that environment gap as a code failure;
+run the full formatter check on a provisioned Fedora development host before a
+release.
+
+## Historical Upstream Sync (2026-08-30)
 
 Successfully rebased all 6 fork commits onto `upstream/main` (97f1ed9) on branch `sync/2026-08-30`.
 
@@ -79,26 +112,25 @@ The managed shell check could not run because `shellcheck` is not installed;
 
 ## Current Local Worktree
 
-The `sync/2026-08-30` branch is clean with all fork commits successfully rebased
-onto latest upstream. The runtime-identity migration is complete: `dwm-jangir` is
-the active name for all XDG, session, helper, Xorg, LightDM, release, and
-source-asset paths. Legacy `dwm-titus` user directories have been removed from
-the live system.
+The `sync/2026-09-01` branch is clean with all current fork commits rebased onto
+`upstream/main` at `70e6e43`. The runtime-identity migration is complete:
+`dwm-jangir` is the active name for all XDG, session, helper, Xorg, LightDM,
+release, and source-asset paths.
 
 ## Next Required Action
 
-Review and merge the upstream sync:
+Review and merge the validated upstream sync:
 
 1. Review the sync result:
    ```bash
-   git log --oneline upstream/main..sync/2026-08-30
-   git diff dev sync/2026-08-30
+   git log --oneline upstream/main..sync/2026-09-01
+   git diff dev sync/2026-09-01
    ```
 
 2. Merge sync branch to dev:
    ```bash
    git switch dev
-   git merge --ff-only sync/2026-08-30
+   git merge --ff-only sync/2026-09-01
    ```
 
 3. Update FORK-DELTA.md and PROJECT-STATE.md if needed
@@ -108,9 +140,9 @@ Review and merge the upstream sync:
    git push origin dev
    ```
 
-5. Clean up sync branch:
+5. Clean up sync branch after the merge is safely published:
    ```bash
-   git branch -d sync/2026-08-30
+   git branch -d sync/2026-09-01
    ```
 
 Install ShellCheck and shfmt before the next upstream sync to enable managed
