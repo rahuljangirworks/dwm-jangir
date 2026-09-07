@@ -372,8 +372,12 @@ Runtime dependencies are classified as:
   chain retained when Alacritty is unavailable.
 - Recommended desktop: Alacritty, Quickshell, Picom, Feh, Dex, a polkit agent,
   notification tools, audio controls, screenshot tooling, Nerd/emoji fonts,
-  Flatpak with its GTK portal, and Gear Lever from a user-scoped Flathub
-  remote.
+  Flatpak with its GTK portal, the Phase 6 system-management runtime
+  (`PackageKit`, `PackageKit-glib`, `python3-gobject`, `python3-rpm`,
+  `accountsservice`, `cups`, and `system-config-printer`), and Gear Lever from a
+  user-scoped Flathub remote. Existing installations add that runtime by
+  rerunning the installer with the `recommended` or `full` profile; source-sync
+  does not infer an install profile from independently installed programs.
 - Optional: the Herdr terminal workspace, file manager, network tray, theme
   utilities, display-manager greeter customization, wallpapers, and
   hardware-specific helpers.
@@ -460,6 +464,18 @@ must not prevent other sections from opening. Risky changes must provide
 preview, confirmation, rollback, or recovery behavior appropriate to their
 impact.
 
+Phase 6 permits a narrow cancellation exception for the fixed system timezone,
+NTP enablement, and system locale actions. Users can cancel their confirmation
+without issuing a service call. The confirmation must clearly state that a
+change cannot be canceled after dispatch to timedate1 or locale1; local request
+cancellation does not undo a system change. These actions still require fixed
+allowlisted arguments, explicit confirmation, platform authorization, audit
+evidence, and bounded verification. An ambiguous post-dispatch timeout is
+`interrupted`, never success or cancellation, and must trigger a fresh bounded
+read without automatically retrying or rolling back the mutation. Any later
+corrective change requires new confirmation. This exception does not change
+the cancellation requirements of other privileged actions.
+
 The planned Settings surface covers:
 
 - Displays and monitor profiles.
@@ -475,13 +491,25 @@ The planned Settings surface covers:
   recovery guidance.
 
 Phase 5 accessibility discovery uses `settings-protocol 1` to publish separate
-read-only capability records for text scaling, high contrast, reduced motion,
+capability records for text scaling, high contrast, reduced motion,
 notification policy, and keyboard or pointer access. Text scaling derives from
-one complete versioned personalization response, notification readiness from
-the active session D-Bus owner, and input readiness from bounded managed XInput
-discovery. Missing or malformed providers degrade only their own record. These
-records do not imply that dedicated contrast, motion, notification-policy, or
-accessibility-input mutations are implemented.
+one complete versioned personalization response; high contrast and reduced
+motion are user-session mutations owned by the versioned managed accessibility
+helper; notification readiness requires the active session D-Bus owner's
+process ID and command identity to match the managed Quickshell configuration;
+and input readiness derives from bounded managed XInput discovery plus a
+responsive `xkbset` query. Missing
+or malformed providers degrade only their own record. Notification policy owns
+Do Not Disturb and one bounded ordinary-popup duration in user configuration;
+history remains active while suppressed, and critical urgency bypasses Do Not
+Disturb with its fixed duration.
+
+`input-protocol 1` also publishes one session-scoped `accessx` device group.
+Its fixed boolean settings cover accessibility shortcuts, sticky keys, slow
+keys, bounce keys, and mouse keys. Mutations use the existing timed input
+preview, keep, revert, reset, and session-start replay workflow. Missing or
+unresponsive XKB tooling degrades only that group and its accessibility
+capability record.
 
 Advanced partitioning, unrestricted service control, firewall policy editing,
 and similarly high-risk administration remain delegated unless a later
@@ -668,15 +696,22 @@ notifications, quick controls, power actions, network and Bluetooth surfaces,
 display helpers, a system-health dashboard, and the unified Settings platform.
 Settings includes the completed Phase 2 display and input mutation surface,
 Phase 3 NetworkManager, BlueZ, PipeWire, and media workflows, and Phase 4 power,
-session-action, default-application, MIME, and XDG autostart workflows. Active
-Phase 5 now includes merged theme transactions, wallpaper persistence,
+session-action, default-application, MIME, and XDG autostart workflows.
+Completed Phase 5 includes theme transactions, wallpaper persistence,
 managed-shell typography, desktop font, cursor, icon, GTK, and Qt controls,
-and panel-widget persistence. Cross-capability optional-component isolation and
-the read-only accessibility capability contract are also qualified. The
-remaining Phase 5 surface begins with dedicated notification and practical X11
-accessibility controls, followed by selected UI-5 work and final phase
-qualification. The ordered status is recorded in `ROADMAP.md`,
-`TASKS.md`, and `docs/P5-STATUS.md`.
+panel-widget persistence, plus persistent managed-shell contrast and motion
+policy with dedicated Settings controls, practical XKB input accessibility,
+and persistent notification Do Not Disturb and popup-duration controls.
+Cross-capability optional-component isolation and the accessibility capability
+contract are also qualified. The optional UI-5 inventory adopts no runtime
+experience: clipboard history and reminders are deferred, while emoji/symbol
+and generic image pickers are rejected. Reopening a UI-5 candidate requires an
+explicit product requirement and a separately qualified X11-native boundary.
+Combined Fedora 44, nested-X11, live-session, install-parity, restoration, and
+idle-resource qualification is recorded in `docs/P5-EVIDENCE.md` with explicit
+limitations. The next product gap is Phase 6 system management: safe Fedora
+updates, regional and delegated administration entry points, and bounded
+system information, diagnostics, and recovery workflows.
 
 The installer contains a Fedora-only package map and rejects other systems.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and

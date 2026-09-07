@@ -1,5 +1,6 @@
 import QtQuick
 import QtQuick.Layouts
+import QtQuick.Controls as Controls
 import qs.core
 
 pragma ComponentBehavior: Bound
@@ -8,9 +9,12 @@ Flickable {
     id: root
 
     required property var appearanceModel
+    required property var accessibilityModel
+    required property var notificationModel
     required property var panelSettingsModel
     required property var capabilities
     required property var textScaleCapability
+    required property var notificationCapability
     property string selectedThemeId: ""
     property string selectedWallpaperPath: ""
     property string selectedWallpaperFit: "fill"
@@ -37,7 +41,10 @@ Flickable {
         && root.appearanceModel.recoveryState === "none"
     readonly property var accessibilityCapabilities: root.capabilities.filter(function(capability) {
         return capability.id.indexOf("accessibility-") === 0
-            && capability.id !== "accessibility-text-scale";
+            && capability.id !== "accessibility-text-scale"
+            && capability.id !== "accessibility-contrast"
+            && capability.id !== "accessibility-reduced-motion"
+            && capability.id !== "accessibility-notifications";
     })
     readonly property var additionalCapabilities: root.capabilities.filter(function(capability) {
         return capability.id.indexOf("accessibility-") !== 0;
@@ -207,6 +214,102 @@ Flickable {
                 color: Theme.menuMutedText
                 wrapMode: Text.WordWrap
             }
+        }
+    }
+
+    component AccessibilityToggle: Rectangle {
+        id: accessibilityToggle
+        required property string title
+        required property string detail
+        required property string setting
+        required property string enabledValue
+        required property string disabledValue
+        required property bool checked
+
+        Layout.fillWidth: true
+        Layout.preferredHeight: Math.max(64,
+            accessibilityToggleContent.implicitHeight + Theme.spacingLg * 2)
+        color: Theme.controlNormalFill
+        border.color: Theme.controlNormalBorder
+        border.width: Theme.controlBorderWidth
+        radius: Theme.controlRadius
+
+        RowLayout {
+            id: accessibilityToggleContent
+            anchors.fill: parent
+            anchors.margins: Theme.spacingLg
+            spacing: Theme.spacingLg
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spacingXs
+
+                UiText {
+                    Layout.fillWidth: true
+                    text: accessibilityToggle.title
+                    color: Theme.controlNormalText
+                    font.bold: true
+                    wrapMode: Text.WordWrap
+                }
+
+                UiText {
+                    Layout.fillWidth: true
+                    text: accessibilityToggle.detail
+                    color: Theme.menuMutedText
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            PanelToggleSwitch {
+                checked: accessibilityToggle.checked
+                busy: root.accessibilityModel.busy
+                enabled: root.accessibilityModel.mutationReady
+                accessibleName: accessibilityToggle.title
+                accessibleDescription: accessibilityToggle.detail
+                onToggled: root.accessibilityModel.setSetting(
+                    accessibilityToggle.setting,
+                    accessibilityToggle.checked ? accessibilityToggle.disabledValue
+                        : accessibilityToggle.enabledValue)
+            }
+        }
+    }
+
+    component NotificationTimeoutComboBox: Controls.ComboBox {
+        id: notificationTimeoutCombo
+
+        readonly property var timeoutValues: root.notificationModel.popupTimeoutOptions
+
+        Layout.preferredWidth: 150
+        implicitHeight: Theme.controlHeight
+        activeFocusOnTab: enabled
+        model: notificationTimeoutCombo.timeoutValues.map(function(value) {
+            return (value / 1000) + " seconds";
+        })
+        currentIndex: notificationTimeoutCombo.timeoutValues.indexOf(
+            root.notificationModel.popupTimeoutMs)
+        font.family: Theme.fontFamily
+        font.pixelSize: Theme.inputFontSize
+        palette.button: Theme.controlNormalFill
+        palette.buttonText: Theme.controlNormalText
+        palette.base: Theme.popupBackground
+        palette.window: Theme.popupBackground
+        palette.text: Theme.popupText
+        palette.highlight: Theme.controlSelectedFill
+        palette.highlightedText: Theme.controlSelectedText
+        Accessible.name: "Notification popup duration"
+        Accessible.description: "Choose how long non-critical notification popups remain visible"
+        onActivated: index => root.notificationModel.setPopupTimeout(
+            notificationTimeoutCombo.timeoutValues[index])
+
+        delegate: Controls.ItemDelegate {
+            required property var modelData
+            required property int index
+
+            width: notificationTimeoutCombo.width
+            text: modelData
+            font: notificationTimeoutCombo.font
+            highlighted: notificationTimeoutCombo.highlightedIndex === index
+            hoverEnabled: notificationTimeoutCombo.hoverEnabled
         }
     }
 
@@ -998,9 +1101,67 @@ Flickable {
 
         UiText {
             Layout.fillWidth: true
-            text: "Use the text-scale controls below when their provider is available. The remaining cards explain which keyboard, pointer, contrast, motion, and notification controls are not yet managed by this desktop."
+            text: "Managed-shell contrast and motion choices apply immediately and persist for future sessions. Application text scaling remains independently owned by the desktop personalization provider."
             color: Theme.menuMutedText
             wrapMode: Text.WordWrap
+        }
+
+        StatusCard {
+            visible: root.accessibilityModel.providerState === "partial"
+                || root.accessibilityModel.providerState === "unavailable"
+                || !root.accessibilityModel.mutationReady
+            label: "Managed-shell accessibility policy"
+            statusState: root.accessibilityModel.providerState === "partial"
+                    || root.accessibilityModel.providerState === "unavailable"
+                ? root.accessibilityModel.providerState
+                : root.accessibilityModel.mutationState
+            value: root.accessibilityModel.providerState === "partial"
+                ? "Safe defaults" : "Unavailable"
+            detail: root.accessibilityModel.providerState === "partial"
+                    || root.accessibilityModel.providerState === "unavailable"
+                ? root.accessibilityModel.providerDetail
+                : root.accessibilityModel.mutationDetail
+        }
+
+        AccessibilityToggle {
+            title: "High contrast"
+            detail: "Strengthen semantic borders and keep muted text at full foreground contrast."
+            setting: "contrast"
+            enabledValue: "high"
+            disabledValue: "standard"
+            checked: root.accessibilityModel.highContrast
+        }
+
+        AccessibilityToggle {
+            title: "Reduced motion"
+            detail: "Remove managed-shell transition durations without changing compositor policy."
+            setting: "motion"
+            enabledValue: "reduced"
+            disabledValue: "full"
+            checked: root.accessibilityModel.reducedMotion
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            UiText {
+                Layout.fillWidth: true
+                text: root.accessibilityModel.message.length > 0
+                    ? root.accessibilityModel.message
+                    : root.accessibilityModel.mutationReady
+                        ? root.accessibilityModel.providerDetail
+                        : root.accessibilityModel.mutationDetail
+                color: root.accessibilityModel.providerState === "unavailable"
+                    ? Theme.danger : Theme.menuMutedText
+                wrapMode: Text.WordWrap
+            }
+
+            ShellButton {
+                label: "Reset contrast and motion"
+                enabled: root.accessibilityModel.mutationReady
+                    && !root.accessibilityModel.busy
+                onActivated: root.accessibilityModel.reset()
+            }
         }
 
         PersonalizationControl {
@@ -1009,6 +1170,126 @@ Flickable {
             resetLabel: "Follow system scale"
             candidates: root.appearanceModel.desktopTextScaleCandidates
             capabilityGate: root.textScaleCapability
+        }
+
+        SectionLabel { label: "Notifications" }
+
+        UiText {
+            Layout.fillWidth: true
+            text: "Do Not Disturb suppresses low and normal urgency popups while retaining history. Critical notifications always remain visible for ten seconds."
+            color: Theme.menuMutedText
+            wrapMode: Text.WordWrap
+        }
+
+        StatusCard {
+            visible: root.notificationCapability.status !== "available"
+                || (root.notificationModel.policyState !== "available"
+                    && root.notificationModel.policyState !== "defaults")
+            label: "Managed notification policy"
+            statusState: root.notificationCapability.status !== "available"
+                ? root.notificationCapability.status : root.notificationModel.policyState
+            value: root.notificationCapability.status === "available"
+                ? root.notificationModel.policyState : root.notificationCapability.status
+            detail: root.notificationCapability.status !== "available"
+                ? root.notificationCapability.detail : root.notificationModel.policyDetail
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: Math.max(64,
+                notificationToggleContent.implicitHeight + Theme.spacingLg * 2)
+            color: Theme.controlNormalFill
+            border.color: Theme.controlNormalBorder
+            border.width: Theme.controlBorderWidth
+            radius: Theme.controlRadius
+
+            RowLayout {
+                id: notificationToggleContent
+                anchors.fill: parent
+                anchors.margins: Theme.spacingLg
+                spacing: Theme.spacingLg
+
+                ColumnLayout {
+                    Layout.fillWidth: true
+                    spacing: Theme.spacingXs
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: "Do Not Disturb"
+                        color: Theme.controlNormalText
+                        font.bold: true
+                    }
+
+                    UiText {
+                        Layout.fillWidth: true
+                        text: "Keep non-critical notifications in history without showing popups."
+                        color: Theme.menuMutedText
+                        wrapMode: Text.WordWrap
+                    }
+                }
+
+                PanelToggleSwitch {
+                    visible: root.notificationCapability.status === "available"
+                    checked: root.notificationModel.doNotDisturb
+                    enabled: root.notificationCapability.status === "available"
+                        && root.notificationModel.policyMutationReady
+                    accessibleName: "Do Not Disturb"
+                    accessibleDescription: "Suppress non-critical notification popups while preserving history"
+                    onToggled: root.notificationModel.setDoNotDisturb(
+                        !root.notificationModel.doNotDisturb)
+                }
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+
+            ColumnLayout {
+                Layout.fillWidth: true
+                spacing: Theme.spacingXs
+
+                UiText {
+                    Layout.fillWidth: true
+                    text: "Popup duration"
+                    color: Theme.controlNormalText
+                    font.bold: true
+                }
+
+                UiText {
+                    Layout.fillWidth: true
+                    text: "Applies to low and normal urgency notifications."
+                    color: Theme.menuMutedText
+                    wrapMode: Text.WordWrap
+                }
+            }
+
+            NotificationTimeoutComboBox {
+                visible: root.notificationCapability.status === "available"
+                enabled: root.notificationCapability.status === "available"
+                    && root.notificationModel.policyMutationReady
+            }
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            visible: root.notificationCapability.status === "available"
+
+            UiText {
+                Layout.fillWidth: true
+                text: root.notificationModel.policyDetail
+                color: root.notificationModel.policyState === "unavailable"
+                    ? Theme.danger : Theme.menuMutedText
+                wrapMode: Text.WordWrap
+            }
+
+            ShellButton {
+                visible: root.notificationCapability.status === "available"
+                label: root.notificationModel.policyState === "unavailable"
+                    ? "Retry notification reset" : "Reset notifications"
+                enabled: root.notificationCapability.status === "available"
+                    && root.notificationModel.policyResetReady
+                onActivated: root.notificationModel.resetPolicy()
+            }
         }
 
         Repeater {
@@ -1070,6 +1351,8 @@ Flickable {
                         checked: root.panelSettingsModel.widgetEnabled(panelWidgetRow.modelData.id)
                         busy: root.panelSettingsModel.busy
                         enabled: root.panelSettingsModel.mutationReady
+                        accessibleName: panelWidgetRow.modelData.label
+                        accessibleDescription: "Show this widget in the managed panel"
                         onToggled: root.panelSettingsModel.toggleWidget(panelWidgetRow.modelData.id)
                     }
                 }

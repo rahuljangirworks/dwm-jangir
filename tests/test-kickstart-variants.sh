@@ -57,6 +57,15 @@ required_packages=(
 	yaru-gtk4-theme
 	deepin-gtk-theme
 	bluebird-gtk3-theme
+	PackageKit
+	PackageKit-glib
+	python3-gobject
+	python3-rpm
+	accountsservice
+	cups
+	system-config-printer
+	lxqt-admin
+	dnfdragora
 )
 
 mapfile -t mapped_fedora_packages < <(
@@ -73,6 +82,7 @@ if dwm_packages fedora runtime-required | grep -Fx maim >/dev/null; then
 fi
 dwm_packages fedora screenshot-optional | grep -Fx maim >/dev/null
 dwm_packages fedora x11 | grep -Fx setxkbmap >/dev/null
+dwm_packages fedora x11 | grep -Fx xkbset >/dev/null
 dwm_packages fedora recommended | grep -Fx playerctl >/dev/null
 dwm_packages fedora desktop | grep -Fx quickshell >/dev/null
 dwm_packages fedora desktop | grep -Fx flatpak >/dev/null

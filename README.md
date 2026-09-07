@@ -107,7 +107,7 @@ is applied; log in normally and run `dwm-display-setup` for the generic wizard.
 | Profile | Includes |
 | --- | --- |
 | `core` | The X11 session, required dependencies, and one terminal emulator. |
-| `recommended` | The complete everyday desktop, including Alacritty, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, and brightness tools. |
+| `recommended` | The complete everyday desktop, including Alacritty, Quickshell, Gear Lever for AppImages, theming, screenshots, audio, brightness, and the PackageKit, Python RPM binding, AccountsService, CUPS, and printer-tool prerequisites for Phase 6 system management. |
 | `full` | The recommended desktop plus optional file-manager, keyring, wallpaper, display-manager, and supported Fedora gaming integrations. |
 
 `maim` is an optional dependency used only by the screenshot hotkeys. If it is
@@ -163,9 +163,10 @@ placement in the wizard to enter explicit X/Y coordinates instead. Persistent ge
 TearFree or NVIDIA Full Composition Pipeline behavior automatically; pass
 `--force-full-composition-pipeline off` to disable the NVIDIA default.
 The adjacent `dwm-settings-input` provider uses `xinput`, `setxkbmap` for
-keyboard settings, and `udevadm` for stable device identity and hotplug events.
-Kept values are stored in `input-settings.conf` in the same XDG directory;
-`DWM_INPUT_SETTINGS_FILE` can select another file.
+keyboard settings, `xkbset` for session-wide AccessX controls, and `udevadm`
+for stable device identity and hotplug events. Kept values are stored in
+`input-settings.conf` in the same XDG directory; `DWM_INPUT_SETTINGS_FILE` can
+select another file.
 
 See the [Configuration Guide](https://dwm.christitus.com/configuration.html)
 and [Theming Guide](https://dwm.christitus.com/theming.html) for examples and
@@ -188,6 +189,12 @@ the maintained enhancements fit together. You do not need to understand or
 apply dwm patches to install and use the desktop.
 
 ## Troubleshooting
+
+**Settings -> System** separates read-only **Reload status** from confirmed
+metadata refresh and package installation. Review all package changes, including
+dependency additions and removals, before confirming. PackageKit owns
+authorization and cancellation; closing Settings does not cancel an operation.
+If discovery or recovery is incomplete, reload status and follow its guidance.
 
 Start with the built-in diagnostic report:
 

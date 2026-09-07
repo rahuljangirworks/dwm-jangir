@@ -25,7 +25,9 @@ Scope {
     property var defaultsModel: null
     property var autostartModel: null
     property var appearanceModel: null
+    property var accessibilityModel: null
     property var panelSettingsModel: null
+    property var systemManagementModel: null
     property var capabilities: []
     property int selectedIndex: 0
     property var displayOutputs: []
@@ -34,11 +36,14 @@ Scope {
     property var displayUnsupportedProfiles: []
     property string displayState: "idle"
     property string displayMessage: ""
+    property string displayBaseline: ""
+    property bool displayRefreshPending: false
     property var inputDevices: []
     property var inputSettings: []
     property var inputUnsupported: []
     property string inputState: "idle"
     property string inputMessage: ""
+    property bool inputRefreshPending: false
     property string previewKind: ""
     property string previewToken: ""
     property int previewSeconds: 0
@@ -58,9 +63,11 @@ Scope {
         return { "status": "restricted", "detail": "Persistent display controls are unavailable" };
     }
     readonly property bool displayPersistenceAvailable: root.displayPersistenceCapability.status === "available"
+    readonly property bool displayHasPendingChanges: root.displayBaseline.length > 0
+        && root.displayLayoutKey(root.displayOutputs) !== root.displayBaseline
 
     readonly property var sections: [
-        { "id": "displays", "label": "Displays", "description": "Monitors, layouts, and profiles" },
+        { "id": "displays", "label": "Displays", "description": "Resolution, refresh rate, and layouts" },
         { "id": "input", "label": "Input", "description": "Keyboard, pointer, and touchpad" },
         { "id": "network", "label": "Network", "description": "Connections and VPN providers" },
         { "id": "bluetooth", "label": "Bluetooth", "description": "Adapters and devices" },
@@ -118,6 +125,7 @@ Scope {
     function activateSection(id) {
         displayWatchProcess.running = id === "displays" && root.visible;
         inputWatchProcess.running = id === "input" && root.visible;
+        notificationOwnerWatchProcess.running = id === "appearance" && root.visible;
 			if (id !== "input") inputSettleTimer.stop();
         if (root.networkModel) {
             const wantNetwork = id === "network" && root.visible;
@@ -156,6 +164,15 @@ Scope {
             if (wantAppearance && !root.appearanceModel.settingsVisible) root.appearanceModel.openSettings();
             else if (!wantAppearance && root.appearanceModel.settingsVisible) root.appearanceModel.closeSettings();
         }
+        if (root.systemManagementModel) {
+            const wantSystem = id === "system" && root.visible;
+            if (wantSystem && !root.systemManagementModel.settingsVisible)
+                root.systemManagementModel.openSettings();
+            else if (!wantSystem && root.systemManagementModel.settingsVisible)
+                root.systemManagementModel.closeSettings();
+        }
+        if (id === "appearance") root.refreshCapabilities();
+        if (id === "appearance" && root.accessibilityModel) root.accessibilityModel.refresh();
         if (id === "appearance" && root.panelSettingsModel) root.panelSettingsModel.refresh();
         if (id === "displays") root.refreshDisplays();
         if (id === "input") root.refreshInput();
@@ -208,6 +225,7 @@ Scope {
             }
         }
         root.displayOutputs = outputs;
+        root.displayBaseline = valid ? root.displayLayoutKey(outputs) : "";
         root.displayModes = modes;
         root.displayProfiles = profiles;
         root.displayUnsupportedProfiles = unsupportedProfiles;
@@ -240,7 +258,7 @@ Scope {
         root.inputSettings = settings;
         root.inputUnsupported = unsupported;
         root.inputState = valid ? "ready" : "failure";
-        root.inputMessage = valid ? devices.length + " input devices" : "Unsupported input provider response";
+        root.inputMessage = valid ? devices.length + " input groups" : "Unsupported input provider response";
     }
 
     function updateDisplay(index, field, value) {
@@ -254,16 +272,97 @@ Scope {
             }
         }
         root.displayOutputs = outputs;
+        root.displayMessage = root.displayLayoutKey(outputs) !== root.displayBaseline
+            ? "Display changes are ready to apply" : outputs.length + " connected outputs";
     }
 
-    function cycleDisplayMode(index) {
+    function displayLayoutKey(outputs) {
+        return JSON.stringify(outputs.map(function(output) {
+            return [output.name, output.enabled, output.mode, output.rate, output.x, output.y,
+                output.rotation, output.primary];
+        }));
+    }
+
+    function displaySizeLabel(modeName) {
+        const match = /^(\d+)x(\d+)(.*)$/.exec(modeName);
+        if (!match) return modeName;
+        const scanVariant = /^([ip])/i.exec(match[3]);
+        return match[1] + " x " + match[2]
+            + (scanVariant ? scanVariant[1].toLowerCase() : "");
+    }
+
+    function displayResolutionChoices(index) {
         const output = root.displayOutputs[index];
-        const choices = root.displayModes.filter(function(mode) { return mode.output === output.name; });
+        if (!output) return [];
+        const choices = [];
+        for (const mode of root.displayModes) {
+            if (mode.output !== output.name) continue;
+            const label = root.displaySizeLabel(mode.mode);
+            if (label.length > 0 && choices.indexOf(label) < 0) choices.push(label);
+        }
+        return choices;
+    }
+
+    function displayResolutionIndex(index) {
+        const output = root.displayOutputs[index];
+        if (!output) return -1;
+        return root.displayResolutionChoices(index).indexOf(root.displaySizeLabel(output.mode));
+    }
+
+    function displayRefreshRateChoices(index) {
+        const output = root.displayOutputs[index];
+        if (!output) return [];
+        const size = root.displaySizeLabel(output.mode);
+        const choices = [];
+        for (const mode of root.displayModes) {
+            if (mode.output !== output.name || root.displaySizeLabel(mode.mode) !== size) continue;
+            if (choices.indexOf(mode.rate) < 0) choices.push(mode.rate);
+        }
+        return choices;
+    }
+
+    function displayRefreshRateIndex(index) {
+        const output = root.displayOutputs[index];
+        if (!output) return -1;
+        return root.displayRefreshRateChoices(index).indexOf(output.rate);
+    }
+
+    function updateDisplayMode(index, mode) {
+        if (!mode) return;
+        const outputs = root.displayOutputs.slice();
+        const changed = Object.assign({}, outputs[index]);
+        changed.mode = mode.mode;
+        changed.rate = mode.rate;
+        outputs[index] = changed;
+        root.displayOutputs = outputs;
+        root.displayMessage = root.displayLayoutKey(outputs) !== root.displayBaseline
+            ? "Display changes are ready to apply" : outputs.length + " connected outputs";
+    }
+
+    function setDisplayResolution(index, size) {
+        const output = root.displayOutputs[index];
+        if (!output) return;
+        const choices = root.displayModes.filter(function(mode) {
+            return mode.output === output.name && root.displaySizeLabel(mode.mode) === size;
+        });
         if (choices.length === 0) return;
-        let selected = choices.findIndex(function(mode) { return mode.mode === output.mode && mode.rate === output.rate; });
-        selected = (selected + 1) % choices.length;
-        root.updateDisplay(index, "mode", choices[selected].mode);
-        root.updateDisplay(index, "rate", choices[selected].rate);
+        const selected = choices.find(function(mode) { return mode.rate === output.rate; })
+            || choices.find(function(mode) { return mode.preferred; }) || choices[0];
+        root.updateDisplayMode(index, selected);
+    }
+
+    function setDisplayRefreshRate(index, rate) {
+        const output = root.displayOutputs[index];
+        if (!output) return;
+        const size = root.displaySizeLabel(output.mode);
+        const choices = root.displayModes.filter(function(mode) {
+            return mode.output === output.name && root.displaySizeLabel(mode.mode) === size
+                && mode.rate === rate;
+        });
+        if (choices.length === 0) return;
+        const selected = choices.find(function(mode) { return mode.mode === output.mode; })
+            || choices.find(function(mode) { return mode.preferred; }) || choices[0];
+        root.updateDisplayMode(index, selected);
     }
 
     function cycleRotation(index) {
@@ -313,8 +412,8 @@ Scope {
         root.runDisplay("preview-profile", [token, "15", name]);
     }
 
-    function keepPreview(name) {
-        if (root.previewKind === "display") root.runDisplay("keep", [root.previewToken].concat(name && !root.previewRollbackFailed ? [name] : []));
+    function keepPreview() {
+        if (root.previewKind === "display") root.runDisplay("keep", [root.previewToken]);
         else if (root.previewKind === "input") root.runInput("keep", [root.previewToken]);
     }
 
@@ -402,13 +501,23 @@ Scope {
     }
 
     function refreshDisplays() {
-        if (!root.visible || displayDiscoverProcess.running) return;
+        if (!root.visible) return;
+        if (displayDiscoverProcess.running) {
+            root.displayRefreshPending = true;
+            return;
+        }
+        root.displayRefreshPending = false;
         root.displayState = "loading";
         displayDiscoverProcess.running = true;
     }
 
     function refreshInput() {
-        if (!root.visible || inputDiscoverProcess.running) return;
+        if (!root.visible) return;
+        if (inputDiscoverProcess.running) {
+            root.inputRefreshPending = true;
+            return;
+        }
+        root.inputRefreshPending = false;
         root.inputState = "loading";
         inputDiscoverProcess.running = true;
     }
@@ -490,8 +599,12 @@ Scope {
     }
 
     function refresh() {
+        if (root.visible && root.selectedSectionId === "appearance" && root.accessibilityModel)
+            root.accessibilityModel.refresh();
         if (root.visible && root.selectedSectionId === "appearance" && root.panelSettingsModel)
             root.panelSettingsModel.refresh();
+        if (root.visible && root.selectedSectionId === "system" && root.systemManagementModel)
+            root.systemManagementModel.refresh();
         root.refreshCapabilities();
     }
 
@@ -545,10 +658,13 @@ Scope {
 		}
         providerProcess.running = false;
         root.capabilityRefreshPending = false;
+        root.displayRefreshPending = false;
         displayDiscoverProcess.running = false;
+        root.inputRefreshPending = false;
         inputDiscoverProcess.running = false;
         displayWatchProcess.running = false;
         inputWatchProcess.running = false;
+        notificationOwnerWatchProcess.running = false;
 		if (root.networkModel) root.networkModel.closeSettings();
 		if (root.bluetoothModel) root.bluetoothModel.closeSettings();
 		if (root.controlsModel) root.controlsModel.closeSettings();
@@ -557,6 +673,7 @@ Scope {
 		if (root.defaultsModel) root.defaultsModel.closeSettings();
 		if (root.autostartModel) root.autostartModel.closeSettings();
 		if (root.appearanceModel) root.appearanceModel.closeSettings();
+		if (root.systemManagementModel) root.systemManagementModel.closeSettings();
 			inputSettleTimer.stop();
         root.visible = false;
         root.busy = false;
@@ -618,6 +735,15 @@ Scope {
         running: false
         stdout: StdioCollector { onStreamFinished: root.parseDisplays(this.text) }
         stderr: StdioCollector { onStreamFinished: { const error = this.text.trim(); if (error) { root.displayState = "failure"; root.displayMessage = error; } } }
+        onRunningChanged: {
+            if (!running && root.displayRefreshPending && root.visible) {
+                root.displayRefreshPending = false;
+                Qt.callLater(function() {
+                    if (root.visible && !displayDiscoverProcess.running)
+                        root.refreshDisplays();
+                });
+            }
+        }
     }
 
     Process {
@@ -626,6 +752,15 @@ Scope {
         running: false
         stdout: StdioCollector { onStreamFinished: root.parseInput(this.text) }
         stderr: StdioCollector { onStreamFinished: { const error = this.text.trim(); if (error) { root.inputState = "failure"; root.inputMessage = error; } } }
+        onRunningChanged: {
+            if (!running && root.inputRefreshPending && root.visible) {
+                root.inputRefreshPending = false;
+                Qt.callLater(function() {
+                    if (root.visible && !inputDiscoverProcess.running)
+                        root.refreshInput();
+                });
+            }
+        }
     }
 
     Process {
@@ -640,6 +775,13 @@ Scope {
         command: Commands.settingsInputCommand("watch", root.watchOwnerArguments())
         running: false
 			stdout: SplitParser { onRead: inputSettleTimer.restart() }
+    }
+
+    Process {
+        id: notificationOwnerWatchProcess
+        command: Commands.settingsProviderCommand("watch-notifications", [])
+        running: false
+        stdout: SplitParser { onRead: notificationOwnerSettleTimer.restart() }
     }
 
     Process {
@@ -768,5 +910,14 @@ Scope {
 				}
 				root.refreshInput();
 			}
+    }
+
+    Timer {
+        id: notificationOwnerSettleTimer
+        interval: 100
+        onTriggered: {
+            if (root.visible && root.selectedSectionId === "appearance")
+                root.refreshCapabilities();
+        }
     }
 }

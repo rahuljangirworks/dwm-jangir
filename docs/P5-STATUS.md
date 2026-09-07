@@ -1,105 +1,63 @@
 # Phase 5 Project Status
 
-Date: 2026-08-31
+Date: 2026-09-02
 
-## Verification Baseline
+## Final Status
 
-This checkpoint was reconciled against `origin/main` at
-`63e49ab5dc7f1e95d1da0667560a5fe9a4c35822`. PR #190 merged the accessibility
-capability contract after PR #188 merged optional-component qualification and
-PR #189 merged the automatic small-PR workflow. The primary checkout matched
-the remote revision before this continuation branch was created, no pull
-request remained open, and only the primary checkout was registered.
+Phase 5 Personalization and Accessibility is complete. All 25 Phase 5
+checkboxes passed or were closed by an explicit product decision: 16 feature
+implementation tasks merged through PR #204, four UI-5 decision tasks merged in
+PR #205 with an empty adopted set, and five combined qualification tasks passed
+on `main` at `3770b04dee7b63e4401a391b91d06488018c215f`.
 
-The active `TASKS.md` contains 25 implementation checkboxes. Thirteen are
-complete on `main`, leaving 12 open.
+`docs/P5-EVIDENCE.md` is the combined acceptance record. Detailed contracts and
+focused results remain in the individual `P5-*` records, while `TASKS.md` now
+contains only the active Phase 6 work as required by the planning workflow.
 
-The merged APPEARANCE-001 boundaries and their documentation passed. The
-historical documentation build has since been replaced by the current Astro
-validation shown here:
+## Delivered Boundaries
 
-```text
-scripts/run-tests make clean all
-scripts/run-tests
-npm --prefix docs ci
-npm --prefix docs run build
-git diff --check
-```
+| Boundary | State | Evidence |
+| --- | --- | --- |
+| THEME-001 shared provider and safe theme changes | Complete | PRs #170, #172, #173, and #175; `P5-THEME-TRANSACTIONS.md` |
+| APPEARANCE-001 inventory, wallpaper, fonts, toolkit, panel, and optional isolation | Complete | PRs #176-#188; the appearance, font, panel, and optional-component records |
+| ACCESSIBILITY-001 capability, managed policy, input, and notifications | Complete | PRs #190-#204; the accessibility, input, and notification records |
+| P5-UI5 optional experience decisions | Complete | PR #205; `P5-UI5-DECISIONS.md`; no adopted runtime feature |
+| P5-VALIDATE combined qualification | Complete | `P5-EVIDENCE.md`; Fedora 44 source, nested-X11, install, live-session, restoration, multi-monitor, and resource evidence |
 
-The managed suite included the appearance provider, inventory, font,
-personalization, wallpaper, theme transaction, panel persistence, optional-loss,
-nested-X11, staged-install, and repeated-install checks. Quickshell lint retained
-only the already-documented `PanelTooltip.qml` qmltypes and
-`RunningAppsArea.qml` warnings. Exact-head hosted validation for both merged
-boundaries passed before merge.
+## Combined Result
 
-## Merged Task Evidence
+The clean build, full managed suite, QML lint, ShellCheck, shfmt, Astro check
+and build, staged install, repeated install, package and Kickstart parity, and
+nested-X11 workflows passed. The suite covered malformed state, missing assets,
+optional components, preview/revert/reset, interrupted-operation recovery,
+display-manager and `startx` fixtures, common display sizes, and provider
+lifecycle. The 30-second Settings CPU delta was 0.066 percentage points; the
+large-surface closed sample was 0.00 percent.
 
-| Task boundary | TASKS.md state | Merged evidence | Verification |
-| --- | --- | --- | --- |
-| THEME-001 appearance provider | Complete | PR #170 | Five hosted checks passed; one conditional check skipped. |
-| THEME-001 safe transactions | Complete | PR #172 | Six hosted checks passed; two conditional checks skipped. |
-| THEME-001 shared model and Settings pane | Complete | PR #173 | Five hosted checks passed; one conditional check skipped. |
-| THEME-001 partial integration status | Complete | PR #175 and the theme slices above | Five hosted checks passed on PR #175; one conditional check skipped. |
-| APPEARANCE-001 inventory | Complete | PR #176 | Five hosted checks passed; one conditional check skipped. |
-| APPEARANCE-001 wallpaper | Complete | PRs #177-#180 | Each pull request merged with all executed hosted checks passing. |
-| APPEARANCE-001 managed-shell font and scale | Complete | PR #181 | Six hosted checks passed; two conditional checks skipped. |
-| APPEARANCE-001 desktop font, cursor, icon, GTK, and Qt backend | Complete | PR #182 | Five hosted checks passed; one conditional check skipped. |
-| APPEARANCE-001 desktop controls | Complete | PRs #183 and #184 | All executed hosted checks passed; conditional checks skipped according to their paths. |
-| APPEARANCE-001 panel-widget persistence | Complete | PR #186 | Hosted CI, CodeQL, docs, focused panel, nested-X11, and live-session checks passed. |
-| APPEARANCE-001 optional-component isolation | Complete | PR #188 | Focused and full managed suites, nested X11, install, docs, lint, CodeQL, and hosted checks passed. |
-| ACCESSIBILITY-001 capability contract | Complete | PR #190 | Five hosted checks and exact-head Codex and CodeRabbit review passed; one conditional check skipped. |
+The final checkout was synchronized with rollback backup
+`20260903T015133Z-2738591`. A fresh LightDM login activated the installed DWM
+without a deleted executable suffix. On Fedora 44 X11, one managed Quickshell
+process owned working IPC, the available notification policy, and four current
+tray clients, with one 30-pixel panel on each of two real monitors. Settings
+reached `ready` at 1180x760. Closed live CPU measured 0.000 percent over 30
+seconds. The running, installed, and checkout DWM bytes matched exactly.
 
-The detailed contracts and focused validation commands remain in
-`P5-THEME-TRANSACTIONS.md`, `P5-APPEARANCE-INVENTORY.md`,
-`P5-FONT-CONTROLS.md`, and `P5-APPEARANCE-CONTROLS.md`. The merged fixes and
-user-visible behavior are also recorded under the Unreleased changelog.
+A live Nord-to-Dracula preview timed out and restored Nord plus all 14 tracked
+theme and integration paths exactly. A live sticky-keys preview changed the
+AccessX setting and restored the complete XKB state; no input settings file was
+created. Notification policy remained available after the supported shell
+restart.
 
-## Merged Panel Live Evidence
+## Preserved Limitations
 
-The exact working tree was synchronized through `scripts/dev-sync-install.sh`.
-All managed files match, and rollback backup
-`20260828T153709Z-1472673` was created. After a full DWM logout/login, the
-active, installed, and checkout DWM binaries matched byte-for-byte. One managed
-Quickshell instance exposed the panel, five tray clients, the Control Center,
-and Settings Appearance. Settings reached `ready` on Fedora Linux 44 with the
-appearance provider available and all five configurable panel widgets enabled
-through the shared model. Its installed 1180x760 window displayed all nine
-sections and the compact display controls without reducing text scale; closed
-idle measured 0.000% CPU over five seconds. The current workstation session had
-one active monitor, so real multi-monitor persistence remains untested here;
-nested-X11 validation covers the shared-state path.
-
-## Current Review Boundary
-
-The current `codex/phase5-accessibility-settings` boundary groups the existing
-bounded application text-scale choices under Accessibility. Its apply and
-reset actions retain the shared personalization transaction, keyboard focus,
-and visible focus border, while action rows wrap at compact widths. The four
-remaining accessibility records render in the same group with explicit
-capability-scoped explanations and no implied mutation path.
-
-Personalization selection changes coalesce a strict capability refresh, so a
-provider or XSETTINGS recovery updates the text-scale gate without polling or a
-second provider. This slice introduces no new persistent state, helper,
-watcher, polling loop, or privilege boundary. The overall Settings-controls
-checkbox stays open for dedicated contrast, reduced-motion,
-notification-policy, and practical input controls plus the required
-real-session interaction evidence.
-
-## Open Task Boundaries
-
-| Boundary | Open checkboxes | Verified current state | Next evidence needed |
-| --- | ---: | --- | --- |
-| APPEARANCE-001 | 0 | Complete on `main` through PR #188. | Preserve the merged contracts while completing Phase 5. |
-| ACCESSIBILITY-001 | 3 | The merged boundary defines five distinct capability records; the current UI slice groups text scale and truthful unavailable states without adding mutation. | Finish dedicated controls and interaction evidence, then apply contrast and reduced motion and add notification policy. |
-| P5-UI5 | 4 | No candidate decision record is complete. | Inventory candidates, record adopt/defer/reject decisions, and qualify each adopted X11-native experience independently. |
-| P5-VALIDATE | 5 | Individual merged slices have focused and full-suite evidence, but the combined Phase 5 product is incomplete. | Run the final Fedora 44, clean build, full suite, QML, shell, install/parity, fresh-login, `startx`, multi-monitor, optional-loss, recovery, and 30-second CPU qualification after all selected Phase 5 work merges. |
+- Actual host package removal was not performed; combined optional loss is
+  fixture- and nested-X11-qualified.
+- Some installed GTK candidates are incomplete and correctly remain partial.
+- Clipboard history and reminders are deferred. Emoji/symbol and generic image
+  pickers are rejected. Reconsideration requires a new roadmap decision and an
+  independently qualified boundary.
 
 ## Phase Position
 
-Phase 5 remains active. THEME-001 and APPEARANCE-001 are complete on `main`.
-The first ACCESSIBILITY-001 checkbox is complete on `main` through PR #190;
-no P5-UI5 or final Phase 5 qualification checkbox is complete. Phase 6 must not
-begin until the Phase 5 exit criteria pass or an explicit roadmap decision
-defers named work and records the resulting limitation.
+Phase 6 System Management is active. Phase 5 limitations remain evidence, not
+open Phase 6 implementation tasks.

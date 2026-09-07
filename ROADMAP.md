@@ -55,8 +55,8 @@ product roadmap.
   PR #159.
 - P3-UI4, Settings, System Health, notifications, and launcher: complete in
   PR #163.
-- UI-5, optional X11-native experiences: planned for Phase 5 personalization
-  and accessibility; split backend-heavy work when needed.
+- UI-5, optional X11-native experiences: candidate review complete in Phase 5
+  with no adopted runtime experience.
 - UI-6, whole-shell integration hardening: planned for Phase 7 image and
   release qualification, with no major features.
 
@@ -78,10 +78,11 @@ product roadmap.
 UI-1 is the merged foundation. UI-2 and UI-3 were parallel children and are
 now unified on `main`. `P3-UI4` established the shared large-surface language
 used by the completed Phase 3 provider work and the later power, defaults,
-personalization, accessibility, and system-management phases. Phases 3 and 4
-are complete and product Phase 5 is active. UI-5 candidates are evaluated in
-Phase 5 and approved experiences are delivered as separate review boundaries;
-UI-6 closes the desktop during Phase 7 release qualification.
+personalization, accessibility, and system-management phases. Phases 3 through
+5 are complete and product Phase 6 is active. The UI-5 review adopted no
+runtime experience; any future reopening requires a new roadmap decision and
+an independent review boundary. UI-6 closes the desktop during Phase 7 release
+qualification.
 
 ### UI Overhaul Exit Criteria
 
@@ -297,20 +298,7 @@ Unify normal session behavior and application defaults.
 
 ## Phase 5: Personalization and Accessibility
 
-Status: Active (reconciled 2026-08-30; ACCESSIBILITY-001 in progress)
-
-### Current Checkpoint
-
-The shared theme provider and transactions are complete. Appearance inventory,
-wallpaper persistence, managed-shell fonts and scaling, and desktop font,
-cursor, icon, GTK, and Qt controls are merged through PR #184. Panel-widget
-persistence merged in PR #186, and cross-capability optional-component
-qualification merged in PR #188, completing `APPEARANCE-001`. The current
-review boundary defines truthful per-capability accessibility records before
-adding controls. Accessibility state and notification controls, UI-5 decisions,
-and the combined Phase 5 qualification remain open.
-`docs/P5-STATUS.md` maps every active checkbox to its current evidence or next
-action.
+Status: Complete (2026-09-02)
 
 ### Objective
 
@@ -330,7 +318,31 @@ Make the desktop appearance and interaction model configurable as one system.
 - Invalid themes or missing assets cannot prevent login or shell startup.
 - Accessibility choices persist and are usable at common display sizes.
 
+### Completion Evidence
+
+- Theme, wallpaper, managed-shell typography, desktop font and scale, cursor,
+  icon, GTK, Qt, panel-widget, contrast, reduced-motion, AccessX, and
+  notification-policy workflows are merged through PR #204. PR #205 recorded
+  an empty UI-5 adopted set, preserving deferred privacy and lifecycle work as
+  explicit limitations instead of adding an unqualified runtime owner.
+- The clean build, full managed repository suite, Quickshell lint, focused shell
+  checks, documentation build, nested-X11 workflows, staged and repeated
+  installs, and exact restoration checks passed. The 30-second Settings CPU
+  delta was 0.066 percentage points against the 0.5-point limit.
+- On Fedora 44 X11, the synchronized installed tree ran one managed Quickshell
+  process and one 30-pixel panel on each of two active monitors. A fresh
+  LightDM login activated the installed DWM and registered four current tray
+  clients. Settings reached `ready` at 1180x760, and closed idle measured 0.000
+  percent CPU over 30 seconds.
+- Live theme and AccessX previews changed and restored their exact starting
+  state. The running, installed, and checkout DWM binaries were byte-identical.
+  Actual optional-package removal was not performed, and some installed GTK
+  theme candidates remain incomplete; both limitations are recorded in
+  `docs/P5-EVIDENCE.md`.
+
 ## Phase 6: System Management
+
+Status: Active (2026-09-02)
 
 ### Objective
 
@@ -351,7 +363,12 @@ without turning Quickshell into an unrestricted administration console.
 
 ### Exit Criteria
 
-- Every privileged action is allowlisted, confirmed, auditable, and cancelable.
+- Every privileged action is allowlisted, confirmed, auditable, and cancelable
+  within the platform's safe cancellation window. The sole regional exception
+  is the fixed timezone, NTP enablement, and system locale actions defined in
+  `SPEC.md`: confirmation is cancelable, but sent changes are not. Their
+  confirmation explains that limit and ambiguous results retain recovery
+  guidance instead of reporting success or cancellation.
 - Read-only status remains available when authorization is denied.
 - Interrupted updates and failed delegated tools produce actionable recovery
   guidance rather than ambiguous success.

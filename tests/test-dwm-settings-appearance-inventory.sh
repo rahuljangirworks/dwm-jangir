@@ -117,6 +117,8 @@ config_dir=$(readlink -m -- "$XDG_CONFIG_HOME/dwm-jangir")
 appearance_state_dir=$(readlink -m -- "${XDG_STATE_HOME:-$HOME/.local/state}/dwm-jangir/appearance")
 printf 'CREATE\t%s/.font-exchange-a.fixture\n' "$config_dir"
 printf 'DELETE\t%s/.font-exchange-b.fixture\n' "$config_dir"
+printf 'CREATE\t%s/.accessibility-exchange-a.fixture\n' "$config_dir"
+printf 'DELETE\t%s/.accessibility-exchange-b.fixture\n' "$config_dir"
 printf 'ATTRIB,ISDIR\t%s/\n' "$appearance_state_dir"
 printf 'CREATE\t%s/new.png\n' "$DWM_APPEARANCE_WALLPAPER_DIR"
 EOF
@@ -128,6 +130,32 @@ inventory=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
 	"$helper" inventory)
+
+# Force every small fixture producer to exit before the parent captures its
+# identity. Bash removes a completed named coprocess's PID and descriptor array;
+# an explicitly owned process-substitution pipe must retain its buffered data.
+race_env=$work/stream-race.env
+race_marker=$work/stream-race.marker
+cat >"$race_env" <<'EOF'
+set -T
+trap 'case $BASH_COMMAND in inventory_stream_pid=\$*) stream_wait_status=0; wait "$!" || stream_wait_status=$?; printf "%s\n" "$stream_wait_status" >>"$DWM_TEST_STREAM_RACE_MARKER" ;; esac' DEBUG
+EOF
+race_inventory=$(HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home \
+	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
+	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir QT_QPA_PLATFORMTHEME=qt6ct \
+	BASH_ENV=$race_env DWM_TEST_STREAM_RACE_MARKER=$race_marker "$helper" inventory)
+[[ -s $race_marker && $(sort -u "$race_marker") == 0 && $race_inventory == "$inventory" ]] || {
+	printf 'Fast inventory producer lost its stream or bypassed the startup race fixture\n' >&2
+	exit 1
+}
+: >"$race_marker"
+HOME=$home PATH=$bin_dir XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_root \
+	DWM_APPEARANCE_DATA_DIRS=$data_root DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir \
+	BASH_ENV=$race_env DWM_TEST_STREAM_RACE_MARKER=$race_marker \
+	DWM_TEST_INOTIFY_ARGS=$work/race-watch.args "$helper" watch-inventory >"$work/race-watch.out"
+[[ -s $race_marker && $(sort -u "$race_marker") == 0 ]]
+grep -Fqx $'ready\tinventory' "$work/race-watch.out"
+grep -Fqx $'changed\tCREATE\t'"$wallpaper_dir/new.png" "$work/race-watch.out"
 
 if grep -Eq $'^candidate\t(cursor|icon|gtk)\tavailable\tunknown\t' <<<"$inventory"; then
 	printf 'Reserved unknown sentinel was emitted as an applicable candidate\n' >&2
@@ -650,6 +678,10 @@ if grep -Fq '.font-exchange-' "$work/watch.out"; then
 	printf 'Inventory watcher exposed managed font capability probe churn\n' >&2
 	exit 1
 fi
+if grep -Fq '.accessibility-exchange-' "$work/watch.out"; then
+	printf 'Inventory watcher exposed managed accessibility capability probe churn\n' >&2
+	exit 1
+fi
 if grep -Fq $'changed\tATTRIB,ISDIR\t' "$work/watch.out"; then
 	printf 'Inventory watcher exposed managed font readiness state churn\n' >&2
 	exit 1
@@ -667,6 +699,10 @@ grep -Fqx $'ready\tinventory' "$work/symlink-watch.out"
 grep -Fqx $'changed\tCREATE\t'"$wallpaper_dir/new.png" "$work/symlink-watch.out"
 if grep -Fq '.font-exchange-' "$work/symlink-watch.out"; then
 	printf 'Inventory watcher exposed font probe churn through a symlinked config path\n' >&2
+	exit 1
+fi
+if grep -Fq '.accessibility-exchange-' "$work/symlink-watch.out"; then
+	printf 'Inventory watcher exposed accessibility probe churn through a symlinked config path\n' >&2
 	exit 1
 fi
 if grep -Fq $'changed\tATTRIB,ISDIR\t' "$work/symlink-watch.out"; then
@@ -800,10 +836,14 @@ cat >"$failing_inventory_bin/fc-list" <<'EOF'
 exit 9
 EOF
 chmod +x "$failing_inventory_bin/find" "$failing_inventory_bin/fc-list"
+: >"$race_marker"
 failed_inventory=$(HOME=$home PATH=$failing_inventory_bin XDG_CONFIG_HOME=$config_home \
 	XDG_DATA_HOME=$data_root DWM_APPEARANCE_DATA_DIRS=$data_root \
 	DWM_APPEARANCE_WALLPAPER_DIR=$wallpaper_dir DWM_TEST_REAL_FIND=$real_find \
+	BASH_ENV=$race_env DWM_TEST_STREAM_RACE_MARKER=$race_marker \
 	QT_QPA_PLATFORMTHEME=qt6ct "$helper" inventory)
+# A collected failing child returns its actual status, not wait's non-child 127.
+[[ -s $race_marker && $(sort -u "$race_marker") == $'0\n7\n9' ]]
 grep -Fqx $'selection\twallpaper\tpartial\t\tfill\tWallpaper candidate discovery did not complete' \
 	<<<"$failed_inventory"
 grep -Fqx $'selection\tfont\tunavailable\tNoto Sans\tNoto Sans 11\tFontconfig candidate discovery did not complete' \

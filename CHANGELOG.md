@@ -8,6 +8,97 @@ versions from `config.mk`.
 
 ### Changed
 
+- Add a fixed read-only account event monitor that covers candidate changes
+  before enumeration and filtering. Preserve bounded account inventories,
+  authenticated senders, and a monitor without idle polling; Settings activation
+  remains pending.
+
+- Add fixed read-only time and locale event monitors with acknowledged setup,
+  bounded output, and quiet handling of normally idle services. Add an internal
+  two-property NTP status reader; visible Settings monitoring and sampling
+  remain pending integration.
+
+- Add fixed account, password, printer, and software-source CLI entry points.
+  Resolve trusted tools, keep password handling in the configured supported
+  terminal, and record only accepted launches with durable recovery. Missing
+  tools and unsupported terminal forms remain capability-local. Launched tools
+  cannot inherit the operation journal or output; Settings origins remain
+  disabled pending discovery and confirmation integration.
+
+- Enable the three generation-confirmed regional CLI commands with durable
+  operation ownership, verified results, retained replay, and acknowledgment.
+  Preserve recovery after uncertain writes or lost output; ambiguous sent
+  changes are never retried or reclassified by later state. Settings origins
+  remain disabled pending their confirmation and display workflow. Tests use
+  private services and do not change host settings or log out the user.
+
+- Reject locale confirmations that the platform cannot apply while preserving
+  an explicit LANGUAGE override. Add a preparatory fixed regional service client
+  with fresh confirmation checks, authorization hooks, monitored conflicts, and
+  bounded verification. The fixed CLI now has durable owner integration;
+  Settings origins remain disabled. Tests change only a private bus.
+
+- Restore exact regional and delegated operation observers from validated
+  journal snapshots. Watch durable progress and owner exit without repeating
+  the action; stalled or closed control-output consumers preserve recovery.
+  Isolate operation and update-event writers from inherited file-status flags,
+  preserving concurrent parent output and behavior after forced termination.
+  Originating Settings action entry points remain disabled.
+
+- Preserve appearance inventory streams when a producer exits before the parent
+  captures its identity. Keep buffered output and failure status instead of
+  crashing the asset watcher and leaving wallpaper preview state stale.
+
+- Offer confirmed update actions only after complete idle recovery and the
+  PackageKit security check. Installation also requires a supported dependency
+  preview; failures preserve readable inventory and explicit refresh guidance.
+  Verify the backend with signed disposable Fedora 44 guest packages, including
+  dependency changes, stale confirmation rejection, denial, and retained replay.
+
+- Add visible System Settings confirmation for metadata refresh and update
+  installation, with complete dependency-change previews, fresh-state guards,
+  verified progress/audit logs, and exact-ID cancellation. Keyboard navigation
+  keeps focused controls visible and supports the full bounded preview. Closing
+  Settings keeps the operation owner alive; passive discovery never starts it.
+
+- Add root-owned update start/cancel lifecycle and bounded verified progress
+  logs. Cancellation remains an exact-ID request, never a fabricated result;
+  interrupted origins recover by observation.
+
+- Preserve Fedora DNF5 dependency previews when a requested update is reported
+  as an install. Keep the actual package actions visible and retain strict
+  missing, duplicate, and unexpected-update checks.
+
+- Preserve a pending Input discovery refresh when a preview finishes during an
+  earlier read, so kept accessibility settings do not remain stale in Settings.
+
+- Accept Fedora PackageKit's actual root-level transaction object IDs in the
+  operation journal. The previous namespaced-path assumption rejected real
+  transactions.
+
+- Show the Phase 6 Fedora update snapshot in a dedicated System
+  Settings pane with provider state, update and plan details, diagnostics,
+  restart guidance, recovery ownership, and existing administration boundaries.
+
+- Begin Phase 6 with a complete system-management capability and privilege
+  inventory. Select PackageKit, systemd regional services, AccountsService,
+  CUPS, and fixed Fedora tools as bounded owners; define provider, audit,
+  cancellation, denial, recovery, and high-risk delegation contracts before
+  adding runtime mutations. Recommended/full installs and Fedora images include
+  the required packages, including the Python RPM binding; existing source
+  installs add them by rerunning the matching installer profile.
+
+- Complete Phase 5 personalization and accessibility qualification on Fedora 44
+  X11. The combined clean build, managed suite, QML and shell checks, nested-X11
+  workflows, install parity, live two-monitor panels, reversible theme and
+  AccessX changes, common-size Settings rendering, and closed-idle samples pass;
+  unsupported and deferred paths remain explicit in the closeout evidence.
+
+- Replace the combined display mode button in Settings with an accessible
+  resolution dropdown backed by each output's supported RandR sizes. Keep
+  refresh-rate selection separate and route both choices through the existing
+  display preview and rollback workflow.
+
 - Rebuild the published documentation as a themed Astro site while preserving
   the existing custom domain and public page URLs. Add responsive navigation,
   light and dark themes, clearer documentation layouts, and a visual project
@@ -18,6 +109,10 @@ versions from `config.mk`.
   display and capability cards, and using dense text-scale-aware rows while
   preserving the existing navigation, context, and controls.
 
+- Close the optional Phase 5 UI-5 decision boundary without runtime changes.
+  Clipboard history and reminders are deferred pending explicit privacy,
+  lifecycle, and recovery contracts; emoji/symbol and generic image pickers are
+  rejected because no current product workflow requires them.
 - Make LightDM select the installed `dwm-jangir` session by default instead
   of the removed legacy `dwm` session. The generated Fedora configuration and
   its regression test now use the same runtime identity; a Fedora 44 VM full
@@ -28,6 +123,75 @@ versions from `config.mk`.
   installer and Fedora image profiles.
 
 ### Added
+
+- Add bounded read-only regional choice and confirmation-preview commands.
+  Bind selected timezone, NTP, or locale values to fresh configuration with a
+  generation token and preserve complete locale override details. Regional
+  mutation commands and Settings controls remain disabled pending lifecycle
+  integration.
+
+- Monitor update changes while the System Settings section is open. Coalesce
+  bursts into an initial read plus at most one settling read, preserve readable
+  status with reload guidance when state keeps changing or monitoring fails,
+  and stop optional discovery on closure without losing operation recovery.
+
+- Add a read-only PackageKit change monitor with fixed global subscriptions,
+  bounded setup, and explicit readiness. Private-bus tests verify signal
+  filtering, daemon replacement, closure, and lost output.
+
+- Restore journaled system operations in the shell root and keep their progress
+  visible across Settings closure. Verify complete terminal results before exact
+  acknowledgment; retain guidance after bounded recovery or acknowledgment
+  failure.
+
+- Add a bounded Quickshell operation-stream parser with strict identity,
+  lifecycle, audit, UTF-8, and exit-status checks. Native nested-X11 fixtures
+  verify live progress and failed-result streams.
+
+- Add explicit metadata-refresh and generation-confirmed install CLI commands
+  backed by durable PackageKit execution and exact terminal results. Rejected
+  requests do not fabricate transactions, and uncertain admission or observation
+  retains recovery guidance.
+
+- Add exact-operation PackageKit cancellation with bounded peer, ownership,
+  and cancelability checks. Stale requests leave the journal unchanged, accepted
+  requests remain observable until the real terminal result, and lost replies
+  retain recovery guidance.
+
+- Add a pane-scoped Quickshell system-management model that strictly consumes
+  the bounded 1.0 snapshot protocol, isolates malformed provider state, rejects
+  ambiguous streams, coalesces user refreshes, and stops its read process when
+  the System section or Settings closes without exposing update mutations.
+
+- Add the Phase 6 system-management provider's first bounded PackageKit
+  snapshot. It reports sanitized update inventory, refresh age, restart scope,
+  dependency-preview records, and deterministic confirmation generations while
+  separating passive discovery from confirmed managed operations.
+
+- Add persistent notification policy controls to Settings Appearance. Do Not
+  Disturb suppresses low- and normal-urgency popups while retaining notification
+  history, critical notifications bypass suppression, and a bounded duration
+  selector controls ordinary popups. Capability discovery verifies that the
+  managed Quickshell process and configuration own the session notification
+  D-Bus name, while atomic save acknowledgement keeps failed persistence
+  visible and disables unsafe follow-up mutations.
+
+- Add session-wide XKB accessibility shortcuts, sticky keys, slow keys, bounce
+  keys, and mouse keys to Input Settings. Fixed `xkbset` actions reuse the
+  existing timed preview, automatic rollback, persistence, session-start replay,
+  and reset workflow, while missing XKB support degrades only the accessibility
+  group.
+
+- Add keyboard-focusable Settings controls for the managed-shell high-contrast
+  and reduced-motion policy, including labeled accessibility semantics, reset,
+  provider-scoped failure detail, capability discovery, and nested-X11
+  persistence coverage.
+
+- Add versioned, user-owned accessibility policy state for managed-shell high
+  contrast and reduced motion. The root-scoped event-driven model applies
+  stronger semantic borders and zero-duration managed animations without
+  polling, while safe defaults, strict parsing, atomic writes, reset, and
+  unsafe-path rejection keep malformed or unavailable state isolated.
 
 - Group the existing bounded application text-scale choices under a dedicated
   Settings Accessibility section with keyboard-focusable apply and reset
@@ -42,6 +206,13 @@ versions from `config.mk`.
   notification policy, and keyboard or pointer access. Text scaling consumes
   only a complete versioned personalization response, and unavailable or
   malformed providers degrade independently without adding polling or mutation.
+- Add a version-pinned Slick Greeter overlay for LightDM: a compact branded
+  login flow, accessible session selection, local random backgrounds, and a
+  minimal hostname/power header. The DWM session selector now uses a compact
+  official DWM mark. Default, focused, invalid-password, session-picker,
+  power-menu, confirmation, and signing-in states now share one stable modern
+  layout. The greeter uses only bundled assets and has a safe Fedora Slick
+  Greeter fallback when the custom RPM is unavailable.
 
 - Add a version-pinned Slick Greeter overlay for LightDM: a compact branded
   login flow, accessible session selection, local random backgrounds, and a

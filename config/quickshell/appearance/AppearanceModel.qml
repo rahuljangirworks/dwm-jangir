@@ -11,6 +11,7 @@ Scope {
     property bool settingsVisible: false
     property bool busy: false
     property bool mutationReady: false
+    property bool mutationReadinessPending: false
     property string providerState: "idle"
     property string providerDetail: "Appearance has not been loaded"
     property string sourceKind: "none"
@@ -462,6 +463,7 @@ Scope {
         root.inventoryWatchFailed = true;
         root.inventoryWatchRestartPending = false;
         root.compositorWatchReady = false;
+        inventoryWatchExitSettleTimer.stop();
         inventoryWatchRestartTimer.stop();
         inventoryWatchProcess.running = false;
         compositorWatchRestartTimer.stop();
@@ -657,8 +659,13 @@ Scope {
     }
 
     function refreshMutationReadiness() {
-        if (!readinessProcess.running && !actionProcess.running)
-            readinessProcess.running = true;
+        root.mutationReady = false;
+        if (readinessProcess.running || actionProcess.running) {
+            root.mutationReadinessPending = true;
+            return;
+        }
+        root.mutationReadinessPending = false;
+        readinessProcess.running = true;
     }
 
     function refreshWallpaperStatus() {
@@ -874,6 +881,10 @@ Scope {
 
     function startInventoryWatcher(restartIfRunning) {
         if (!root.settingsVisible) return;
+        if (inventoryWatchExitSettleTimer.running) {
+            if (restartIfRunning === true) root.inventoryWatchRestartPending = true;
+            return;
+        }
         if (inventoryWatchProcess.running) {
             if (restartIfRunning === true) root.inventoryWatchRestartPending = true;
             return;
@@ -883,9 +894,29 @@ Scope {
         inventoryWatchProcess.running = true;
     }
 
+    function finishInventoryWatcherExit() {
+        if (!root.settingsVisible || inventoryWatchProcess.running) return;
+        if (root.inventoryWatchRestartPending && !root.inventoryWatchFailed) {
+            root.inventoryWatchRestartPending = false;
+            if (root.inventoryWatchSawEvent) inventoryWatchRestartTimer.restart();
+            else Qt.callLater(root.startInventoryWatcher);
+        } else if (!root.inventoryWatchSawEvent && !root.inventoryWatchFailed) {
+            const error = inventoryWatchError.text.trim();
+            root.inventoryWatchFailed = true;
+            root.inventoryWatchState = "unavailable";
+            root.inventoryWatchDetail = error.length > 0 ? error
+                : "Live appearance asset watching stopped unexpectedly";
+            root.refreshInventory(true);
+        } else if (!root.inventoryWatchFailed && (root.inventoryWatchState === "available"
+                || root.inventoryWatchState === "idle")) {
+            inventoryWatchRestartTimer.restart();
+        }
+    }
+
     function closeSettings() {
         root.settingsVisible = false;
         root.inventoryGeneration++;
+        inventoryWatchExitSettleTimer.stop();
         inventoryWatchRestartTimer.stop();
         root.inventoryWatchRestartPending = false;
         inventoryWatchProcess.running = false;
@@ -906,6 +937,7 @@ Scope {
         root.wallpaperStatusPending = false;
         root.inventoryPending = false;
         root.inventoryPendingAllowUnwatched = false;
+        root.mutationReadinessPending = false;
     }
 
     function nextPreviewToken() {
@@ -932,20 +964,23 @@ Scope {
     }
 
     function startPreview(theme) {
-        if (!root.mutationReady || !root.validThemeName(theme) || root.previewState !== "none"
+        if (!root.mutationReady || root.mutationReadinessPending
+                || !root.validThemeName(theme) || root.previewState !== "none"
                 || root.recoveryState !== "none") return;
         const token = root.nextPreviewToken();
         root.runAction("preview", [token, "30", theme], theme, token);
     }
 
     function applyTheme(theme) {
-        if (!root.mutationReady || !root.validThemeName(theme) || root.previewState !== "none"
+        if (!root.mutationReady || root.mutationReadinessPending
+                || !root.validThemeName(theme) || root.previewState !== "none"
                 || root.recoveryState !== "none") return;
         root.runAction("apply", [theme], theme, "");
     }
 
     function resetTheme() {
-        if (!root.mutationReady || root.previewState !== "none" || root.recoveryState !== "none") return;
+        if (!root.mutationReady || root.mutationReadinessPending
+                || root.previewState !== "none" || root.recoveryState !== "none") return;
         root.runAction("reset", [], "", "");
     }
 
@@ -1732,7 +1767,15 @@ Scope {
         command: Commands.booleanStatusCommand(Commands.settingsThemeCommand("mutation-ready", []))
         running: false
         stdout: StdioCollector {
-            onStreamFinished: root.mutationReady = this.text.trim() === "available"
+            onStreamFinished: root.mutationReady = !root.mutationReadinessPending
+                && this.text.trim() === "available"
+        }
+        onRunningChanged: {
+            if (!running && root.mutationReadinessPending && !actionProcess.running) {
+                root.mutationReady = false;
+                root.mutationReadinessPending = false;
+                Qt.callLater(root.refreshMutationReadiness);
+            }
         }
     }
 
@@ -1877,24 +1920,12 @@ Scope {
             id: inventoryWatchError
         }
         onRunningChanged: {
-            if (!running) {
-                root.inventoryWatchReady = false;
-                if (root.settingsVisible && root.inventoryWatchRestartPending
-                        && !root.inventoryWatchFailed) {
-                    root.inventoryWatchRestartPending = false;
-                    if (root.inventoryWatchSawEvent) inventoryWatchRestartTimer.restart();
-                    else Qt.callLater(root.startInventoryWatcher);
-                } else if (root.settingsVisible && !root.inventoryWatchSawEvent
-                        && !root.inventoryWatchFailed) {
-                    const error = inventoryWatchError.text.trim();
-                    root.inventoryWatchFailed = true;
-                    root.inventoryWatchState = "unavailable";
-                    root.inventoryWatchDetail = error.length > 0 ? error
-                        : "Live appearance asset watching stopped unexpectedly";
-                    root.refreshInventory(true);
-                } else if (root.settingsVisible && (root.inventoryWatchState === "available"
-                        || root.inventoryWatchState === "idle")) inventoryWatchRestartTimer.restart();
+            if (running) {
+                inventoryWatchExitSettleTimer.stop();
+                return;
             }
+            root.inventoryWatchReady = false;
+            if (root.settingsVisible) inventoryWatchExitSettleTimer.restart();
         }
     }
 
@@ -2060,7 +2091,17 @@ Scope {
         running: false
         stdout: StdioCollector { onStreamFinished: root.parseActionResult(this.text) }
         stderr: StdioCollector { onStreamFinished: root.actionError = this.text.trim() }
-        onRunningChanged: if (!running && root.busy) root.finishAction()
+        onRunningChanged: {
+            if (running) return;
+            if (root.busy) {
+                root.finishAction();
+                return;
+            }
+            if (root.mutationReadinessPending) {
+                root.mutationReadinessPending = false;
+                Qt.callLater(root.refreshMutationReadiness);
+            }
+        }
     }
 
     Process {
@@ -2138,6 +2179,13 @@ Scope {
         interval: 100
         repeat: false
         onTriggered: if (root.settingsVisible) root.refreshAll()
+    }
+
+    Timer {
+        id: inventoryWatchExitSettleTimer
+        interval: 100
+        repeat: false
+        onTriggered: root.finishInventoryWatcherExit()
     }
 
     Timer {

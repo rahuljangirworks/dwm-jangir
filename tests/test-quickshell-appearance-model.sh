@@ -60,6 +60,10 @@ grep -Fq 'root.settingsModel.selectedSectionId === "appearance"' "$settings_wind
 grep -Fq 'capability.id !== "themes"' "$settings_window"
 grep -Fq 'textScaleCapability: root.settingsModel.capabilityById(' "$settings_window"
 grep -Fq 'function capabilityById(id)' "$settings_model"
+grep -Fq 'deviceCard.modelData.kind === "accessibility"' "$input_pane"
+grep -Fq 'accessibleDescription: settingRow.modelData.label + ". Starts a timed preview."' "$input_pane"
+grep -Fq 'if (settingsModel.previewKind !== "input") return;' "$shell_qml"
+grep -Fq 'if (settingsModel.previewOperationLocked) return;' "$shell_qml"
 
 grep -Fq 'function settingsAppearanceCommand(action, args)' "$commands"
 grep -Fq 'function settingsFontCommand(action, args)' "$commands"
@@ -80,6 +84,16 @@ grep -Fq 'fields[1] === "none" && fields[2] === "unavailable"' "$model"
 grep -Fq '"mutable": root.validThemeName(fields[1])' "$model"
 grep -Fq 'Commands.checkedCommand(Commands.settingsThemeCommand(action, args))' "$model"
 grep -Fq 'Commands.settingsThemeCommand("mutation-ready", [])' "$model"
+grep -Fq 'property bool mutationReadinessPending: false' "$model"
+grep -Fq 'root.mutationReady = false;' "$model"
+grep -Fq 'if (readinessProcess.running || actionProcess.running) {' "$model"
+grep -Fq 'root.mutationReadinessPending = true;' "$model"
+grep -Fq 'if (!running && root.mutationReadinessPending && !actionProcess.running) {' "$model"
+grep -Fq 'onStreamFinished: root.mutationReady = !root.mutationReadinessPending' "$model"
+for mutation_function in startPreview applyTheme resetTheme; do
+	sed -n "/function $mutation_function(/,/^    }/p" "$model" |
+		grep -Fq 'root.mutationReadinessPending'
+done
 grep -Fq 'Theme.applyAppearanceColors(colors, darkMode)' "$model"
 grep -Fq 'watchChanges: true' "$model"
 test "$(grep -Fc 'watchChanges: true' "$model")" -eq 5
@@ -93,8 +107,20 @@ fi
 grep -Fq 'Commands.settingsAppearanceCommand("watch-inventory", [])' "$model"
 grep -Fq 'Commands.settingsAppearanceCommand("watch-compositor", [])' "$model"
 grep -Fq 'function startInventoryWatcher(restartIfRunning)' "$model"
+grep -Fq 'function finishInventoryWatcherExit()' "$model"
 sed -n '/function startInventoryWatcher(restartIfRunning)/,/^    }/p' "$model" |
 	grep -Fq 'if (!root.settingsVisible) return;'
+sed -n '/function startInventoryWatcher(restartIfRunning)/,/^    }/p' "$model" |
+	grep -Fq 'if (inventoryWatchExitSettleTimer.running) {'
+watcher_exit_handler=$(sed -n '/id: inventoryWatchProcess/,/^    }/p' "$model")
+printf '%s\n' "$watcher_exit_handler" |
+	grep -Fq 'if (root.settingsVisible) inventoryWatchExitSettleTimer.restart();'
+if printf '%s\n' "$watcher_exit_handler" | grep -Fq 'root.inventoryWatchFailed = true'; then
+	printf 'Inventory watcher still classifies failure before stdout has settled\n' >&2
+	exit 1
+fi
+grep -Fq 'id: inventoryWatchExitSettleTimer' "$model"
+grep -Fq 'onTriggered: root.finishInventoryWatcherExit()' "$model"
 grep -Fq 'root.startInventoryWatcher(true);' "$model"
 grep -Fq 'if (restartIfRunning === true) root.inventoryWatchRestartPending = true;' "$model"
 grep -Fq 'root.inventoryWatchSawEvent = false' "$model"
@@ -309,9 +335,15 @@ if grep -Fq 'wallpaperActionPending' "$model"; then
 	printf 'Wallpaper preview decisions still use a pane-scoped pending queue\n' >&2
 	exit 1
 fi
-grep -Fq '&& !root.inventoryWatchFailed) {' "$model"
-grep -Fq 'root.inventoryWatchRestartPending = false;' "$model"
-grep -Fq 'if (root.inventoryWatchSawEvent) inventoryWatchRestartTimer.restart();' "$model"
+watcher_exit_finalizer=$(sed -n '/function finishInventoryWatcherExit()/,/^    }/p' "$model")
+printf '%s\n' "$watcher_exit_finalizer" |
+	grep -Fq 'if (root.inventoryWatchRestartPending && !root.inventoryWatchFailed) {'
+printf '%s\n' "$watcher_exit_finalizer" |
+	grep -Fq 'root.inventoryWatchRestartPending = false;'
+printf '%s\n' "$watcher_exit_finalizer" |
+	grep -Fq 'if (root.inventoryWatchSawEvent) inventoryWatchRestartTimer.restart();'
+printf '%s\n' "$watcher_exit_finalizer" |
+	grep -Fq '} else if (!root.inventoryWatchSawEvent && !root.inventoryWatchFailed) {'
 grep -Fq 'if (!previewWasActive && preview.state === "active") {' "$model"
 grep -Fq 'root.wallpaperPreviewState = "none";' "$model"
 grep -Fq 'Qt.callLater(root.refreshWallpaperStatus)' "$model"
@@ -360,7 +392,7 @@ grep -Fq 'readonly property int panelIconFontSize: 13' "$theme"
 grep -Fq 'font.pixelSize: Theme.panelIconFontSize + 1' "$icon_text"
 test "$(grep -Fc 'Theme.panelIconFontSize' "$panel")" -eq 5
 grep -Fq 'Math.round(13 * fontScale)' "$theme"
-test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$display_pane")" -eq 9
+test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$display_pane")" -eq 13
 test "$(grep -Ec 'font\.pixelSize: Theme\.(bodyFontSize|inputFontSize)' "$input_pane")" -eq 5
 grep -Fq 'font.pixelSize: Theme.inputFontSize' "$network_pane"
 grep -Fq 'passwordInput.implicitHeight + 2 * Theme.spacingSm' "$network_pane"
@@ -433,6 +465,8 @@ grep -Fq 'label: "Additional capabilities"' "$pane"
 grep -Fq 'SectionLabel { label: "Accessibility" }' "$pane"
 grep -Fq 'readonly property var accessibilityCapabilities:' "$pane"
 grep -Fq 'capability.id !== "accessibility-text-scale"' "$pane"
+grep -Fq 'capability.id !== "accessibility-contrast"' "$pane"
+grep -Fq 'capability.id !== "accessibility-reduced-motion"' "$pane"
 grep -Fq 'required property var textScaleCapability' "$pane"
 grep -Fq 'property var capabilityGate: null' "$pane"
 grep -Fq 'readonly property bool gateAllowsActions:' "$pane"
@@ -442,7 +476,10 @@ test "$(grep -Fc '&& personalizationControl.gateAllowsActions' "$pane")" -eq 2
 grep -Fq 'enabled: personalizationControl.gateAllowsActions && !root.appearanceBusy' "$pane"
 grep -Fq 'model: root.accessibilityCapabilities' "$pane"
 grep -Fq 'model: root.additionalCapabilities' "$pane"
-grep -Fq 'text: "Use the text-scale controls below when their provider is available.' "$pane"
+grep -Fq 'text: "Managed-shell contrast and motion choices apply immediately' "$pane"
+grep -Fq '|| !root.accessibilityModel.mutationReady' "$pane"
+grep -Fq ': root.accessibilityModel.mutationState' "$pane"
+grep -Fq ': root.accessibilityModel.mutationDetail' "$pane"
 if grep -Fq 'Text scaling is available now' "$pane"; then
 	printf 'Accessibility summary makes an unconditional text-scale availability claim\n' >&2
 	exit 1

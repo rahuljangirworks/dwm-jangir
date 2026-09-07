@@ -23,6 +23,7 @@ logind-check-graphical=true
 
 [Seat:*]
 greeter-session=dwm-jangir-slick-greeter
+greeter-session=slick-greeter
 user-session=dwm-jangir
 CONF
 cmp -s "$work/fedora.expected" "$fedora_stage/etc/lightdm/lightdm.conf"

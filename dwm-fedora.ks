@@ -77,6 +77,7 @@ xset
 xsetroot
 xinput
 setxkbmap
+xkbset
 dbus-x11
 procps-ng
 psmisc
@@ -87,6 +88,15 @@ xdg-utils
 flatpak
 %include /tmp/dwm-jangir-gaming-packages
 quickshell
+PackageKit
+PackageKit-glib
+python3-gobject
+python3-rpm
+accountsservice
+cups
+system-config-printer
+lxqt-admin
+dnfdragora
 lightdm
 slick-greeter
 alacritty

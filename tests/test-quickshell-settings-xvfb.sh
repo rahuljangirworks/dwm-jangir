@@ -7,7 +7,7 @@ expected_window_width=${DWM_SETTINGS_EXPECTED_WINDOW_WIDTH:-1180}
 expected_window_height=${DWM_SETTINGS_EXPECTED_WINDOW_HEIGHT:-760}
 
 for command_name in Xvfb dbus-monitor dbus-run-session glib-compile-schemas \
-	gsettings inotifywait quickshell xdotool xinput xprop pgrep getconf; do
+	gsettings inotifywait quickshell xdotool xinput xkbset xprop pgrep getconf; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -33,6 +33,7 @@ if [ "$(id -u)" -eq 0 ] && [ "${DWM_SETTINGS_XVFB_UNPRIVILEGED:-0}" != 1 ]; then
 	cp -a "$repo/config" "$repo/scripts" "$fixture_repo/"
 	cp "$repo/dwm" "$fixture_repo/dwm"
 	cp "$0" "$fixture_repo/tests/test-quickshell-settings-xvfb.sh"
+	cp -a "$repo/tests/fixtures" "$fixture_repo/tests/"
 	chown -R "$unprivileged_uid:$unprivileged_gid" "$root_runner_work"
 	chmod 700 "$fixture_repo/dwm" "$root_runner_work/runtime"
 	if HOME="$root_runner_work" TMPDIR="$root_runner_work" \
@@ -81,6 +82,101 @@ settings_ipc_retry() {
 	printf 'Settings IPC call failed after retries: %s\n' "$*" >&2
 	return 1
 }
+
+notification_ipc_retry() {
+	notification_ipc_attempt=0
+	while [ "$notification_ipc_attempt" -lt 20 ]; do
+		if notification_ipc_output=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call notifications "$@" 2>/dev/null); then
+			printf '%s\n' "$notification_ipc_output"
+			return 0
+		fi
+		notification_ipc_attempt=$((notification_ipc_attempt + 1))
+		sleep 0.05
+	done
+	printf 'Notification IPC call failed after retries: %s\n' "$*" >&2
+	return 1
+}
+
+notification_wait_available() {
+	notification_wait_attempt=0
+	while [ "$notification_wait_attempt" -lt 200 ]; do
+		[ "$(notification_ipc_retry policyState)" = available ] && return 0
+		notification_wait_attempt=$((notification_wait_attempt + 1))
+		sleep 0.05
+	done
+	printf 'Notification policy did not become available after mutation\n' >&2
+	return 1
+}
+
+start_quickshell() {
+	env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
+		QT_QPA_PLATFORMTHEME= \
+		TMPDIR="$helper_tmp" \
+		DWM_SETTINGS_TEST_POWER_STATE="$power_state" DWM_SETTINGS_TEST_DELAY_POWER=1 \
+		DWM_SETTINGS_TEST_MALFORMED_POWER_SNAPSHOT="$malformed_power_snapshot" \
+		DWM_SETTINGS_TEST_APPEARANCE_FAILURE="$appearance_failure_fixture" \
+		DWM_SETTINGS_TEST_WALLPAPER_STATUS="$wallpaper_status_fixture" \
+		DWM_SETTINGS_TEST_THEME_STATUS="$theme_status_fixture" \
+		PATH="$data_home/dwm-jangir/scripts:$PATH" \
+		quickshell --no-duplicate >>"$work/quickshell.log" 2>&1 &
+	quickshell_pid=$!
+	quickshell_identity=$(capture_process_identity "$quickshell_pid")
+}
+
+wait_for_quickshell_ipc() {
+	i=0
+	while [ "$i" -lt 200 ]; do
+		if DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings status \
+			>/dev/null 2>&1; then
+			return 0
+		fi
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf 'Quickshell Settings IPC did not become ready\n' >&2
+	tail -60 "$work/quickshell.log" >&2
+	return 1
+}
+
+restart_quickshell() {
+	terminate_process_identity "$quickshell_identity"
+	quickshell_pid=
+	quickshell_identity=
+	start_quickshell
+	wait_for_quickshell_ipc
+	settings_ipc_retry open >/dev/null
+	settings_ipc_retry select appearance >/dev/null
+}
+
+wait_for_settings_countdown_decrement() (
+	countdown_method=$1
+	countdown_initial=$2
+	countdown_current=$countdown_initial
+	countdown_attempt=0
+	while [ "$countdown_attempt" -lt 100 ]; do
+		if countdown_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings \
+			"$countdown_method" 2>/dev/null); then
+			case $countdown_sample in
+			'' | *[!0-9]*) ;;
+			*)
+				countdown_current=$countdown_sample
+				if [ "$countdown_current" -lt "$countdown_initial" ]; then
+					printf '%s\n' "$countdown_current"
+					return 0
+				fi
+				;;
+			esac
+		fi
+		countdown_attempt=$((countdown_attempt + 1))
+		sleep 0.05
+	done
+	printf '%s\n' "$countdown_current"
+	return 1
+)
 
 capture_process_identity() (
 	identity_pid=$1
@@ -163,8 +259,7 @@ cleanup() {
 	terminate_process_identity "${dwm_identity:-}"
 	terminate_process_identity "${xvfb_identity:-}"
 	if [ -n "${runtime_alias_dir:-}" ]; then
-		rm -f -- "$runtime_alias_dir/runtime"
-		rmdir -- "$runtime_alias_dir" 2>/dev/null || true
+		rm -rf -- "$runtime_alias_dir"
 	fi
 	rm -rf "$work"
 	trap - EXIT HUP INT TERM
@@ -216,8 +311,8 @@ chmod 700 "$fixture_feh"
 export DWM_WALLPAPER_FEH="$fixture_feh"
 if [ "${#runtime}" -gt 64 ]; then
 	runtime_alias_dir=$(mktemp -d /tmp/dwm-settings-runtime.XXXXXX)
-	ln -s "$runtime_storage" "$runtime_alias_dir/runtime"
 	runtime=$runtime_alias_dir/runtime
+	mkdir -m 700 "$runtime"
 fi
 cat >"$schema_dir/apps.light-locker.gschema.xml" <<'EOF'
 <schemalist>
@@ -235,6 +330,8 @@ glib-compile-schemas "$schema_dir"
 export GSETTINGS_SCHEMA_DIR="$schema_dir"
 export GSETTINGS_BACKEND=keyfile
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
+cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-titus/scripts/dwm-system-management"
+chmod +x "$data_home/dwm-titus/scripts/dwm-system-management"
 cp "$repo/config/quickshell/assets/ctt_logo.png" "$home/Pictures/backgrounds/test-wallpaper.png"
 # Keep this nested-X11 fixture independent from the host system UPower service
 # so versioned helper battery records exercise the fallback parser.
@@ -284,9 +381,33 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-settings-appearance" "$repo/scripts/dwm-settings-wallpaper" \
 	"$repo/scripts/dwm-settings-font" "$repo/scripts/dwm-settings-personalization" \
 	"$repo/scripts/dwm-settings-theme" "$repo/scripts/dwm-xsettings" \
-	"$repo/scripts/dwm-panel-settings" \
+	"$repo/scripts/dwm-panel-settings" "$repo/scripts/dwm-accessibility-settings" \
 	"$repo/scripts/theme-apply.sh" \
 	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-jangir/scripts/"
+
+input_discovery_fixture=$config_home/dwm-titus/input-discovery-fixture
+mv "$data_home/dwm-titus/scripts/dwm-settings-input" \
+	"$data_home/dwm-titus/scripts/dwm-settings-input.real"
+cat >"$data_home/dwm-titus/scripts/dwm-settings-input" <<'SH'
+#!/bin/sh
+set -eu
+fixture=$XDG_CONFIG_HOME/dwm-titus/input-discovery-fixture
+if [ "${1:-}" = discover ] && [ -f "$fixture.hold" ]; then
+	rm -f "$fixture.hold"
+	"$(dirname -- "$0")/dwm-settings-input.real" "$@" >"$fixture.snapshot"
+	: >"$fixture.captured"
+	attempt=0
+	while [ ! -f "$fixture.release" ] && [ "$attempt" -lt 1000 ]; do
+		attempt=$((attempt + 1))
+		sleep 0.01
+	done
+	[ -f "$fixture.release" ] || exit 1
+	cat "$fixture.snapshot"
+	exit 0
+fi
+exec "$(dirname -- "$0")/dwm-settings-input.real" "$@"
+SH
+chmod +x "$data_home/dwm-titus/scripts/dwm-settings-input"
 
 appearance_failure_fixture=$work/appearance-snapshot-failure
 mv "$data_home/dwm-jangir/scripts/dwm-settings-appearance" \
@@ -503,6 +624,17 @@ if [ "${1:-}" = preview-status ] && [ -f "$fixture" ]; then
 	esac
 	exit 0
 fi
+if [ "${1:-}" = mutation-ready ] && [ -f "$fixture.mutation-delay" ]; then
+	printf x >>"$fixture.mutation-calls"
+	if [ ! -f "$fixture.mutation-started" ]; then
+		: >"$fixture.mutation-started"
+		i=0
+		while [ ! -f "$fixture.mutation-release" ] && [ "$i" -lt 500 ]; do
+			i=$((i + 1))
+			sleep 0.01
+		done
+	fi
+fi
 exec "$(dirname -- "$0")/dwm-settings-theme.real" "$@"
 SH
 chmod +x "$data_home/dwm-jangir/scripts/dwm-settings-theme"
@@ -603,6 +735,9 @@ cat >"$data_home/dwm-jangir/scripts/busctl" <<'SH'
 #!/bin/sh
 set -eu
 case $* in
+'--user '*)
+	PATH=/usr/bin:/bin exec busctl "$@"
+	;;
 '--system --json=short call org.bluez / org.freedesktop.DBus.ObjectManager GetManagedObjects')
 	cat <<'JSON'
 {"type":"a{oa{sa{sv}}}","data":[{"/org/bluez/hci0":{"org.bluez.Adapter1":{"Address":{"type":"s","data":"00:11:22:33:44:55"},"Alias":{"type":"s","data":"Test Adapter"},"Powered":{"type":"b","data":true},"Discovering":{"type":"b","data":false},"Pairable":{"type":"b","data":true}}}}]}
@@ -695,6 +830,9 @@ HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	gsettings set apps.light-locker lock-on-suspend true
 
+config=$config_home/quickshell/shell.qml
+: >"$work/quickshell.log"
+start_quickshell
 env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
 	QT_QPA_PLATFORMTHEME= \
@@ -710,7 +848,6 @@ quickshell_pid=$!
 quickshell_identity=$(capture_process_identity "$quickshell_pid")
 test_stage='waiting for Quickshell IPC'
 
-config=$config_home/quickshell/shell.qml
 settings_power_watch_count() {
 	watch_count=0
 	for monitor_pid in $(pgrep -f '[d]bus-monitor --system.*org.freedesktop.UPower.*org.freedesktop.UPower.PowerProfiles.*org.freedesktop.login1' || true); do
@@ -782,21 +919,7 @@ if [ "$cpu_sample_seconds" -gt 0 ] && [ "$cpu_sample_seconds" -lt 30 ]; then
 		"$cpu_sample_seconds" >&2
 	exit 2
 fi
-i=0
-while [ "$i" -lt 200 ]; do
-	if DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings status >/dev/null 2>&1; then
-		break
-	fi
-	i=$((i + 1))
-	sleep 0.05
-done
-if ! DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings status >/dev/null 2>&1; then
-	printf 'Quickshell Settings IPC did not become ready\n' >&2
-	tail -60 "$work/quickshell.log" >&2
-	exit 1
-fi
+wait_for_quickshell_ipc
 
 clock_ticks=$(getconf CLK_TCK)
 baseline_cpu_percent=
@@ -882,6 +1005,127 @@ done
 input_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings inputCount)
 [ "$input_count" -ge 1 ]
+
+test_stage='validating XKB accessibility preview and persistence'
+sticky_baseline=$(settings_ipc_retry inputAccessibilityValue sticky-keys)
+case $sticky_baseline in
+0)
+	sticky_preview=true
+	sticky_expected=1
+	;;
+1)
+	sticky_preview=false
+	sticky_expected=0
+	;;
+*)
+	printf 'Missing sticky-keys setting: %s\n' "$sticky_baseline" >&2
+	exit 1
+	;;
+esac
+sticky_record=$(printf 'accessx\tsticky-keys\t%s\t%s' "$sticky_expected" "$sticky_baseline")
+xkb_sticky_value() {
+	sticky_state=$(DISPLAY=$display LC_ALL=C xkbset q |
+		awk -F ' = ' '$1 == "Sticky-Keys" { print $2 }')
+	case $sticky_state in On) printf '1\n' ;; Off) printf '0\n' ;; *) return 1 ;; esac
+}
+settings_ipc_retry inputAccessibilityPreview sticky-keys "$sticky_preview" >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	preview_state=$(settings_ipc_retry inputPreviewState)
+	sticky_live=$(xkb_sticky_value 2>/dev/null || true)
+	[ "$preview_state" = input ] && [ "$sticky_live" = "$sticky_expected" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$preview_state" = input ]
+[ "$sticky_live" = "$sticky_expected" ]
+settings_ipc_retry inputPreviewAction revert >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	preview_state=$(settings_ipc_retry inputPreviewState)
+	sticky_value=$(settings_ipc_retry inputAccessibilityValue sticky-keys)
+	sticky_live=$(xkb_sticky_value 2>/dev/null || true)
+	[ -z "$preview_state" ] && [ "$sticky_value" = "$sticky_baseline" ] &&
+		[ "$sticky_live" = "$sticky_baseline" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ -z "$preview_state" ]
+[ "$sticky_value" = "$sticky_baseline" ]
+[ "$sticky_live" = "$sticky_baseline" ]
+
+# Hold a pre-change discovery result across Keep. The model must queue the
+# resulting refresh instead of letting this stale snapshot win permanently.
+: >"$input_discovery_fixture.hold"
+settings_ipc_retry select input >/dev/null
+i=0
+while [ ! -f "$input_discovery_fixture.captured" ] && [ "$i" -lt 100 ]; do
+	i=$((i + 1))
+	sleep 0.05
+done
+[ -f "$input_discovery_fixture.captured" ]
+settings_ipc_retry inputAccessibilityPreview sticky-keys "$sticky_preview" >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	preview_state=$(settings_ipc_retry inputPreviewState)
+	sticky_live=$(xkb_sticky_value 2>/dev/null || true)
+	[ "$preview_state" = input ] && [ "$sticky_live" = "$sticky_expected" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$preview_state" = input ]
+[ "$sticky_live" = "$sticky_expected" ]
+settings_ipc_retry inputPreviewAction keep >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	grep -Fqx "$sticky_record" \
+		"$config_home/dwm-titus/input-settings.conf" 2>/dev/null && break
+	i=$((i + 1))
+	sleep 0.05
+done
+grep -Fqx "$sticky_record" \
+	"$config_home/dwm-titus/input-settings.conf"
+i=0
+while [ "$i" -lt 100 ]; do
+	preview_state=$(settings_ipc_retry inputPreviewState)
+	[ -z "$preview_state" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ -z "$preview_state" ]
+: >"$input_discovery_fixture.release"
+i=0
+while [ "$i" -lt 100 ]; do
+	preview_state=$(settings_ipc_retry inputPreviewState)
+	sticky_value=$(settings_ipc_retry inputAccessibilityValue sticky-keys)
+	[ -z "$preview_state" ] && [ "$sticky_value" = "$sticky_expected" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ -z "$preview_state" ]
+[ "$sticky_value" = "$sticky_expected" ]
+if [ "$sticky_baseline" = 1 ]; then DISPLAY=$display xkbset st; else DISPLAY=$display xkbset -st; fi
+DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_RUNTIME_DIR=$runtime \
+	"$data_home/dwm-titus/scripts/dwm-settings-input" apply-saved
+sticky_live=$(xkb_sticky_value)
+[ "$sticky_live" = "$sticky_expected" ]
+settings_ipc_retry inputAccessibilityReset sticky-keys >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	sticky_value=$(settings_ipc_retry inputAccessibilityValue sticky-keys)
+	sticky_live=$(xkb_sticky_value 2>/dev/null || true)
+	[ "$sticky_value" = "$sticky_baseline" ] && [ "$sticky_live" = "$sticky_baseline" ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$sticky_value" = "$sticky_baseline" ]
+[ "$sticky_live" = "$sticky_baseline" ]
+if [ -f "$config_home/dwm-titus/input-settings.conf" ] &&
+	grep -Fq "$(printf 'accessx\tsticky-keys\t')" \
+		"$config_home/dwm-titus/input-settings.conf"; then
+	printf 'XKB accessibility reset retained a persisted override\n' >&2
+	exit 1
+fi
 
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
@@ -1395,6 +1639,7 @@ done
 [ "$bluetooth_status" = available ]
 
 rm -f -- "$runtime/dwm-settings-wallpaper/exchange-support"
+test_stage='validating appearance startup readiness'
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select appearance >/dev/null
 i=0
@@ -1422,10 +1667,11 @@ available | partial) ;;
 esac
 wallpaper_reset_ready=false
 i=0
-while [ "$i" -lt 100 ]; do
+while [ "$i" -lt 200 ]; do
 	wallpaper_reset_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperResetReady 2>/dev/null || true)
-	[ "$wallpaper_reset_ready" = true ] && break
+	[ "$wallpaper_reset_ready" = true ] &&
+		[ -f "$runtime/dwm-settings-wallpaper/exchange-support" ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
@@ -1456,7 +1702,13 @@ appearance_recovery=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home X
 # contract. Removing the fault must refresh that strict gate from the
 # event-driven personalization selection change without a Settings refresh.
 test_stage='validating text-scale capability recovery synchronization'
-baseline_text_scale_capability=$(settings_ipc_retry capabilityStatus accessibility-text-scale)
+i=0
+while [ "$i" -lt 200 ]; do
+	baseline_text_scale_capability=$(settings_ipc_retry capabilityStatus accessibility-text-scale)
+	case $baseline_text_scale_capability in available | partial) break ;; esac
+	i=$((i + 1))
+	sleep 0.05
+done
 case $baseline_text_scale_capability in available | partial) ;; *) exit 1 ;; esac
 printf '%s\n' invalid-text-scale >"$appearance_failure_fixture"
 settings_ipc_retry appearanceRefresh >/dev/null
@@ -1480,6 +1732,200 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 [ "$recovered_text_scale_capability" = "$baseline_text_scale_capability" ]
+
+test_stage='validating managed-shell accessibility persistence'
+wait_for_accessibility_idle() {
+	i=0
+	while [ "$i" -lt 100 ]; do
+		[ "$(settings_ipc_retry accessibilityBusy)" = false ] && return 0
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf 'Accessibility mutation did not finish\n' >&2
+	return 1
+}
+
+wait_for_accessibility_values() {
+	expected_contrast=$1
+	expected_motion=$2
+	i=0
+	while [ "$i" -lt 100 ]; do
+		accessibility_state=$(settings_ipc_retry accessibilityState)
+		accessibility_ready=$(settings_ipc_retry accessibilityMutationReady)
+		accessibility_contrast=$(settings_ipc_retry accessibilityHighContrast)
+		accessibility_motion=$(settings_ipc_retry accessibilityReducedMotion)
+		case $accessibility_state:$accessibility_ready in
+		defaults:true | available:true | partial:true)
+			[ "$accessibility_contrast" = "$expected_contrast" ] &&
+				[ "$accessibility_motion" = "$expected_motion" ] && return 0
+			;;
+		esac
+		i=$((i + 1))
+		sleep 0.05
+	done
+	printf 'Accessibility values did not reload: %s / %s\n' \
+		"$accessibility_contrast" "$accessibility_motion" >&2
+	return 1
+}
+
+i=0
+while [ "$i" -lt 100 ]; do
+	accessibility_state=$(settings_ipc_retry accessibilityState)
+	accessibility_ready=$(settings_ipc_retry accessibilityMutationReady)
+	accessibility_contrast_capability=$(settings_ipc_retry capabilityStatus accessibility-contrast)
+	accessibility_motion_capability=$(settings_ipc_retry capabilityStatus accessibility-reduced-motion)
+	case $accessibility_state:$accessibility_ready:$accessibility_contrast_capability:$accessibility_motion_capability in
+	defaults:true:available:available | available:true:available:available | partial:true:available:available) break ;;
+	esac
+	i=$((i + 1))
+	sleep 0.05
+done
+case $accessibility_state:$accessibility_ready:$accessibility_contrast_capability:$accessibility_motion_capability in
+defaults:true:available:available | available:true:available:available | partial:true:available:available) ;;
+*)
+	printf 'Accessibility controls did not become ready: %s / %s / %s / %s\n' \
+		"$accessibility_state" "$accessibility_ready" \
+		"$accessibility_contrast_capability" "$accessibility_motion_capability" >&2
+	exit 1
+	;;
+esac
+settings_ipc_retry accessibilitySetContrast true >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(settings_ipc_retry accessibilityHighContrast)" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(settings_ipc_retry accessibilityHighContrast)" = true ]
+wait_for_accessibility_idle
+settings_ipc_retry accessibilitySetReducedMotion true >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(settings_ipc_retry accessibilityReducedMotion)" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(settings_ipc_retry accessibilityReducedMotion)" = true ]
+wait_for_accessibility_idle
+printf 'accessibility-settings-protocol	1	0\ncontrast	high\nmotion	reduced\n' |
+	cmp - "$config_home/dwm-titus/accessibility.conf"
+test_stage='validating managed-shell accessibility persistence after restart'
+restart_quickshell
+wait_for_accessibility_values true true
+settings_ipc_retry accessibilityReset >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	accessibility_contrast=$(settings_ipc_retry accessibilityHighContrast)
+	accessibility_motion=$(settings_ipc_retry accessibilityReducedMotion)
+	[ "$accessibility_contrast" = false ] && [ "$accessibility_motion" = false ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$accessibility_contrast" = false ]
+[ "$accessibility_motion" = false ]
+wait_for_accessibility_idle
+printf 'accessibility-settings-protocol	1	0\ncontrast	standard\nmotion	full\n' |
+	cmp - "$config_home/dwm-titus/accessibility.conf"
+restart_quickshell
+wait_for_accessibility_values false false
+
+test_stage='validating notification policy persistence'
+i=0
+while [ "$i" -lt 200 ]; do
+	notification_capability=$(settings_ipc_retry capabilityStatus accessibility-notifications)
+	notification_policy_state=$(notification_ipc_retry policyState)
+	case $notification_capability:$notification_policy_state in
+	available:available | available:defaults | available:partial) break ;;
+	esac
+	i=$((i + 1))
+	sleep 0.05
+done
+case $notification_capability:$notification_policy_state in
+available:available | available:defaults | available:partial) ;;
+*)
+	printf 'Notification policy did not become ready: %s / %s\n' \
+		"$notification_capability" "$notification_policy_state" >&2
+	exit 1
+	;;
+esac
+notification_ipc_retry setDoNotDisturb true >/dev/null
+i=0
+while [ "$i" -lt 100 ]; do
+	[ "$(notification_ipc_retry policyState)" = available ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$(notification_ipc_retry policyState)" = available ]
+notification_ipc_retry setPopupTimeout 4000 >/dev/null
+[ "$(notification_ipc_retry doNotDisturb)" = true ]
+[ "$(notification_ipc_retry popupTimeout)" = 4000 ]
+test_stage='validating notification policy after restart'
+restart_quickshell
+i=0
+while [ "$i" -lt 200 ]; do
+	notification_policy_state=$(notification_ipc_retry policyState)
+	notification_dnd=$(notification_ipc_retry doNotDisturb)
+	notification_timeout=$(notification_ipc_retry popupTimeout)
+	[ "$notification_policy_state" = available ] && [ "$notification_dnd" = true ] &&
+		[ "$notification_timeout" = 4000 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$notification_policy_state" != available ] || [ "$notification_dnd" != true ] ||
+	[ "$notification_timeout" != 4000 ]; then
+	printf 'Notification policy did not persist after restart: %s / %s / %s\n' \
+		"$notification_policy_state" "$notification_dnd" "$notification_timeout" >&2
+	exit 1
+fi
+notification_ipc_retry resetPolicy >/dev/null
+notification_wait_available
+[ "$(notification_ipc_retry doNotDisturb)" = false ]
+[ "$(notification_ipc_retry popupTimeout)" = 6000 ]
+printf '%s\n' '{"version":2,"doNotDisturb":true,"popupTimeoutMs":1}' \
+	>"$config_home/dwm-titus/notification-settings.json"
+i=0
+while [ "$i" -lt 100 ]; do
+	notification_policy_state=$(notification_ipc_retry policyState)
+	[ "$notification_policy_state" = partial ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$notification_policy_state" = partial ]
+[ "$(notification_ipc_retry doNotDisturb)" = false ]
+[ "$(notification_ipc_retry popupTimeout)" = 6000 ]
+notification_ipc_retry resetPolicy >/dev/null
+notification_wait_available
+printf '%s\n' '{not-json' \
+	>"$config_home/dwm-titus/notification-settings.json"
+i=0
+while [ "$i" -lt 100 ]; do
+	notification_policy_state=$(notification_ipc_retry policyState)
+	[ "$notification_policy_state" = partial ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+[ "$notification_policy_state" = partial ]
+[ "$(notification_ipc_retry doNotDisturb)" = false ]
+[ "$(notification_ipc_retry popupTimeout)" = 6000 ]
+notification_ipc_retry resetPolicy >/dev/null
+notification_wait_available
+restart_quickshell
+i=0
+while [ "$i" -lt 200 ]; do
+	notification_policy_state=$(notification_ipc_retry policyState)
+	notification_dnd=$(notification_ipc_retry doNotDisturb)
+	notification_timeout=$(notification_ipc_retry popupTimeout)
+	[ "$notification_policy_state" = available ] && [ "$notification_dnd" = false ] &&
+		[ "$notification_timeout" = 6000 ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$notification_policy_state" != available ] || [ "$notification_dnd" != false ] ||
+	[ "$notification_timeout" != 6000 ]; then
+	printf 'Notification policy reset did not persist after restart: %s / %s / %s\n' \
+		"$notification_policy_state" "$notification_dnd" "$notification_timeout" >&2
+	exit 1
+fi
 
 test_stage='validating shared panel widget persistence'
 panel_state=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1687,10 +2133,10 @@ fi
 font_remaining_before=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontPreviewRemaining)
 [ "$font_remaining_before" -gt 0 ]
-sleep 1
-font_remaining_after=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontPreviewRemaining)
-if [ "$font_remaining_after" -ge "$font_remaining_before" ]; then
+if font_remaining_after=$(wait_for_settings_countdown_decrement \
+	appearanceFontPreviewRemaining "$font_remaining_before"); then
+	:
+else
 	printf 'Font preview countdown did not advance: %s -> %s\n' \
 		"$font_remaining_before" "$font_remaining_after" >&2
 	exit 1
@@ -1779,7 +2225,7 @@ DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_hom
 	"$data_home/dwm-jangir/scripts/dwm-settings-wallpaper" \
 	preview nested-wallpaper "$wallpaper_preview_timeout" "$test_wallpaper" center >/dev/null
 i=0
-while [ "$i" -lt 200 ]; do
+while [ "$i" -lt 600 ]; do
 	wallpaper_preview=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperPreviewState 2>/dev/null || true)
 	[ "$wallpaper_preview" = active ] && break
@@ -1788,6 +2234,15 @@ while [ "$i" -lt 200 ]; do
 done
 if [ "$wallpaper_preview" != active ]; then
 	printf 'External wallpaper preview did not become active: %s\n' "$wallpaper_preview" >&2
+	printf 'Wallpaper watcher: %s; status busy: %s\n' \
+		"$(settings_ipc_retry appearanceInventoryWatchState)" \
+		"$(settings_ipc_retry appearanceWallpaperStatusBusy)" >&2
+	printf 'Inventory provider detail: %s; watcher detail: %s\n' \
+		"$(settings_ipc_retry appearanceInventoryProviderDetail)" \
+		"$(settings_ipc_retry appearanceInventoryWatchDetail)" >&2
+	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
+		"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" status --read-only >&2 || true
 	exit 1
 fi
 wallpaper_remaining_before=$(settings_ipc_retry appearanceWallpaperPreviewRemaining)
@@ -1809,16 +2264,10 @@ case $wallpaper_message in
 esac
 wallpaper_message_remaining=${wallpaper_message#*within }
 wallpaper_message_remaining=${wallpaper_message_remaining%% seconds*}
-sleep 1.2
-wallpaper_remaining_after=$(settings_ipc_retry appearanceWallpaperPreviewRemaining)
-case $wallpaper_remaining_after in
-'' | *[!0-9]*)
-	printf 'External wallpaper preview reported an invalid later deadline: %s\n' \
-		"$wallpaper_remaining_after" >&2
-	exit 1
-	;;
-esac
-if [ "$wallpaper_remaining_after" -ge "$wallpaper_remaining_before" ]; then
+if wallpaper_remaining_after=$(wait_for_settings_countdown_decrement \
+	appearanceWallpaperPreviewRemaining "$wallpaper_remaining_before"); then
+	:
+else
 	printf 'Wallpaper preview countdown did not advance: %s -> %s\n' \
 		"$wallpaper_remaining_before" "$wallpaper_remaining_after" >&2
 	exit 1
@@ -2227,6 +2676,12 @@ while [ "$i" -lt 200 ]; do
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceWallpaperStatusBusy 2>/dev/null || true)
 	baseline_personalization_busy=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationStatusBusy 2>/dev/null || true)
+	baseline_inventory_watch_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceInventoryWatchState 2>/dev/null || true)
+	baseline_font_ready_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceFontMutationReady 2>/dev/null || true)
+	baseline_theme_ready_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady 2>/dev/null || true)
 	baseline_cursor_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearancePersonalizationEffectiveState cursor 2>/dev/null || true)
 	baseline_icon_sample=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -2238,6 +2693,9 @@ while [ "$i" -lt 200 ]; do
 	baseline_sample="$baseline_cursor_sample/$baseline_icon_sample/$baseline_gtk_sample/$baseline_qt_sample"
 	if [ "$baseline_inventory_busy" = false ] &&
 		[ "$baseline_personalization_busy" = false ] &&
+		[ "$baseline_inventory_watch_sample" = available ] &&
+		[ "$baseline_font_ready_sample" = true ] &&
+		[ "$baseline_theme_ready_sample" = true ] &&
 		[ "$baseline_sample" = "$baseline_previous_sample" ]; then
 		baseline_stable_samples=$((baseline_stable_samples + 1))
 	else
@@ -2249,8 +2707,10 @@ while [ "$i" -lt 200 ]; do
 	sleep 0.05
 done
 if [ "$baseline_stable_samples" -lt 3 ]; then
-	printf 'Appearance baseline did not settle: inventory-busy=%s personalization-busy=%s states=%s\n' \
-		"$baseline_inventory_busy" "$baseline_personalization_busy" "$baseline_sample" >&2
+	printf 'Appearance baseline did not settle: inventory-busy=%s personalization-busy=%s watch=%s font=%s theme=%s states=%s\n' \
+		"$baseline_inventory_busy" "$baseline_personalization_busy" \
+		"$baseline_inventory_watch_sample" "$baseline_font_ready_sample" \
+		"$baseline_theme_ready_sample" "$baseline_sample" >&2
 	exit 1
 fi
 
@@ -2288,18 +2748,39 @@ baseline_text_size_state=$(settings_ipc_retry appearancePersonalizationEffective
 baseline_text_size_apply_state=$(settings_ipc_retry appearancePersonalizationApplyState text-size)
 baseline_text_size_reset_state=$(settings_ipc_retry appearancePersonalizationResetState text-size)
 baseline_theme_mutation_ready=$(settings_ipc_retry appearanceMutationReady)
-cursor_reset_baseline_valid=false
-case $baseline_cursor_reset_state in available | restricted) cursor_reset_baseline_valid=true ;; esac
-icon_reset_baseline_valid=false
-case $baseline_icon_reset_state in available | restricted) icon_reset_baseline_valid=true ;; esac
-text_size_baseline_valid=false
-case $baseline_text_size_state in
-available | partial)
-	case $baseline_text_size_apply_state/$baseline_text_size_reset_state in
-	available/available | restricted/restricted) text_size_baseline_valid=true ;;
+i=0
+while [ "$i" -lt 200 ]; do
+	baseline_inventory_watch_state=$(settings_ipc_retry appearanceInventoryWatchState)
+	baseline_font_mutation_ready=$(settings_ipc_retry appearanceFontMutationReady)
+	baseline_cursor_reset_state=$(settings_ipc_retry appearancePersonalizationResetState cursor)
+	baseline_icon_reset_state=$(settings_ipc_retry appearancePersonalizationResetState icon)
+	baseline_text_size_state=$(settings_ipc_retry appearancePersonalizationEffectiveState text-size)
+	baseline_text_size_apply_state=$(settings_ipc_retry appearancePersonalizationApplyState text-size)
+	baseline_text_size_reset_state=$(settings_ipc_retry appearancePersonalizationResetState text-size)
+	baseline_theme_mutation_ready=$(settings_ipc_retry appearanceMutationReady)
+	cursor_reset_baseline_valid=false
+	case $baseline_cursor_reset_state in available | restricted) cursor_reset_baseline_valid=true ;; esac
+	icon_reset_baseline_valid=false
+	case $baseline_icon_reset_state in available | restricted) icon_reset_baseline_valid=true ;; esac
+	text_size_baseline_valid=false
+	case $baseline_text_size_state in
+	available | partial)
+		case $baseline_text_size_apply_state/$baseline_text_size_reset_state in
+		available/available | restricted/restricted) text_size_baseline_valid=true ;;
+		esac
+		;;
 	esac
-	;;
-esac
+	if [ "$baseline_inventory_watch_state" = available ] &&
+		[ "$baseline_font_mutation_ready" = true ] &&
+		[ "$cursor_reset_baseline_valid" = true ] &&
+		[ "$icon_reset_baseline_valid" = true ] &&
+		[ "$text_size_baseline_valid" = true ] &&
+		[ "$baseline_theme_mutation_ready" = true ]; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.05
+done
 if [ "$baseline_inventory_watch_state" != available ] ||
 	[ "$baseline_font_mutation_ready" != true ] ||
 	[ "$cursor_reset_baseline_valid" != true ] ||
@@ -2313,6 +2794,44 @@ if [ "$baseline_inventory_watch_state" != available ] ||
 		"$baseline_text_size_reset_state" "$baseline_theme_mutation_ready" >&2
 	exit 1
 fi
+
+test_stage='validating queued theme readiness'
+rm -f "$theme_status_fixture.mutation-started" "$theme_status_fixture.mutation-release"
+: >"$theme_status_fixture.mutation-calls"
+: >"$theme_status_fixture.mutation-delay"
+settings_ipc_retry appearanceRefresh >/dev/null
+i=0
+while [ "$i" -lt 200 ]; do
+	[ -f "$theme_status_fixture.mutation-started" ] && break
+	i=$((i + 1))
+	sleep 0.01
+done
+if [ ! -f "$theme_status_fixture.mutation-started" ]; then
+	printf 'Delayed theme readiness probe did not start\n' >&2
+	exit 1
+fi
+settings_ipc_retry appearanceRefresh >/dev/null
+if [ "$(settings_ipc_retry appearanceMutationReady)" != false ]; then
+	printf 'Theme mutation remained ready while a refresh retry was pending\n' >&2
+	exit 1
+fi
+: >"$theme_status_fixture.mutation-release"
+i=0
+while [ "$i" -lt 200 ]; do
+	readiness_calls=$(wc -c <"$theme_status_fixture.mutation-calls")
+	readiness_ready=$(settings_ipc_retry appearanceMutationReady)
+	[ "$readiness_calls" -ge 2 ] && [ "$readiness_ready" = true ] && break
+	i=$((i + 1))
+	sleep 0.05
+done
+if [ "$readiness_calls" -lt 2 ] || [ "$readiness_ready" != true ]; then
+	printf 'Queued theme readiness did not converge: calls=%s ready=%s\n' \
+		"$readiness_calls" "$readiness_ready" >&2
+	exit 1
+fi
+rm -f "$theme_status_fixture.mutation-delay" "$theme_status_fixture.mutation-started" \
+	"$theme_status_fixture.mutation-release" "$theme_status_fixture.mutation-calls"
+
 baseline_alacritty_integration=$(settings_ipc_retry appearanceIntegrationState alacritty)
 baseline_kitty_integration=$(settings_ipc_retry appearanceIntegrationState kitty)
 baseline_gtk_integration_detail=$(settings_ipc_retry appearanceIntegrationDetail gtk)
@@ -2953,26 +3472,34 @@ printf '%s\n' none >"$theme_status_fixture"
 
 # The provider's missing-source and legacy identifiers are intentional
 # read-only protocol sentinels, not mutation-safe theme names.
+test_stage='validating unavailable appearance sentinels'
 mv "$config_home/dwm-jangir/themes.toml" "$work/named-themes.toml"
 mv "$data_home/dwm-jangir/config/themes.toml" "$work/managed-themes.toml"
 i=0
-while [ "$i" -lt 100 ]; do
+while [ "$i" -lt 200 ]; do
 	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
 	appearance_detail=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderDetail 2>/dev/null || true)
+	appearance_ready=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady 2>/dev/null || true)
+	appearance_theme=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme 2>/dev/null || true)
 	[ "$appearance_status" = unavailable ] &&
-		[ "$appearance_detail" = 'Shared theme inventory and integration state' ] && break
+		[ "$appearance_detail" = 'Shared theme inventory and integration state' ] &&
+		[ "$appearance_ready" = false ] && [ "$appearance_theme" = none ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
-[ "$appearance_status" = unavailable ]
-[ "$appearance_detail" = 'Shared theme inventory and integration state' ]
-[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceMutationReady)" = false ]
-[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme)" = none ]
+if [ "$appearance_status" != unavailable ] ||
+	[ "$appearance_detail" != 'Shared theme inventory and integration state' ] ||
+	[ "$appearance_ready" != false ] || [ "$appearance_theme" != none ]; then
+	printf 'Unavailable appearance sentinels did not converge: %s / %s / %s / %s\n' \
+		"$appearance_status" "$appearance_detail" "$appearance_ready" "$appearance_theme" >&2
+	exit 1
+fi
 
+test_stage='validating legacy appearance sentinel'
 cat >"$config_home/dwm-jangir/themes.toml" <<'EOF'
 [colors]
 normfgcolor = "#D8DEE9"
@@ -2983,18 +3510,24 @@ selbgcolor = "#5E81AC"
 selbordercolor = "#81A1C1"
 EOF
 i=0
-while [ "$i" -lt 100 ]; do
+while [ "$i" -lt 200 ]; do
 	appearance_theme=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceActiveTheme 2>/dev/null || true)
-	[ "$appearance_theme" = @legacy-colors ] && break
+	appearance_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus 2>/dev/null || true)
+	appearance_count=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceThemeCount 2>/dev/null || true)
+	[ "$appearance_theme" = @legacy-colors ] && [ "$appearance_status" = partial ] &&
+		[ "$appearance_count" = 1 ] && break
 	i=$((i + 1))
 	sleep 0.05
 done
-[ "$appearance_theme" = @legacy-colors ]
-[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceProviderStatus)" = partial ]
-[ "$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
-	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings appearanceThemeCount)" -eq 1 ]
+if [ "$appearance_theme" != @legacy-colors ] || [ "$appearance_status" != partial ] ||
+	[ "$appearance_count" != 1 ]; then
+	printf 'Legacy appearance sentinel did not converge: %s / %s / %s\n' \
+		"$appearance_theme" "$appearance_status" "$appearance_count" >&2
+	exit 1
+fi
 
 # IPC selection clears a search that hides the requested section.
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -3018,7 +3551,17 @@ if DISPLAY=$display xdotool search --onlyvisible --name '^dwm settings$' >/dev/n
 	exit 1
 fi
 
-if pgrep -f '[d]wm-settings-provider discover$' >/dev/null; then
+i=0
+while [ "$i" -lt 100 ]; do
+	if ! pgrep -af '[d]wm-settings-provider discover$' |
+		grep -F "$data_home/dwm-titus/scripts/dwm-settings-provider" >/dev/null; then
+		break
+	fi
+	i=$((i + 1))
+	sleep 0.05
+done
+if pgrep -af '[d]wm-settings-provider discover$' |
+	grep -F "$data_home/dwm-titus/scripts/dwm-settings-provider" >/dev/null; then
 	printf 'Settings capability provider remained active after close\n' >&2
 	exit 1
 fi

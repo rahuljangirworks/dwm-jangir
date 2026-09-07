@@ -32,6 +32,8 @@ data_home=$home/.local/share
 mkdir -p "$config_home/quickshell" "$config_home/dwm-jangir" "$data_home/dwm-jangir/scripts" "$runtime"
 chmod 700 "$runtime"
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
+cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-jangir/scripts/dwm-system-management"
+chmod +x "$data_home/dwm-jangir/scripts/dwm-system-management"
 cp "$repo/config/"*.toml "$config_home/dwm-jangir/"
 # Simulate an existing preserved rule file. The generic control-center title
 # rule must also cover the newly added utility window.

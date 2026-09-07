@@ -4,6 +4,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import Quickshell.Services.SystemTray
+import qs.accessibility
 import qs.appearance
 import qs.controlcenter
 import qs.controls
@@ -16,6 +17,7 @@ import qs.panel
 import qs.power
 import qs.settings
 import qs.state
+import qs.systemmanagement
 
 pragma ComponentBehavior: Bound
 
@@ -174,6 +176,10 @@ ShellRoot {
         id: appearanceModel
     }
 
+    AccessibilityModel {
+        id: accessibilityModel
+    }
+
     PanelSettingsModel {
         id: panelSettingsModel
     }
@@ -200,6 +206,10 @@ ShellRoot {
         id: systemHealthModel
     }
 
+    SystemManagementModel {
+        id: systemManagementModel
+    }
+
     SettingsModel {
         id: settingsModel
         networkModel: networkModel
@@ -210,7 +220,9 @@ ShellRoot {
         defaultsModel: defaultsModel
         autostartModel: autostartModel
         appearanceModel: appearanceModel
+        accessibilityModel: accessibilityModel
         panelSettingsModel: panelSettingsModel
+        systemManagementModel: systemManagementModel
     }
 
     LazyLoader {
@@ -416,6 +428,34 @@ ShellRoot {
             return notificationModel.historyLatestSummary();
         }
 
+        function doNotDisturb(): bool {
+            return notificationModel.doNotDisturb;
+        }
+
+        function popupTimeout(): int {
+            return notificationModel.popupTimeoutMs;
+        }
+
+        function policyState(): string {
+            return notificationModel.policyState;
+        }
+
+        function policyStatus(): string {
+            return notificationModel.policyStatus();
+        }
+
+        function resetPolicy(): void {
+            notificationModel.resetPolicy();
+        }
+
+        function setDoNotDisturb(enabled: bool): void {
+            notificationModel.setDoNotDisturb(enabled);
+        }
+
+        function setPopupTimeout(timeoutMs: int): void {
+            notificationModel.setPopupTimeout(timeoutMs);
+        }
+
         function openHistory(): void {
             notificationModel.openHistory();
         }
@@ -498,6 +538,80 @@ ShellRoot {
 
         function inputStatus(): string {
             return settingsModel.inputState;
+        }
+
+        function systemManagementProviderStatus(): string {
+            return systemManagementModel.providerState;
+        }
+
+        function systemManagementUpdateCount(): int {
+            return systemManagementModel.updates.length;
+        }
+
+        function systemManagementRestartState(): string {
+            return systemManagementModel.updateRestart.status + ":" + systemManagementModel.updateRestart.value;
+        }
+
+        function systemManagementPackageChangeCount(): int {
+            return systemManagementModel.packageChanges.length;
+        }
+
+        function systemManagementInstallAvailability(): string {
+            const action = systemManagementModel.actions.find(function(item) {
+                return item.id === "updates-install-all";
+            });
+            return action === undefined ? "missing" : action.availability;
+        }
+
+        function systemManagementErrorCodes(): string {
+            return systemManagementModel.errors.map(function(item) {
+                return item.code;
+            }).join(",");
+        }
+
+        function systemManagementSnapshotState(): string {
+            return systemManagementModel.snapshotState;
+        }
+
+        function systemManagementDiscoveryStatus(): string {
+            const discovery = systemManagementModel.discovery;
+            return discovery.phase + ":" + (discovery.ready ? "ready"
+                : discovery.failed ? "failed" : "inactive");
+        }
+
+        function systemManagementOperationState(): string {
+            return systemManagementModel.operation.state;
+        }
+
+        function systemManagementOperationResult(): string {
+            const result = systemManagementModel.operation.result;
+            return result === null ? "" : result.actionId + ":" + result.state;
+        }
+
+        function inputAccessibilityValue(settingId: string): string {
+            const setting = settingsModel.inputSettings.find(function(item) {
+                return item.device === "accessx" && item.id === settingId;
+            });
+            return setting ? setting.value : "";
+        }
+
+        function inputAccessibilityPreview(settingId: string, enabled: bool): void {
+            settingsModel.previewInput("accessx", settingId, enabled ? "1" : "0");
+        }
+
+        function inputPreviewState(): string {
+            return settingsModel.previewKind;
+        }
+
+        function inputPreviewAction(action: string): void {
+            if (settingsModel.previewKind !== "input") return;
+            if (action === "keep") settingsModel.keepPreview();
+            else if (action === "revert") settingsModel.revertPreview();
+        }
+
+        function inputAccessibilityReset(settingId: string): void {
+            if (settingsModel.previewOperationLocked) return;
+            settingsModel.resetInput("accessx", settingId);
         }
 
         function networkProviderStatus(): string {
@@ -672,6 +786,14 @@ ShellRoot {
             return appearanceModel.inventoryWatchState;
         }
 
+        function appearanceInventoryWatchDetail(): string {
+            return appearanceModel.inventoryWatchDetail;
+        }
+
+        function appearanceInventoryProviderDetail(): string {
+            return appearanceModel.inventoryProviderDetail;
+        }
+
         function appearanceInventoryCandidateState(capability: string, token: string): string {
             const match = appearanceModel.inventoryCandidates.find(function(item) {
                 return item.id === capability && item.token === token;
@@ -812,6 +934,38 @@ ShellRoot {
 
         function capabilityStatus(capabilityId: string): string {
             return settingsModel.capabilityById(capabilityId).status;
+        }
+
+        function accessibilityState(): string {
+            return accessibilityModel.providerState;
+        }
+
+        function accessibilityMutationReady(): bool {
+            return accessibilityModel.mutationReady;
+        }
+
+        function accessibilityBusy(): bool {
+            return accessibilityModel.busy;
+        }
+
+        function accessibilityHighContrast(): bool {
+            return accessibilityModel.highContrast;
+        }
+
+        function accessibilityReducedMotion(): bool {
+            return accessibilityModel.reducedMotion;
+        }
+
+        function accessibilitySetContrast(enabled: bool): void {
+            accessibilityModel.setSetting("contrast", enabled ? "high" : "standard");
+        }
+
+        function accessibilitySetReducedMotion(enabled: bool): void {
+            accessibilityModel.setSetting("motion", enabled ? "reduced" : "full");
+        }
+
+        function accessibilityReset(): void {
+            accessibilityModel.reset();
         }
 
         function appearancePersonalizationMutationState(): string {
@@ -1039,6 +1193,9 @@ ShellRoot {
         defaultsModel: defaultsModel
         autostartModel: autostartModel
         appearanceModel: appearanceModel
+        accessibilityModel: accessibilityModel
+        notificationModel: notificationModel
         panelSettingsModel: panelSettingsModel
+        systemManagementModel: systemManagementModel
     }
 }
