@@ -10,7 +10,6 @@ GREETER_UI_ASSET_DIR = $(DESTDIR)/usr/share/dwm-jangir/lightdm-assets
 GREETER_THEME_DIR = $(DESTDIR)/usr/share/themes/dwm-jangir-dark/gtk-3.0
 LIGHTDM_SEAT_SECTION ?= Seat:*
 LIGHTDM_GREETER_SESSION ?= dwm-jangir-slick-greeter
-LIGHTDM_GREETER_SESSION ?= slick-greeter
 LIGHTDM_USER_SESSION ?= dwm-jangir
 LIGHTDM_SESSION_WRAPPER ?=
 LIGHTDM_LOGIND_CHECK ?= true
