@@ -44,15 +44,18 @@ Passed locally:
   installer preservation, terminal, Fedora ISO builder, staged install/uninstall
   manifest, accessibility, panel-settings, and input-settings tests.
 - The two fork-namespace system-management digest tests.
+- Fedora 44 VM `dwm-jangir-test-2`: default full-profile install (with Herdr
+  skipped and third-party gaming repositories unapproved), upstream Slick
+  Greeter, the `dwm-jangir` LightDM session, and the `Super+X` terminal
+  keybinding. The full system-management suite passed: 682 tests in 835.492s.
 
 Not fully validated here:
 
-- The full system-management suite has 14 errors and one related failure
-  because `PackageKitGlib 1.0` Python bindings are not installed in this
-  workspace; the unrelated PackageKit repository-read cases therefore cannot
-  initialize. Run it on a Fedora environment with those bindings.
-- `shfmt`, `qmllint`, Xvfb, and a real Fedora/X11 login session are unavailable.
-  Run formatting, QML/Xvfb, and live login validation before release.
+- The host workspace lacks `PackageKitGlib 1.0` Python bindings, so its local
+  full system-management run cannot initialize repository-read cases. That gap
+  is closed by the passing Fedora 44 VM run above.
+- `shfmt`, `qmllint`, and Xvfb are unavailable on the host. Run their dedicated
+  formatter and QML/Xvfb checks before release when those tools are provisioned.
 
 ## Next Action
 
