@@ -48,9 +48,9 @@ Passed locally:
   skipped and third-party gaming repositories unapproved), upstream Slick
   Greeter, the `dwm-jangir` LightDM session, and the `Super+X` terminal
   keybinding. The full system-management suite passed: 682 tests in 835.492s.
-- Installer non-TTY sudo preflight: a Fedora non-interactive invocation now
-  fails before build configuration or package changes when sudo has no usable
-  terminal, with a tested `ssh -tt` remediation message.
+- Installer non-TTY sudo preflight: the Fedora VM reproduces a non-interactive
+  invocation without a pseudo-terminal exiting before build configuration or
+  package changes, with the tested `ssh -tt` remediation message.
 
 Not fully validated here:
 
