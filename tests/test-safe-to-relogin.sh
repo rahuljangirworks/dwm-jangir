@@ -98,13 +98,13 @@ check_user_directories() {
     done
 }
 
-# Check 5: No legacy dwm-titus conflicts
+# Check 5: No legacy dwm-jangir conflicts
 check_no_legacy_conflicts() {
-    echo "Checking for legacy dwm-titus conflicts..."
+    echo "Checking for legacy dwm-jangir conflicts..."
     local user_home="${HOME}"
     local legacy_dirs=(
-        "$user_home/.local/share/dwm-titus"
-        "$user_home/.local/state/dwm-titus"
+        "$user_home/.local/share/dwm-jangir"
+        "$user_home/.local/state/dwm-jangir"
     )
 
     local conflicts_found=false
@@ -116,7 +116,7 @@ check_no_legacy_conflicts() {
     done
 
     if [ "$conflicts_found" = false ]; then
-        pass "No legacy dwm-titus directories found"
+        pass "No legacy dwm-jangir directories found"
     fi
 }
 

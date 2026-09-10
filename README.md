@@ -12,7 +12,7 @@
 
 ![The dwm-jangir desktop with its Quickshell panel](./dwm-jangir-qs-4x.webp)
 
-dwm-jangir is Rahul Jangir's public fork of the upstream dwm-titus Fedora X11
+dwm-jangir is Rahul Jangir's public fork of the upstream dwm-jangir Fedora X11
 desktop.
 It keeps upstream compatibility while adding documented, minimal fork-specific
 behavior. It is designed for people who want a responsive keyboard-first

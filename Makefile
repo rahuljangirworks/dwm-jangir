@@ -243,10 +243,10 @@ install-user:
 	mkdir -p "${CFG_DIR}/quickshell"
 	cp -aL --no-preserve=ownership config/quickshell/. "${CFG_DIR}/quickshell"/
 	@echo "==> Seeding user config (skipping existing files)..."
-	mkdir -p ${CFG_DIR}/dwm-titus
-	test -f ${CFG_DIR}/dwm-titus/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-titus/hotkeys.toml
-	test -f ${CFG_DIR}/dwm-titus/themes.toml  || install -Dm644 config/themes.toml  ${CFG_DIR}/dwm-titus/themes.toml
-	test -f ${CFG_DIR}/dwm-titus/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-titus/window-rules.toml
+	mkdir -p ${CFG_DIR}/dwm-jangir
+	test -f ${CFG_DIR}/dwm-jangir/hotkeys.toml || install -Dm644 config/hotkeys.toml ${CFG_DIR}/dwm-jangir/hotkeys.toml
+	test -f ${CFG_DIR}/dwm-jangir/themes.toml  || install -Dm644 config/themes.toml  ${CFG_DIR}/dwm-jangir/themes.toml
+	test -f ${CFG_DIR}/dwm-jangir/window-rules.toml || install -Dm644 config/window-rules.toml ${CFG_DIR}/dwm-jangir/window-rules.toml
 	@echo "==> Migrating legacy graphical-session startup..."
 	HOME="${USER_HOME}" XDG_CONFIG_HOME="${XDG_CONFIG_HOME}" scripts/migrate-graphical-session.sh
 	@echo "==> Installing Meslo font aliases..."
@@ -299,6 +299,7 @@ install-user:
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/dwm \
 		${DESTDIR}${MANPREFIX}/man1/dwm.1 \
+		${DESTDIR}${XSESSIONSDIR}/dwm-jangir.desktop \
 		${DESTDIR}${XSESSIONSDIR}/dwm.desktop
 	rm -rf \
 		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_DARK_THEME}" \
@@ -543,8 +544,9 @@ check-install-manifest: all
 		printf '%s\n' \
 			pre-existing \
 			usr/bin/dwm \
-			usr/libexec/dwm-titus/dwm-settings-display-root \
+			usr/libexec/dwm-jangir/dwm-settings-display-root \
 			usr/share/man/man1/dwm.1 \
+			usr/share/xsessions/dwm-jangir.desktop \
 			usr/share/xsessions/dwm.desktop; \
 		for name in ${INSTALL_COMMAND_NAMES}; do \
 			printf 'usr/bin/%s\n' "$$name"; \
@@ -556,16 +558,18 @@ check-install-manifest: all
 			\( -type f -o -type l \) \
 			-printf 'usr/share/icons/${CAPITAINE_LIGHT_THEME}/%P\n'; \
 		printf '%s\n' \
-			usr/share/licenses/dwm-titus/capitaine-cursors/COPYING; \
+			usr/share/licenses/dwm-jangir/capitaine-cursors/COPYING; \
 	} | sort > "$$expected"; \
 	find "$$stage" \( -type f -o -type l \) -printf '%P\n' | sort > "$$actual"; \
 	cmp "$$expected" "$$actual"; \
 	for name in dwm ${INSTALL_COMMAND_NAMES}; do \
 		test -x "$$stage/usr/bin/$$name"; \
 	done; \
-	test -x "$$stage/usr/libexec/dwm-titus/dwm-settings-display-root"; \
-	grep -Fqx 'Exec=/usr/bin/dwm' \
-		"$$stage/usr/share/xsessions/dwm.desktop"; \
+	test -x "$$stage/usr/libexec/dwm-jangir/dwm-settings-display-root"; \
+	grep -Fqx 'Exec=/usr/bin/dwm-session' \
+		"$$stage/usr/share/xsessions/dwm-jangir.desktop"; \
+	test -L "$$stage/usr/share/xsessions/dwm.desktop"; \
+	test "$$(readlink "$$stage/usr/share/xsessions/dwm.desktop")" = dwm-jangir.desktop; \
 	test -f "$$stage/usr/share/icons/${CAPITAINE_DARK_THEME}/cursors/default"; \
 	test -f "$$stage/usr/share/icons/${CAPITAINE_LIGHT_THEME}/cursors/default"; \
 	$(MAKE) uninstall \

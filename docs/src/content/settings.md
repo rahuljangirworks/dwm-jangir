@@ -46,7 +46,7 @@ before editing a Docked layout.
 This optional feature uses Fedora's `autorandr` login and hotplug integration,
 without administrator approval. Saving Undocked makes it the default fallback.
 Docked matches the connected monitor identities, not just the connector type.
-Replaced profiles are backed up in the dwm-titus `display-profile-backups`
+Replaced profiles are backed up in the dwm-jangir `display-profile-backups`
 configuration directory. Only one Docked slot is managed here; advanced
 multi-dock profiles remain available through autorandr. These user profiles
 are separate from the administrator-controlled **Use at next login** action.

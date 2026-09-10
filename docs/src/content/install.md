@@ -1,6 +1,6 @@
 ---
 title: Fedora Installation
-description: Install the complete dwm-titus Fedora X11 desktop from an image or onto an existing Fedora system.
+description: Install the complete dwm-jangir Fedora X11 desktop from an image or onto an existing Fedora system.
 navLabel: Installation
 eyebrow: Start here
 ---
@@ -28,7 +28,7 @@ run:
 install-herdr
 ```
 
-![The dwm-titus applications menu in Linutil](/images/linutil-applications.png)
+![The dwm-jangir applications menu in Linutil](/images/linutil-applications.png)
 
 ## Manual Install
 

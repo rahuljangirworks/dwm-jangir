@@ -1,6 +1,6 @@
 ---
 title: Troubleshooting
-description: Resolve common dwm-titus startup, panel, application, theme, keybind, multi-monitor, NVIDIA, suspend, and compositor issues.
+description: Resolve common dwm-jangir startup, panel, application, theme, keybind, multi-monitor, NVIDIA, suspend, and compositor issues.
 navLabel: Troubleshooting
 eyebrow: Get unstuck
 ---

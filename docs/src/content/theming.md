@@ -1,6 +1,6 @@
 ---
 title: Theming
-description: Change dwm-titus colors, borders, wallpaper, fonts, text scale, cursor, icons, and application appearance.
+description: Change dwm-jangir colors, borders, wallpaper, fonts, text scale, cursor, icons, and application appearance.
 navLabel: Theming
 eyebrow: Personalization
 ---

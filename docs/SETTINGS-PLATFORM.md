@@ -265,9 +265,9 @@ stores only the built-in monitor identity; Docked stores the connected monitor
 identity set. Unrecognized hardware uses the default fallback. Existing XDG
 autostart disablement is respected; Settings does not enable system services.
 Profile replacements preserve hooks and create backups under
-`~/.config/dwm-titus/display-profile-backups/` (respecting `XDG_CONFIG_HOME`).
+`~/.config/dwm-jangir/display-profile-backups/` (respecting `XDG_CONFIG_HOME`).
 An existing `~/.autorandr` directory takes precedence, matching autorandr;
-its backups are stored in `~/dwm-titus/display-profile-backups/`.
+its backups are stored in `~/dwm-jangir/display-profile-backups/`.
 Confirmed saves merge `set,crtc` into autorandr's `skip-options`, preserving
 other settings and backing up the original settings file. This prevents
 session-specific assignments and properties from invalidating layout matches.
@@ -275,7 +275,7 @@ Saved configs omit CRTC numbers and output properties because those are not
 portable between X sessions. Unsupported existing profile options are reported
 instead of silently removed. The one Docked slot matches one connected monitor
 set; advanced multi-dock and transformed profiles remain managed in autorandr.
-Named dwm-titus layouts and privileged **Use at next login** remain separate
+Named dwm-jangir layouts and privileged **Use at next login** remain separate
 from these automatic, per-user layouts.
 
 ![Separate saved dock and built-in layouts with a live draft](evidence/display-dock-profiles.png)

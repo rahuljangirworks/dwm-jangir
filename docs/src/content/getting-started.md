@@ -1,6 +1,6 @@
 ---
 title: Getting Started
-description: Learn the essential shortcuts, workspaces, and layouts for a productive first session in dwm-titus.
+description: Learn the essential shortcuts, workspaces, and layouts for a productive first session in dwm-jangir.
 navLabel: Getting Started
 eyebrow: First session
 ---

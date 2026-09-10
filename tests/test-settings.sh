@@ -740,7 +740,7 @@ if grep -Fq 'keepPreview(root.profileName' \
 fi
 grep -Fq 'label: "Use at next login"' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 grep -Fq 'label: "Restore login backup"' "$repo/config/quickshell/settings/DisplaySettingsPane.qml"
-grep -Fq 'the previous dwm-titus next-login layout will be backed up' \
+grep -Fq 'the previous dwm-jangir next-login layout will be backed up' \
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"
 if grep -Fq 'root.profileName = modelData;' \
 	"$repo/config/quickshell/settings/DisplaySettingsPane.qml"; then

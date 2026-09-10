@@ -330,8 +330,8 @@ glib-compile-schemas "$schema_dir"
 export GSETTINGS_SCHEMA_DIR="$schema_dir"
 export GSETTINGS_BACKEND=keyfile
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
-cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-titus/scripts/dwm-system-management"
-chmod +x "$data_home/dwm-titus/scripts/dwm-system-management"
+cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-jangir/scripts/dwm-system-management"
+chmod +x "$data_home/dwm-jangir/scripts/dwm-system-management"
 cp "$repo/config/quickshell/assets/ctt_logo.png" "$home/Pictures/backgrounds/test-wallpaper.png"
 # Keep this nested-X11 fixture independent from the host system UPower service
 # so versioned helper battery records exercise the fallback parser.
@@ -385,13 +385,13 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/theme-apply.sh" \
 	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-jangir/scripts/"
 
-input_discovery_fixture=$config_home/dwm-titus/input-discovery-fixture
-mv "$data_home/dwm-titus/scripts/dwm-settings-input" \
-	"$data_home/dwm-titus/scripts/dwm-settings-input.real"
-cat >"$data_home/dwm-titus/scripts/dwm-settings-input" <<'SH'
+input_discovery_fixture=$config_home/dwm-jangir/input-discovery-fixture
+mv "$data_home/dwm-jangir/scripts/dwm-settings-input" \
+	"$data_home/dwm-jangir/scripts/dwm-settings-input.real"
+cat >"$data_home/dwm-jangir/scripts/dwm-settings-input" <<'SH'
 #!/bin/sh
 set -eu
-fixture=$XDG_CONFIG_HOME/dwm-titus/input-discovery-fixture
+fixture=$XDG_CONFIG_HOME/dwm-jangir/input-discovery-fixture
 if [ "${1:-}" = discover ] && [ -f "$fixture.hold" ]; then
 	rm -f "$fixture.hold"
 	"$(dirname -- "$0")/dwm-settings-input.real" "$@" >"$fixture.snapshot"
@@ -407,7 +407,7 @@ if [ "${1:-}" = discover ] && [ -f "$fixture.hold" ]; then
 fi
 exec "$(dirname -- "$0")/dwm-settings-input.real" "$@"
 SH
-chmod +x "$data_home/dwm-titus/scripts/dwm-settings-input"
+chmod +x "$data_home/dwm-jangir/scripts/dwm-settings-input"
 
 appearance_failure_fixture=$work/appearance-snapshot-failure
 mv "$data_home/dwm-jangir/scripts/dwm-settings-appearance" \
@@ -1085,12 +1085,12 @@ settings_ipc_retry inputPreviewAction keep >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
 	grep -Fqx "$sticky_record" \
-		"$config_home/dwm-titus/input-settings.conf" 2>/dev/null && break
+		"$config_home/dwm-jangir/input-settings.conf" 2>/dev/null && break
 	i=$((i + 1))
 	sleep 0.05
 done
 grep -Fqx "$sticky_record" \
-	"$config_home/dwm-titus/input-settings.conf"
+	"$config_home/dwm-jangir/input-settings.conf"
 i=0
 while [ "$i" -lt 100 ]; do
 	preview_state=$(settings_ipc_retry inputPreviewState)
@@ -1112,7 +1112,7 @@ done
 [ "$sticky_value" = "$sticky_expected" ]
 if [ "$sticky_baseline" = 1 ]; then DISPLAY=$display xkbset st; else DISPLAY=$display xkbset -st; fi
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_RUNTIME_DIR=$runtime \
-	"$data_home/dwm-titus/scripts/dwm-settings-input" apply-saved
+	"$data_home/dwm-jangir/scripts/dwm-settings-input" apply-saved
 sticky_live=$(xkb_sticky_value)
 [ "$sticky_live" = "$sticky_expected" ]
 settings_ipc_retry inputAccessibilityReset sticky-keys >/dev/null
@@ -1126,9 +1126,9 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$sticky_value" = "$sticky_baseline" ]
 [ "$sticky_live" = "$sticky_baseline" ]
-if [ -f "$config_home/dwm-titus/input-settings.conf" ] &&
+if [ -f "$config_home/dwm-jangir/input-settings.conf" ] &&
 	grep -Fq "$(printf 'accessx\tsticky-keys\t')" \
-		"$config_home/dwm-titus/input-settings.conf"; then
+		"$config_home/dwm-jangir/input-settings.conf"; then
 	printf 'XKB accessibility reset retained a persisted override\n' >&2
 	exit 1
 fi
@@ -1843,7 +1843,7 @@ done
 [ "$(settings_ipc_retry accessibilityReducedMotion)" = true ]
 wait_for_accessibility_idle
 printf 'accessibility-settings-protocol	1	0\ncontrast	high\nmotion	reduced\n' |
-	cmp - "$config_home/dwm-titus/accessibility.conf"
+	cmp - "$config_home/dwm-jangir/accessibility.conf"
 test_stage='validating managed-shell accessibility persistence after restart'
 restart_quickshell
 wait_for_accessibility_values true true
@@ -1860,7 +1860,7 @@ done
 [ "$accessibility_motion" = false ]
 wait_for_accessibility_idle
 printf 'accessibility-settings-protocol	1	0\ncontrast	standard\nmotion	full\n' |
-	cmp - "$config_home/dwm-titus/accessibility.conf"
+	cmp - "$config_home/dwm-jangir/accessibility.conf"
 restart_quickshell
 wait_for_accessibility_values false false
 
@@ -1917,7 +1917,7 @@ notification_wait_available
 [ "$(notification_ipc_retry doNotDisturb)" = false ]
 [ "$(notification_ipc_retry popupTimeout)" = 6000 ]
 printf '%s\n' '{"version":2,"doNotDisturb":true,"popupTimeoutMs":1}' \
-	>"$config_home/dwm-titus/notification-settings.json"
+	>"$config_home/dwm-jangir/notification-settings.json"
 i=0
 while [ "$i" -lt 100 ]; do
 	notification_policy_state=$(notification_ipc_retry policyState)
@@ -1931,7 +1931,7 @@ done
 notification_ipc_retry resetPolicy >/dev/null
 notification_wait_available
 printf '%s\n' '{not-json' \
-	>"$config_home/dwm-titus/notification-settings.json"
+	>"$config_home/dwm-jangir/notification-settings.json"
 i=0
 while [ "$i" -lt 100 ]; do
 	notification_policy_state=$(notification_ipc_retry policyState)
@@ -2277,7 +2277,7 @@ if [ "$wallpaper_preview" != active ]; then
 		"$(settings_ipc_retry appearanceInventoryWatchDetail)" >&2
 	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
-		"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" status --read-only >&2 || true
+		"$data_home/dwm-jangir/scripts/dwm-settings-wallpaper" status --read-only >&2 || true
 	exit 1
 fi
 wallpaper_remaining_before=$(settings_ipc_retry appearanceWallpaperPreviewRemaining)
@@ -3589,14 +3589,14 @@ fi
 i=0
 while [ "$i" -lt 100 ]; do
 	if ! pgrep -af '[d]wm-settings-provider discover$' |
-		grep -F "$data_home/dwm-titus/scripts/dwm-settings-provider" >/dev/null; then
+		grep -F "$data_home/dwm-jangir/scripts/dwm-settings-provider" >/dev/null; then
 		break
 	fi
 	i=$((i + 1))
 	sleep 0.05
 done
 if pgrep -af '[d]wm-settings-provider discover$' |
-	grep -F "$data_home/dwm-titus/scripts/dwm-settings-provider" >/dev/null; then
+	grep -F "$data_home/dwm-jangir/scripts/dwm-settings-provider" >/dev/null; then
 	printf 'Settings capability provider remained active after close\n' >&2
 	exit 1
 fi
