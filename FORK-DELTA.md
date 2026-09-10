@@ -103,6 +103,7 @@ changed. State any unavailable environment or tool in `PROJECT-STATE.md`.
 | 2026-08-29 | Generated NVIDIA MetaModes and a shared D-Bus session launcher were validated; a real reboot confirmed DP-0 primary 2560x1440 and DVI-D-0 900x1440 rotated left. | Active. |
 | 2026-08-30 | Synced fork with upstream `97f1ed9` via rebase on `sync/2026-08-30`. Resolved conflicts in Makefile (D-007 runtime identity), CHANGELOG.md, and README.md (D-002 branding). All seven maintained deltas preserved correctly. Validation passed: shell syntax clean, runtime paths verified, no whitespace errors. | Active. |
 | 2026-09-01 | Rebased the current fork work onto upstream `70e6e43` on `sync/2026-09-01`, then merged it into `dev` as `4153460`. Resolved Makefile, Astro documentation migration, runtime-identity test, and changelog conflicts from current upstream structure. Focused tests and a real Fedora VM LightDM/DWM installation passed; the host-wide formatter check remains unavailable because `shfmt` is not installed. | Merged locally; not pushed. |
+| 2026-09-10 | Rebased onto upstream `40cbdc8` on `sync/2026-09-10`. Retained D-001 through D-007, renamed newly imported runtime paths to `dwm-jangir`, and adopted upstream Slick Greeter by removing the fork-specific overlay, RPM, and wallpaper assets. | Validated locally; not pushed. |
 
 Historical material must never override this file, `FORK.md`, or
 `PROJECT-STATE.md` during a merge.
