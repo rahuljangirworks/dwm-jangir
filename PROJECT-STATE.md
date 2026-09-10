@@ -15,11 +15,13 @@ This record contains verified current facts only.
 
 | Item | Value |
 | --- | --- |
-| Integration branch | `sync/2026-09-10` |
+| Current integration branch | local `dev` at `fa8d624` (`merge: sync upstream 2026-09-10`) |
+| Sync branch | `sync/2026-09-10` |
 | Upstream base | `40cbdc8` (`feat(branding): add dark Anaconda installer branding and dynamic version generator`) |
 | Sync implementation | `8ed5ed4` |
-| Result before this state record | 41 fork commits above `upstream/main`, 0 upstream commits missing |
-| Target branch | local `dev` after fast-forward; not pushed to `origin` |
+| Conflict resolution | Code and configuration match `sync/2026-09-10`; this state record and the delta ledger record the local merge |
+| Upstream ancestry | no commits missing from `upstream/main`; historical `dev` ancestry is retained by the merge |
+| Publication | merged locally; not pushed to `origin` |
 | Legacy branch | `main`; do not start new work there |
 
 The sync imports the upstream Phase 6 system-management work, docked/undocked
