@@ -479,6 +479,18 @@ the cancellation requirements of other privileged actions.
 The planned Settings surface covers:
 
 - Displays and monitor profiles.
+- Display placement uses numbered monitor cards and a proportional preview,
+  with Left of, Right of, Above, and Below actions relative to another enabled
+  monitor. Placement accounts for resolution and rotation, aligns the top or
+  left edges, and retains the timed preview/rollback and coordinate-based
+  profile formats. Choosing a placement edits the pending layout only.
+- Automatic display layouts expose separate Docked and Undocked profiles,
+  their saved geometry and modes, detected hardware, current applied matches,
+  and default fallback. Optional autorandr integration remains unprivileged;
+  edits do not apply live, saves require confirmation and backups, and the
+  Undocked layout enables only the built-in screen. Profiles must not pin
+  session-specific CRTC assignments. Existing system-wide Xorg persistence
+  remains a separate advanced operation.
 - Keyboard, pointer, touchpad, and other supported input devices.
 - NetworkManager connections, VPN entry points, and Bluetooth devices.
 - PipeWire/WirePlumber-compatible audio devices and application streams.
@@ -709,9 +721,11 @@ and generic image pickers are rejected. Reopening a UI-5 candidate requires an
 explicit product requirement and a separately qualified X11-native boundary.
 Combined Fedora 44, nested-X11, live-session, install-parity, restoration, and
 idle-resource qualification is recorded in `docs/P5-EVIDENCE.md` with explicit
-limitations. The next product gap is Phase 6 system management: safe Fedora
-updates, regional and delegated administration entry points, and bounded
-system information, diagnostics, and recovery workflows.
+limitations. Completed Phase 6 adds safe Fedora updates, regional and delegated
+administration entry points, and bounded system information, diagnostics, and
+recovery workflows. Its combined evidence and explicit hardware/service limits
+are recorded in `docs/P6-QUALIFICATION.md`. The next gap is Phase 7 Fedora image
+and release qualification; its implementation has not started.
 
 The installer contains a Fedora-only package map and rejects other systems.
 The build uses `pkg-config`, supports staged installation with `DESTDIR`, and

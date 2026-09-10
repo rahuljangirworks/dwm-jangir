@@ -6,12 +6,26 @@ model=$repo/config/quickshell/systemmanagement/SystemManagementModel.qml
 pane=$repo/config/quickshell/settings/SystemSettingsPane.qml
 commands=$repo/config/quickshell/core/Commands.qml
 discovery=$repo/config/quickshell/systemmanagement/SystemUpdateDiscovery.qml
+provider_discovery=$repo/config/quickshell/systemmanagement/SystemProviderDiscovery.qml
 settings=$repo/config/quickshell/settings/SettingsModel.qml
 settings_window=$repo/config/quickshell/settings/SettingsWindow.qml
 shell=$repo/config/quickshell/shell.qml
 
 test -f "$model"
 test -f "$pane"
+clock=$repo/config/quickshell/core/ClockModel.qml
+test -f "$clock"
+[ "$(grep -Fc 'SystemClock {' "$clock")" -eq 1 ]
+grep -Fq 'precision: SystemClock.Minutes' "$clock"
+grep -Fq 'Date.timeZoneUpdated()' "$clock"
+grep -Fq 'ClockModel {' "$shell"
+grep -Fq 'timezoneState: systemManagementModel.nativeStates.timezone || null' "$shell"
+grep -Fq 'text: root.clock.panelText' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'clockText: root.clock.settingsText' "$settings_window"
+if grep -Eq 'Process \{|IpcHandler|Timer \{' "$clock" || grep -Fq 'SystemClock {' "$shell"; then
+	printf 'The shared clock must reuse one minute source without helper polling or IPC.\n' >&2
+	exit 1
+fi
 grep -Fq 'function systemManagementCommand(action, args)' "$commands"
 grep -Fq 'function terminatingCheckedCommand(command)' "$commands"
 grep -Fq 'trap terminate HUP INT TERM' "$commands"
@@ -23,10 +37,39 @@ grep -Fq "2>\"\$error_file\" &" "$commands"
 grep -Fq "head -c 512 \"\$error_file\" >&2" "$commands"
 grep -Fq 'command: Commands.terminatingCheckedCommand(' "$model"
 [ "$(grep -Fc 'Process {' "$model")" -eq 1 ]
-[ "$(grep -Fc 'Process {' "$discovery")" -eq 1 ]
-grep -Fq 'Commands.systemManagementCommand("watch-updates", [])' "$discovery"
-grep -Fq 'stdout: SplitParser' "$discovery"
-if grep -Fq 'repeat: true' "$discovery"; then
+[ "$(grep -Fc 'SystemProviderDiscovery {' "$model")" -eq 6 ]
+regional=$repo/config/quickshell/systemmanagement/SystemRegionalSettingsModel.qml
+regional_ui=$repo/config/quickshell/settings/SystemRegionalControls.qml
+grep -Fq 'SystemRegionalControls {' "$pane"
+grep -Fq 'root.regional.prepare(' "$regional_ui"
+grep -Fq 'root.regional.confirm()' "$regional_ui"
+grep -Fq 'root.regional.discard()' "$regional_ui"
+grep -Fq 'cannot be canceled after it is sent' "$regional_ui"
+grep -Fq 'textFormat: Text.PlainText' "$regional_ui"
+if grep -Eq 'Process \{|IpcHandler|Commands\.|Timer \{' "$regional_ui"; then
+	printf 'Regional controls must reuse the fixed coordinator without polling or IPC.\n' >&2
+	exit 1
+fi
+grep -Fq 'SystemRegionalSettingsModel {' "$model"
+grep -Fq 'regionalModel.ownsPreparation()' "$model"
+grep -Fq 'root.requestSnapshot(true)' "$model"
+grep -Fq 'SystemRegionalPreflightModel {' "$regional"
+grep -Fq 'pending.preview.generation' "$regional"
+grep -Fq 'ticket.requestGeneration === model.requestGeneration' "$regional"
+if grep -Eq 'Process \{|IpcHandler|Commands\.|Timer \{' "$regional"; then
+	printf 'Regional Settings must reuse the fixed preflight and operation owners without polling or IPC.\n' >&2
+	exit 1
+fi
+grep -Fq 'root.snapshotOwned || root.discoveryBatch' "$model"
+grep -Fq 'const ready = root.discoveryReady();' "$model"
+grep -Fq 'snapshotProcess.cycleTokens.push({ model: model, token: token });' "$model"
+grep -Fq 'for (const item of tokens) item.model.beforePublish(item.token);' "$model"
+[ "$(grep -Fc 'Process {' "$provider_discovery")" -eq 1 ]
+grep -Fq 'SystemProviderDiscovery {' "$discovery"
+grep -Fq 'domain: "updates"' "$discovery"
+grep -Fq 'action: "watch-updates", args: []' "$provider_discovery"
+grep -Fq 'stdout: SplitParser' "$provider_discovery"
+if grep -Fq 'repeat: true' "$provider_discovery"; then
 	printf 'Update discovery must not poll.\n' >&2
 	exit 1
 fi
@@ -36,7 +79,7 @@ if grep -Fq 'repeat: true' "$model"; then
 fi
 
 grep -Fq 'recordIndex === 0 && type !== "system-management-protocol"' "$model"
-grep -Fq 'fields[1] !== "1" || fields[2] !== "0"' "$model"
+grep -Fq 'fields[1] !== "1" || (fields[2] !== "0" && fields[2] !== "1" && fields[2] !== "2")' "$model"
 grep -Fq 'System management provider emitted records after completion' "$model"
 grep -Fq '!headerSeen || !completeSeen || parsedGeneration.length === 0' "$model"
 grep -Fq 'return /^[0-9a-f]{64}$/.test(value);' "$model"
@@ -75,7 +118,9 @@ grep -Fq '"providerClass": "user-session"' "$model"
 grep -Fq "Number(states[\"\$update-summary\"].value) !== parsedUpdates.length" "$model"
 grep -Fq 'parsedActive !== null || parsedHandoff !== null' "$model"
 [ "$(grep -Fc 'root.operationActionKind(fields[2]).length === 0' "$model")" -eq 2 ]
-grep -Fq 'root.updateActionKind(fields[2]).length === 0 && fields[6] !== "no"' "$model"
+grep -Fq 'root.updateActionKind(fields[2]).length === 0' "$model"
+grep -Fq '(fields[6] !== "no" || fields[4] === "cancel-requested")' "$model"
+grep -Fq 'if ((identifier === "health-open" || journalAdmitted) && !nativeInvalid[root.nativeActionOwner(identifier)])' "$model"
 grep -Fq 'responseGeneration !== root.requestGeneration' "$model"
 grep -Fq 'if (root.snapshotOwned)' "$model"
 grep -Fq 'root.requiredPending = root.requiredPending || required;' "$model"
@@ -104,6 +149,18 @@ grep -Fq 'model: root.systemManagementModel.errors' "$pane"
 grep -Fq 'errorRow.modelData.provider.toUpperCase()' "$pane"
 grep -Fq 'Metadata refresh and update installation require visible confirmation.' "$pane"
 grep -Fq 'SystemUpdateControls {' "$pane"
+grep -Fq 'SystemDelegateControls {' "$pane"
+delegate_controls=$repo/config/quickshell/settings/SystemDelegateControls.qml
+grep -Fq 'root.model.prepareDelegate(toolCard.modelData.id)' "$delegate_controls"
+grep -Fq 'root.model.confirmDelegate()' "$delegate_controls"
+grep -Fq 'root.model.discardDelegate()' "$delegate_controls"
+grep -Fq 'model: root.model.accounts' "$delegate_controls"
+grep -Fq 'model: root.model.repositories' "$delegate_controls"
+grep -Fq 'textFormat: Text.PlainText' "$delegate_controls"
+if grep -Eq 'Quickshell\.Io|\bProcess\b|\bCommands\.' "$delegate_controls"; then
+	printf 'Delegated controls must not construct or run commands.\n' >&2
+	exit 1
+fi
 grep -Fq 'onRevealRequested: target => root.reveal(target)' "$pane"
 controls=$repo/config/quickshell/settings/SystemUpdateControls.qml
 grep -Fq 'root.model.prepareUpdate("updates-refresh")' "$controls"

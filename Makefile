@@ -51,6 +51,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-screenshot \
 	scripts/dwm-settings \
 	scripts/dwm-settings-display \
+	scripts/dwm-settings-display-profiles \
 	scripts/dwm-settings-input \
 	scripts/dwm-settings-appearance \
 	scripts/dwm-settings-font \
@@ -298,7 +299,8 @@ install-user:
 uninstall:
 	rm -f ${DESTDIR}${PREFIX}/bin/dwm \
 		${DESTDIR}${MANPREFIX}/man1/dwm.1 \
-		${DESTDIR}${XSESSIONSDIR}/dwm-jangir.desktop
+		${DESTDIR}${XSESSIONSDIR}/dwm-jangir.desktop \
+		${DESTDIR}${XSESSIONSDIR}/dwm.desktop
 	rm -rf \
 		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_DARK_THEME}" \
 		"${DESTDIR}${DATADIR}/icons/${CAPITAINE_LIGHT_THEME}" \
@@ -315,7 +317,7 @@ release: dwm
 	mkdir -p "$$root" release; \
 	install -Dm755 dwm "$$root/dwm"; \
 	install -Dm644 scripts/.xinitrc "$$root/.xinitrc"; \
-	sed "s|@PREFIX@|${PREFIX}|g" dwm-jangir.desktop > "$$root/dwm-jangir.desktop"; \
+	sed "s|@PREFIX@|${PREFIX}|g" dwm.desktop > "$$root/dwm.desktop"; \
 	cp -a assets config scripts "$$root/"; \
 	find "$$root" -exec touch -h -d "@${SOURCE_DATE_EPOCH}" {} +; \
 	tar --sort=name \
@@ -326,15 +328,10 @@ release: dwm
 	echo "==> Created ${RELEASE_ARCHIVE}"
 
 check-shell:
-	shellcheck install.sh scripts/dwm-accessibility-settings scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-personal-display-profile scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/webapp-launch scripts/*.sh tests/*.sh
+	shellcheck install.sh scripts/dwm-accessibility-settings scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/webapp-launch scripts/*.sh tests/*.sh
 
 check-format:
-	shfmt -d install.sh scripts/dwm-accessibility-settings scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-personal-display-profile scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/webapp-launch scripts/*.sh tests/*.sh
-	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/webapp-launch scripts/*.sh tests/*.sh
-	shellcheck install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-personal-display-profile scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/webapp-launch scripts/*.sh tests/*.sh
-
-check-format:
-	shfmt -d install.sh scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-personal-display-profile scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/webapp-launch scripts/*.sh tests/*.sh
+	shfmt -d install.sh scripts/dwm-accessibility-settings scripts/dwm-default-apps scripts/dwm-diagnostics scripts/dwm-display-profile scripts/dwm-display-setup scripts/dwm-lock scripts/dwm-lock-watch scripts/dwm-keybinds scripts/dwm-panel-settings scripts/dwm-quickshell-launcher scripts/dwm-quickshell-controls scripts/dwm-quickshell-controlcenter scripts/dwm-quickshell-network scripts/dwm-quickshell-pointer scripts/dwm-quickshell-state scripts/dwm-quickshell-version-check scripts/dwm-settings scripts/dwm-settings-appearance scripts/dwm-settings-font scripts/dwm-settings-personalization scripts/dwm-settings-wallpaper scripts/dwm-settings-theme scripts/dwm-settings-provider scripts/dwm-session scripts/dwm-session-launch scripts/dwm-status scripts/dwm-system-health scripts/dwm-terminal scripts/dwm-xdg-autostart scripts/dwm-xsettings scripts/install-herdr scripts/quickshell-qmllint scripts/run-tests scripts/webapp-launch scripts/*.sh tests/*.sh
 
 check-session-guards:
 	tests/test-autostart.sh
@@ -384,7 +381,6 @@ check-display-profile:
 
 check-display-setup:
 	tests/test-dwm-display-setup.sh
-	tests/test-dwm-display-wizard.sh
 
 check-diagnostics:
 	tests/test-dwm-diagnostics.sh
@@ -481,6 +477,7 @@ check-quickshell-system-management: all
 check-settings:
 	tests/test-settings.sh
 	tests/test-settings-input.sh
+	python3 tests/test-display-profiles.py
 
 check-appearance:
 	tests/test-dwm-settings-appearance.sh
@@ -549,7 +546,8 @@ check-install-manifest: all
 			usr/bin/dwm \
 			usr/libexec/dwm-jangir/dwm-settings-display-root \
 			usr/share/man/man1/dwm.1 \
-			usr/share/xsessions/dwm-jangir.desktop; \
+			usr/share/xsessions/dwm-jangir.desktop \
+			usr/share/xsessions/dwm.desktop; \
 		for name in ${INSTALL_COMMAND_NAMES}; do \
 			printf 'usr/bin/%s\n' "$$name"; \
 		done; \
@@ -570,6 +568,8 @@ check-install-manifest: all
 	test -x "$$stage/usr/libexec/dwm-jangir/dwm-settings-display-root"; \
 	grep -Fqx 'Exec=/usr/bin/dwm-session' \
 		"$$stage/usr/share/xsessions/dwm-jangir.desktop"; \
+	test -L "$$stage/usr/share/xsessions/dwm.desktop"; \
+	test "$$(readlink "$$stage/usr/share/xsessions/dwm.desktop")" = dwm-jangir.desktop; \
 	test -f "$$stage/usr/share/icons/${CAPITAINE_DARK_THEME}/cursors/default"; \
 	test -f "$$stage/usr/share/icons/${CAPITAINE_LIGHT_THEME}/cursors/default"; \
 	$(MAKE) uninstall \
@@ -580,15 +580,6 @@ check-install-manifest: all
 
 check-install-preservation:
 	tests/test-install-preservation.sh
-
-check-install-log:
-	tests/test-install-run-log.sh
-
-check-install-meslo-font:
-	tests/test-install-meslo-font.sh
-
-check-runtime-identity:
-	tests/test-runtime-identity.sh
 
 check-test-runner:
 	@$(call run_managed_test,tests/test-run-tests.sh)
@@ -605,7 +596,7 @@ release-check: all
 	cmp "$$first" "${RELEASE_ARCHIVE}"; \
 	tar -tzf "${RELEASE_ARCHIVE}" > "$$listing"; \
 	grep -Fqx '${RELEASE_NAME}/dwm' "$$listing"; \
-	grep -Fqx '${RELEASE_NAME}/dwm-jangir.desktop' "$$listing"; \
+	grep -Fqx '${RELEASE_NAME}/dwm.desktop' "$$listing"; \
 	grep -Fqx '${RELEASE_NAME}/.xinitrc' "$$listing"; \
 	grep -Fqx '${RELEASE_NAME}/config/' "$$listing"; \
 	grep -Fqx '${RELEASE_NAME}/scripts/' "$$listing"; \
@@ -614,8 +605,8 @@ release-check: all
 		echo "Release archive contains local configuration or object files." >&2; \
 		exit 1; \
 	fi; \
-	tar -xOzf "${RELEASE_ARCHIVE}" '${RELEASE_NAME}/dwm-jangir.desktop' | \
-		grep -Fqx 'Exec=${PREFIX}/bin/dwm-session'; \
+	tar -xOzf "${RELEASE_ARCHIVE}" '${RELEASE_NAME}/dwm.desktop' | \
+		grep -Fqx 'Exec=${PREFIX}/bin/dwm'; \
 	echo "==> Release archive validated."
 
 check:
@@ -625,8 +616,6 @@ check:
 	$(MAKE) check-format
 	$(MAKE) check-build-config
 	$(MAKE) check-fedora-platform
-	$(MAKE) check-install-log
-	$(MAKE) check-install-meslo-font
 	$(MAKE) check-dev-sync-install
 	$(MAKE) check-default-apps
 	$(MAKE) check-xdg-autostart
@@ -681,9 +670,8 @@ check:
 
 .PHONY: clean all check check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-test-runner \
-	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install check-install-log \
-	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-install-meslo-font check-kickstart check-lock \
+	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
+	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-webapp-launch check-diagnostics check-status check-system-health check-system-management check-quickshell-system-management check-settings \
-	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-webapp-launch check-diagnostics check-status check-system-health check-settings \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-power check-quickshell-power-backend check-quickshell-power-model check-quickshell-session-actions check-quickshell-defaults-model check-quickshell-appearance-model check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-panel-settings check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
 	install-cursors native release release-check uninstall

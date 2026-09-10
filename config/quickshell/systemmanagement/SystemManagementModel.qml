@@ -2,11 +2,15 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.core
+import "SystemInformationProtocol.js" as Information
 
 Scope {
     id: root
 
     signal confirmationInvalidated()
+    signal healthOpened()
+    property var healthModel: null
+    property var targetScreen: null
     property bool settingsVisible: false
     property string snapshotState: "idle"
     property string message: "System management has not been loaded"
@@ -19,6 +23,12 @@ Scope {
     property var actions: []
     property var updates: []
     property var packageChanges: []
+    property var nativeProviders: ({})
+    property var nativeStates: ({})
+    property var accounts: []
+    property var repositories: []
+    property var filesystems: []
+    property bool filesystemsRetained: false
     property var errors: []
     property var activeOperation: null
     property var terminalHandoff: null
@@ -27,13 +37,25 @@ Scope {
     property bool snapshotOwned: false
     property bool snapshotRequired: false
     property bool snapshotHasOutput: false
+    property bool discoveryBatch: false
     property string snapshotErrorDetail: ""
     property int requestGeneration: 0
     property var updateConfirmation: null
     property string confirmationMessage: ""
     property bool dispatchingUpdate: false
+    property var nativeConfirmation: null
+    property string nativeConfirmationMessage: ""
+    property bool dispatchingNative: false
     readonly property alias operation: operationModel
     readonly property alias discovery: discoveryModel
+    readonly property alias timeDiscovery: timeDiscoveryModel
+    readonly property alias localeDiscovery: localeDiscoveryModel
+    readonly property alias accountDiscovery: accountDiscoveryModel
+    readonly property alias printerDiscovery: printerDiscoveryModel
+    readonly property alias storageDiscovery: storageDiscoveryModel
+    readonly property alias securityDiscovery: securityDiscoveryModel
+    readonly property alias regional: regionalModel
+    readonly property alias timeReconciliation: timeReconciliationModel
 
     readonly property bool busy: snapshotOwned
     readonly property string providerState: root.settingsVisible
@@ -42,11 +64,71 @@ Scope {
     readonly property string providerDetail: root.updateProvider.detail
     readonly property string discoveryDetail: discoveryModel.detail
 
+    function openHealth() {
+        const action = root.actions.find(item => item.id === "health-open");
+        if (!root.settingsVisible || root.healthModel === null || !action || action.availability !== "available") return false;
+        root.healthModel.openOnScreen(root.targetScreen);
+        root.healthOpened();
+        return true;
+    }
+
+    function discoveryModels() {
+        return [discoveryModel, timeDiscoveryModel, localeDiscoveryModel,
+            accountDiscoveryModel, printerDiscoveryModel, storageDiscoveryModel, securityDiscoveryModel];
+    }
+
+    function discoveryReady() {
+        return root.settingsVisible && root.discoveryModels().every(model => model.visible && (model.ready || model.failed));
+    }
+
+    function invalidateActionDiscovery(action) {
+        if (action === "timezone-set" || action === "ntp-set") timeDiscoveryModel.invalidate();
+        else if (action === "locale-set") localeDiscoveryModel.invalidate();
+        else if (action === "accounts-open" || action === "password-open") accountDiscoveryModel.invalidate();
+        else if (action === "printers-open") printerDiscoveryModel.invalidate();
+        else if (action === "sources-open" || action === "updates-refresh" || action === "updates-install-all")
+            discoveryModel.invalidate();
+    }
+
+    function stateDiscovery(identifier) {
+        if (identifier === "timezone" || identifier === "ntp-enabled" || identifier === "ntp-synchronized") return timeDiscoveryModel;
+        if (identifier === "locale") return localeDiscoveryModel;
+        if (identifier === "accounts-count") return accountDiscoveryModel;
+        if (identifier === "cups-service") return printerDiscoveryModel;
+        if (identifier === "filesystem-summary") return storageDiscoveryModel;
+        if (identifier === "firewalld") return securityDiscoveryModel;
+        return null;
+    }
+
+    function nativeStateView(identifier) {
+        const state = root.nativeStates[identifier] || root.stateFallback("This state is unavailable");
+        const monitor = root.stateDiscovery(identifier);
+        if (!root.settingsVisible || monitor === null) return state;
+        return { status: state.status === "available" && (monitor.failed || monitor.unresolved || monitor.externalUnresolved) ? "partial" : state.status,
+            value: state.value, detail: [state.detail, monitor.detail].filter(value => value.length > 0).join(" ") };
+    }
+
+    function nativeProviderView(owner) {
+        const provider = root.nativeProviders[owner] || root.providerFallback("This provider is unavailable");
+        const monitors = owner === "regional" ? [timeDiscoveryModel, localeDiscoveryModel]
+            : owner === "accounts" ? [accountDiscoveryModel] : owner === "printers" ? [printerDiscoveryModel]
+            : owner === "sources" ? [discoveryModel] : owner === "storage" ? [storageDiscoveryModel]
+            : owner === "security" ? [securityDiscoveryModel] : [];
+        if (!root.settingsVisible) return provider;
+        return { status: provider.status === "available" && monitors.some(model => model.failed || model.unresolved || model.externalUnresolved)
+                ? "partial" : provider.status,
+            providerClass: provider.providerClass, owner: provider.owner,
+            detail: [provider.detail].concat(monitors.map(model => model.detail)).filter(value => value.length > 0).join(" ") };
+    }
+
     function updateActionReason(actionId) {
         if (actionId !== "updates-refresh" && actionId !== "updates-install-all")
             return "This update action is not supported.";
-        if (!root.settingsVisible || root.dispatchingUpdate)
+        if (!root.settingsVisible)
             return "Open System Settings to prepare an update action.";
+        if (root.dispatchingUpdate || root.dispatchingNative || root.nativeConfirmation !== null
+                || regionalModel.ownsPreparation() || regionalModel.confirmation !== null)
+            return "Finish or dismiss the current confirmation first.";
         if (root.snapshotOwned || root.snapshotPending || root.requiredPending || !discoveryModel.fresh)
             return "Wait for fresh update discovery, or reload status to retry.";
         if (!root.validGeneration(root.generation) || root.recoveryProvider.status !== "available")
@@ -107,6 +189,93 @@ Scope {
         if (root.updateConfirmation !== null)
             root.confirmationMessage = "Update state changed. Review a fresh preview and confirm again.";
         root.updateConfirmation = null;
+        root.invalidateNativeConfirmation("");
+        regionalModel.invalidate("");
+    }
+
+    function delegateDiscovery(actionId) {
+        if (actionId === "accounts-open" || actionId === "password-open") return accountDiscoveryModel;
+        if (actionId === "printers-open") return printerDiscoveryModel;
+        if (actionId === "sources-open") return discoveryModel;
+        return null;
+    }
+
+    function delegateContextReason(actionId) {
+        const monitor = root.delegateDiscovery(actionId);
+        if (monitor === null) return "This delegated action is not supported.";
+        if (!root.settingsVisible) return "Open System Settings to prepare this action.";
+        if (root.snapshotOwned || root.snapshotPending || root.requiredPending || root.discoveryBatch
+                || !monitor.visible || !monitor.ready || monitor.failed || !monitor.cycle.enabled
+                || monitor.cycle.phase !== "idle" || monitor.cycle.unresolved)
+            return "Wait for fresh provider status, or reload status to retry.";
+        if (!root.validGeneration(root.generation) || !operationModel.canStart)
+            return "An operation or its recovery still owns the system workflow.";
+        const action = root.actions.find(item => item.id === actionId);
+        if (!action || action.availability !== "available")
+            return action && action.detail.length > 0 ? action.detail : "The provider did not offer this action.";
+        return "";
+    }
+
+    function delegateActionReason(actionId) {
+        if (root.dispatchingUpdate || root.dispatchingNative || root.updateConfirmation !== null
+                || regionalModel.ownsPreparation() || regionalModel.confirmation !== null)
+            return "Finish or dismiss the current confirmation first.";
+        return root.delegateContextReason(actionId);
+    }
+
+    function prepareDelegate(actionId) {
+        if (root.nativeConfirmation !== null) return false;
+        const reason = root.delegateActionReason(actionId);
+        if (reason.length > 0) {
+            root.nativeConfirmationMessage = reason;
+            return false;
+        }
+        const pending = { actionId: actionId, generation: root.generation,
+            requestGeneration: root.requestGeneration, epoch: root.delegateDiscovery(actionId).cycle.epoch };
+        root.dispatchingNative = true;
+        root.nativeConfirmationMessage = "";
+        // Reentrant closure or discovery callbacks may retire this preparation.
+        if (root.delegateContextReason(actionId) === "" && pending.generation === root.generation
+                && pending.requestGeneration === root.requestGeneration
+                && pending.epoch === root.delegateDiscovery(actionId).cycle.epoch)
+            root.nativeConfirmation = pending;
+        root.dispatchingNative = false;
+        return root.nativeConfirmation === pending;
+    }
+
+    function discardDelegate() {
+        root.nativeConfirmation = null;
+        root.nativeConfirmationMessage = "";
+    }
+
+    function invalidateNativeConfirmation(domain) {
+        const pending = root.nativeConfirmation;
+        if (pending === null) return;
+        const monitor = root.delegateDiscovery(pending.actionId);
+        if (domain !== "" && (monitor === null || monitor.domain !== domain)) return;
+        root.nativeConfirmationMessage = "Provider state changed. Reload status and confirm again.";
+        root.nativeConfirmation = null;
+    }
+
+    function confirmDelegate() {
+        const pending = root.nativeConfirmation;
+        if (pending === null || root.dispatchingUpdate || root.dispatchingNative) return false;
+        if (root.delegateActionReason(pending.actionId) !== "") {
+            root.invalidateNativeConfirmation("");
+            return false;
+        }
+        root.dispatchingNative = true;
+        root.nativeConfirmation = null;
+        // Recheck after prompt callbacks; the operation owner checks its own
+        // source ownership again before constructing the fixed empty argv.
+        const monitor = root.delegateDiscovery(pending.actionId);
+        const current = root.delegateContextReason(pending.actionId) === ""
+            && pending.generation === root.generation && pending.requestGeneration === root.requestGeneration
+            && monitor !== null && pending.epoch === monitor.cycle.epoch;
+        const started = current && operationModel.startNative(pending.actionId, "", "");
+        root.nativeConfirmationMessage = started ? "" : "Provider state changed. Reload status and confirm again.";
+        root.dispatchingNative = false;
+        return started;
     }
 
     function providerFallback(detail) {
@@ -211,7 +380,53 @@ Scope {
         return "";
     }
 
+    function nativeStateOwner(identifier) {
+        if (identifier === "timezone" || identifier === "ntp-enabled"
+                || identifier === "ntp-synchronized" || identifier === "locale") return "regional";
+        if (identifier === "accounts-count") return "accounts";
+        if (identifier === "cups-service") return "printers";
+        return Information.owner(identifier);
+    }
+
+    function nativeActionOwner(identifier) {
+        if (identifier === "timezone-set" || identifier === "ntp-set" || identifier === "locale-set") return "regional";
+        if (identifier === "accounts-open" || identifier === "password-open") return "accounts";
+        if (identifier === "printers-open") return "printers";
+        if (identifier === "sources-open") return "sources";
+        if (identifier === "health-open") return "diagnostics";
+        return "";
+    }
+
+    function validNativeValue(identifier, status, value) {
+        if (Information.owner(identifier).length > 0) return Information.validValue(identifier, status, value);
+        if (identifier === "accounts-count")
+            return status === "available" ? /^(0|[1-9][0-9]*)$/.test(value)
+                && Number(value) <= 256 : value === "unknown";
+        if (identifier === "cups-service")
+            return status === "available" ? (value === "running" || value === "socket-ready" || value === "stopped")
+                : value === "unknown";
+        if (identifier === "ntp-enabled" || identifier === "ntp-synchronized")
+            return status === "available" ? (value === "yes" || value === "no") : value === "unknown";
+        // An explicit LANG= is readable unset configuration, not a malformed
+        // regional provider. A replacement still requires its own fresh preview.
+        if (identifier === "locale") return status === "available" || value === "unknown";
+        return value.length > 0 && (status === "available" || value === "unknown");
+    }
+
     function clearState(detail) {
+        // A failed recovery-only read provides no new evidence about optional
+        // information. Invalidate mutation offers without erasing that projection.
+        const preserveInformation = root.snapshotOwned && snapshotProcess.core;
+        const providers = {};
+        const states = {};
+        if (preserveInformation) {
+            for (const owner of Information.owners()) {
+                if (root.nativeProviders[owner]) providers[owner] = root.nativeProviders[owner];
+            }
+            for (const identifier of Information.stateIds()) {
+                if (root.nativeStates[identifier]) states[identifier] = root.nativeStates[identifier];
+            }
+        }
         root.snapshotState = "failure";
         root.message = detail;
         root.generation = "";
@@ -220,10 +435,19 @@ Scope {
         root.updateSummary = root.stateFallback(detail);
         root.updateLastRefresh = root.stateFallback(detail);
         root.updateRestart = root.stateFallback(detail);
-        root.actions = [];
+        root.actions = preserveInformation ? root.actions.filter(item => item.id === "health-open") : [];
         root.updates = [];
         root.packageChanges = [];
-        root.errors = [];
+        root.nativeProviders = providers;
+        root.nativeStates = states;
+        root.accounts = [];
+        root.repositories = [];
+        if (!preserveInformation) {
+            root.filesystems = [];
+            root.filesystemsRetained = false;
+        }
+        root.errors = preserveInformation
+            ? root.errors.filter(item => Information.owners().indexOf(item.provider) >= 0) : [];
         root.activeOperation = null;
         root.terminalHandoff = null;
     }
@@ -235,7 +459,9 @@ Scope {
             return;
         }
 
+        const priorHealthAction = root.actions.find(item => item.id === "health-open");
         let headerSeen = false;
+        let minor = 0;
         let completeSeen = false;
         let parsedGeneration = "";
         let fatal = "";
@@ -264,6 +490,17 @@ Scope {
         const seenActions = {};
         const seenUpdates = {};
         const seenChanges = {};
+        const nativeOwners = ["regional", "accounts", "printers", "sources"];
+        const nativeStateIds = ["timezone", "ntp-enabled", "ntp-synchronized", "locale", "accounts-count", "cups-service"];
+        const nativeActionIds = ["timezone-set", "ntp-set", "locale-set", "accounts-open", "password-open", "printers-open", "sources-open"];
+        const nativeInvalid = {};
+        const parsedNativeProviders = {};
+        const nativeLists = { account: [], repository: [], filesystem: [] };
+        const nativeListCounts = { account: 0, repository: 0, filesystem: 0 };
+        const nativeListBytes = { account: 0, repository: 0, filesystem: 0 };
+        const nativeSeen = { account: {}, repository: {}, filesystem: {} };
+        let nonListBytes = 0;
+        let listRecordCount = 0;
 
         for (const rawLine of text.split("\n")) {
             if (rawLine.length === 0) continue;
@@ -278,13 +515,33 @@ Scope {
                 break;
             }
             recordIndex++;
+            if (type === "update" || type === "package-change" || type === "account" || type === "repository" || type === "filesystem") {
+                // Keep duplicate tracking through a provider-local overflow,
+                // while the complete protocol reservation bounds its memory.
+                if (++listRecordCount > 9216) {
+                    fatal = "System management provider exceeded the overall list reservation";
+                    break;
+                }
+            } else {
+                nonListBytes += root.utf8Bytes(rawLine) + 1;
+                if (nonListBytes > 1024 * 1024) {
+                    fatal = "System management provider exceeded the non-list byte reservation";
+                    break;
+                }
+            }
 
             if (type === "system-management-protocol") {
-                if (headerSeen || fields.length < 3 || fields[1] !== "1" || fields[2] !== "0") {
+                if (headerSeen || fields.length < 3 || fields[1] !== "1" || (fields[2] !== "0" && fields[2] !== "1" && fields[2] !== "2")) {
                     fatal = "System management provider returned an unsupported protocol";
                     break;
                 }
                 headerSeen = true;
+                minor = Number(fields[2]);
+                if (minor === 2) {
+                    nativeOwners.push(...Information.owners());
+                    nativeStateIds.push(...Information.stateIds());
+                    nativeActionIds.push("health-open");
+                }
             } else if (type === "snapshot-generation") {
                 if (parsedGeneration.length > 0 || fields.length < 2
                         || !root.validGeneration(fields[1])) {
@@ -293,6 +550,18 @@ Scope {
                 }
                 parsedGeneration = fields[1];
             } else if (type === "provider") {
+                if (minor >= 1 && fields.length >= 2 && nativeOwners.indexOf(fields[1]) !== -1) {
+                    const owner = fields[1];
+                    if (seenProviders["$" + owner] !== undefined) {
+                        fatal = "System management provider repeated a provider record";
+                        break;
+                    }
+                    seenProviders["$" + owner] = true;
+                    if (!root.fieldsFit(fields, 6) || !root.validProviderStatus(fields[2]) || fields[3] !== Information.providerClass(owner)) {
+                        nativeInvalid[owner] = true;
+                    } else parsedNativeProviders[owner] = { status: fields[2], providerClass: fields[3], owner: fields[4], detail: fields[5] };
+                    continue;
+                }
                 if (fields.length < 2 || (fields[1] !== "updates" && fields[1] !== "recovery")) {
                     fatal = "System management provider returned an unknown provider owner";
                     break;
@@ -321,6 +590,18 @@ Scope {
                     parsedRecoveryProvider = provider;
                 }
             } else if (type === "state") {
+                const owner = fields.length >= 2 ? root.nativeStateOwner(fields[1]) : "";
+                if (minor >= 1 && owner.length > 0 && nativeStateIds.indexOf(fields[1]) >= 0) {
+                    if (seenStates["$" + fields[1]] !== undefined) {
+                        fatal = "System management provider repeated a state record";
+                        break;
+                    }
+                    seenStates["$" + fields[1]] = true;
+                    if (!root.fieldsFit(fields, 5) || !root.validProviderStatus(fields[2])
+                            || !root.validNativeValue(fields[1], fields[2], fields[3])) nativeInvalid[owner] = true;
+                    else states["$" + fields[1]] = { status: fields[2], value: fields[3], detail: fields[4] };
+                    continue;
+                }
                 if (fields.length < 2 || (fields[1] !== "update-summary"
                         && fields[1] !== "update-last-refresh"
                         && fields[1] !== "update-restart")) {
@@ -355,6 +636,19 @@ Scope {
                 states["$" + fields[1]] = { "status": fields[2], "value": fields[3],
                     "detail": fields[4] };
             } else if (type === "action") {
+                const owner = fields.length >= 2 ? root.nativeActionOwner(fields[1]) : "";
+                if (minor >= 1 && owner.length > 0 && nativeActionIds.indexOf(fields[1]) >= 0) {
+                    if (seenActions["$" + fields[1]] !== undefined) {
+                        fatal = "System management provider repeated an action record";
+                        break;
+                    }
+                    seenActions["$" + fields[1]] = true;
+                    if (!root.fieldsFit(fields, 7) || (fields[2] !== "available" && fields[2] !== "unavailable")
+                            || fields[3] !== (owner === "diagnostics" ? "user-session" : "delegated") || fields[4] !== owner) nativeInvalid[owner] = true;
+                    else parsedActions["$" + fields[1]] = { id: fields[1], availability: fields[2], actionClass: fields[3],
+                        owner: fields[4], label: fields[5], detail: fields[6] };
+                    continue;
+                }
                 if (fields.length < 2 || (fields[1] !== "updates-refresh"
                         && fields[1] !== "updates-install-all"
                         && fields[1] !== "updates-cancel")) {
@@ -377,16 +671,16 @@ Scope {
                     "owner": fields[4], "label": fields[5], "detail": fields[6] };
             } else if (type === "update") {
                 updateRecordCount++;
-                if (updateRecordCount > 4096) {
-                    updatesInvalid = true;
-                    continue;
-                }
                 if (fields.length >= 2 && fields[1].length > 0) {
                     if (seenUpdates["$" + fields[1]] !== undefined) {
                         fatal = "System management provider repeated an update identity";
                         break;
                     }
                     seenUpdates["$" + fields[1]] = true;
+                }
+                if (updateRecordCount > 4096) {
+                    updatesInvalid = true;
+                    continue;
                 }
                 if (!root.fieldsFit(fields, 7) || fields[1].length === 0
                         || !root.validSeverity(fields[2])
@@ -406,16 +700,16 @@ Scope {
                 updateBytes += recordBytes;
             } else if (type === "package-change") {
                 changeRecordCount++;
-                if (changeRecordCount > 4096) {
-                    planInvalid = true;
-                    continue;
-                }
                 if (fields.length >= 2 && fields[1].length > 0) {
                     if (seenChanges["$" + fields[1]] !== undefined) {
                         fatal = "System management provider repeated a plan identity";
                         break;
                     }
                     seenChanges["$" + fields[1]] = true;
+                }
+                if (changeRecordCount > 4096) {
+                    planInvalid = true;
+                    continue;
                 }
                 if (!root.fieldsFit(fields, 6) || fields[1].length === 0
                         || !root.validPlanAction(fields[2]) || fields[3].length === 0
@@ -431,6 +725,44 @@ Scope {
                 parsedChanges.push({ "packageId": fields[1], "action": fields[2],
                     "name": fields[3], "version": fields[4], "summary": fields[5] });
                 changeBytes += recordBytes;
+            } else if (type === "account" || type === "repository" || type === "filesystem") {
+                if (minor < 1 || (type === "filesystem" && minor < 2)) {
+                    fatal = "System management provider returned an inactive list owner";
+                    break;
+                }
+                const owner = type === "account" ? "accounts" : type === "filesystem" ? "storage" : "sources";
+                if (fields.length < 2 || fields[1].length === 0) {
+                    fatal = "System management provider returned a list without an identity";
+                    break;
+                }
+                if (nativeSeen[type]["$" + fields[1]] !== undefined) {
+                    fatal = "System management provider repeated a list identity";
+                    break;
+                }
+                nativeSeen[type]["$" + fields[1]] = true;
+                nativeListCounts[type]++;
+                nativeListBytes[type] += root.utf8Bytes(rawLine) + 1;
+                const account = type === "account";
+                if (nativeListCounts[type] > (type === "repository" ? 512 : 256)
+                        || nativeListBytes[type] > (account ? 256 : 384) * 1024) {
+                    nativeInvalid[owner] = true;
+                    continue;
+                }
+                if (type === "filesystem") {
+                    if (!root.fieldsFit(fields, 10) || !Information.validFilesystem(fields)) nativeInvalid.storage = true;
+                    else if (!nativeInvalid.storage) nativeLists.filesystem.push(Information.filesystem(fields));
+                    continue;
+                }
+                if (!root.fieldsFit(fields, account ? 5 : 4)
+                        || (account ? (fields[2] !== "current" && fields[2] !== "other")
+                            : (fields[2] !== "enabled" && fields[2] !== "disabled"))
+                        || (account && fields[4].length === 0)) {
+                    nativeInvalid[owner] = true;
+                    continue;
+                }
+                if (!nativeInvalid[owner]) nativeLists[type].push(account
+                    ? { id: fields[1], scope: fields[2], displayName: fields[3], loginName: fields[4] }
+                    : { id: fields[1], state: fields[2], description: fields[3] });
             } else if (type === "error") {
                 errorRecordCount++;
                 const recordBytes = root.utf8Bytes(rawLine) + 1;
@@ -439,6 +771,11 @@ Scope {
                     break;
                 }
                 errorBytes += recordBytes;
+                if (minor >= 1 && fields.length >= 2 && nativeOwners.indexOf(fields[1]) !== -1) {
+                    if (!root.fieldsFit(fields, 4) || !root.validErrorCode(fields[2])) nativeInvalid[fields[1]] = true;
+                    else parsedErrors.push({ provider: fields[1], code: fields[2], detail: fields[3] });
+                    continue;
+                }
                 if (fields.length < 2 || (fields[1] !== "updates" && fields[1] !== "recovery")) {
                     fatal = "System management provider returned an unknown error owner";
                     break;
@@ -461,7 +798,8 @@ Scope {
                         || !root.validOperationState(fields[4])
                         || !root.validPercent(fields[5])
                         || (fields[6] !== "yes" && fields[6] !== "no")
-                        || (root.updateActionKind(fields[2]).length === 0 && fields[6] !== "no")) {
+                        || (root.updateActionKind(fields[2]).length === 0
+                            && (fields[6] !== "no" || fields[4] === "cancel-requested"))) {
                     fatal = "System management provider returned an invalid active operation";
                     break;
                 }
@@ -502,6 +840,38 @@ Scope {
                 || parsedActions["$updates-install-all"] === undefined
                 || parsedActions["$updates-cancel"] === undefined) updatesInvalid = true;
         if (parsedRecoveryProvider === null) recoveryInvalid = true;
+        if (minor >= 1) {
+            for (const owner of nativeOwners) {
+                if (parsedNativeProviders[owner] === undefined) nativeInvalid[owner] = true;
+            }
+            for (const identifier of nativeStateIds) {
+                if (states["$" + identifier] === undefined) nativeInvalid[root.nativeStateOwner(identifier)] = true;
+            }
+            for (const identifier of nativeActionIds) {
+                if (parsedActions["$" + identifier] === undefined) nativeInvalid[root.nativeActionOwner(identifier)] = true;
+            }
+            if (!nativeInvalid.accounts) {
+                const count = states["$accounts-count"];
+                if ((count.status === "available" && Number(count.value) !== nativeLists.account.length)
+                        || (count.status !== "available" && count.status !== "partial" && nativeLists.account.length > 0)
+                        || nativeLists.account.filter(item => item.scope === "current").length > 1) nativeInvalid.accounts = true;
+            }
+            if (minor === 2 && !nativeInvalid.storage) {
+                const summary = states["$filesystem-summary"];
+                if ((summary.status === "available" && (Number(summary.value) !== nativeLists.filesystem.length
+                            || nativeLists.filesystem.some(item => item.status !== "available")))
+                        || (summary.status !== "available" && summary.status !== "partial" && nativeLists.filesystem.length > 0))
+                    nativeInvalid.storage = true;
+            }
+            if (!nativeInvalid.sources && nativeLists.repository.length > 0
+                    && parsedNativeProviders.sources.status !== "available"
+                    && parsedNativeProviders.sources.status !== "partial") nativeInvalid.sources = true;
+        }
+        const nativeAdmission = minor >= 1 && nativeActionIds.some(identifier =>
+            identifier !== "health-open" && !nativeInvalid[root.nativeActionOwner(identifier)]
+                && parsedActions["$" + identifier].availability === "available");
+        const journalAdmitted = !recoveryInvalid && (parsedActive !== null || parsedHandoff !== null
+            || parsedRecoveryProvider.status === "available" || nativeAdmission);
         if (!updatesInvalid) {
             const cancelAvailable = parsedActions["$updates-cancel"].availability === "available";
             const canCancelActive = parsedActive !== null && parsedActive.cancelable;
@@ -619,28 +989,80 @@ Scope {
                 "owner": "dwm-system-management",
                 "detail": "System management provider returned malformed recovery state" }
             : parsedRecoveryProvider;
+        const publishedProviders = {};
+        const publishedStates = {};
+        let nativeMalformed = false;
+        if (minor >= 1) {
+            for (const owner of nativeOwners) {
+                if (nativeInvalid[owner]) {
+                    nativeMalformed = true;
+                    const detail = "System management provider returned malformed " + owner + " state";
+                    publishedProviders[owner] = { status: "partial", providerClass: Information.providerClass(owner), owner: "", detail: detail };
+                    parsedErrors.push({ provider: owner, code: "malformed", detail: detail });
+                } else publishedProviders[owner] = parsedNativeProviders[owner];
+            }
+            for (const identifier of nativeStateIds) {
+                const owner = root.nativeStateOwner(identifier);
+                publishedStates[identifier] = nativeInvalid[owner]
+                    ? { status: "partial", value: "unknown", detail: publishedProviders[owner].detail }
+                    : states["$" + identifier];
+            }
+            const nativeActions = [];
+            for (const identifier of nativeActionIds) {
+                if ((identifier === "health-open" || journalAdmitted) && !nativeInvalid[root.nativeActionOwner(identifier)])
+                    nativeActions.push(parsedActions["$" + identifier]);
+            }
+            root.actions = root.actions.concat(nativeActions);
+        }
+        // Recovery-only reads do not probe optional information. Keep a prior
+        // readable projection until the pane's monitored information read lands.
+        if (snapshotProcess.core && minor === 1) {
+            for (const owner of Information.owners()) {
+                if (root.nativeProviders[owner]) publishedProviders[owner] = root.nativeProviders[owner];
+            }
+            for (const identifier of Information.stateIds()) {
+                if (root.nativeStates[identifier]) publishedStates[identifier] = root.nativeStates[identifier];
+            }
+            if (priorHealthAction) root.actions = root.actions.concat([priorHealthAction]);
+            parsedErrors.push(...root.errors.filter(item => Information.owners().indexOf(item.provider) >= 0));
+        }
+        root.nativeProviders = publishedProviders;
+        root.nativeStates = publishedStates;
+        root.accounts = minor >= 1 && !nativeInvalid.accounts ? nativeLists.account : [];
+        root.repositories = minor >= 1 && !nativeInvalid.sources ? nativeLists.repository : [];
+        if (!snapshotProcess.core || minor !== 1) {
+            const omitted = snapshotProcess.storageOmitted && minor === 2 && !nativeInvalid.storage
+                && states["$filesystem-summary"].status === "partial" && nativeLists.filesystem.length === 0;
+            root.filesystemsRetained = omitted && root.filesystems.length > 0;
+            if (!root.filesystemsRetained)
+                root.filesystems = minor === 2 && !nativeInvalid.storage ? nativeLists.filesystem : [];
+        }
         root.errors = parsedErrors;
-        root.snapshotState = updatesInvalid || planInvalid || planUnsupported || recoveryInvalid
+        root.snapshotState = updatesInvalid || planInvalid || planUnsupported || recoveryInvalid || nativeMalformed
             ? "partial" : "ready";
         root.message = root.snapshotState === "ready"
             ? parsedUpdates.length + " updates reported"
             : "System management state is incomplete";
-        // No identities is evidence of an empty journal only after successful
-        // recovery. A partial response may have failed to read the owner at all.
-        return !recoveryInvalid && (parsedActive !== null || parsedHandoff !== null
-            || parsedRecoveryProvider.status === "available");
+        // Valid native offers independently prove journal admission even when
+        // update-specific recovery (for example logind) is unavailable.
+        return journalAdmitted;
     }
 
     function openSettings() {
         root.settingsVisible = true;
-        discoveryModel.open();
+        root.discoveryBatch = true;
+        timeReconciliationModel.open();
+        for (const model of root.discoveryModels()) model.open();
         root.refreshRecovery();
+        root.discoveryBatch = false;
+        root.requestSnapshot(root.requiredPending);
     }
 
     function closeSettings() {
         root.settingsVisible = false;
+        timeReconciliationModel.close();
         root.confirmationInvalidated();
-        discoveryModel.close();
+        for (const model of root.discoveryModels()) model.close();
         root.snapshotPending = false;
         if (!root.snapshotRequired) {
             root.requestGeneration++;
@@ -650,8 +1072,15 @@ Scope {
 
     function refresh() {
         if (!root.settingsVisible) return;
-        discoveryModel.refresh();
+        // Refresh retires the preview immediately, even while replacement
+        // subscriptions are still waiting for their readiness handshake.
+        root.confirmationInvalidated();
+        root.discoveryBatch = true;
+        timeReconciliationModel.open();
+        for (const model of root.discoveryModels()) model.refresh();
         root.refreshRecovery();
+        root.discoveryBatch = false;
+        root.requestSnapshot(root.requiredPending);
     }
 
     function refreshRecovery() {
@@ -663,33 +1092,71 @@ Scope {
 
     function requestSnapshot(required) {
         if (!required && !root.settingsVisible) return;
-        if (root.snapshotOwned) {
+        if (timeReconciliationModel.ownsRead()) {
+            root.snapshotPending = root.snapshotPending || !required;
+            root.requiredPending = root.requiredPending || required;
+            timeReconciliationModel.beforeSnapshot();
+            if (timeReconciliationModel.ownsRead()) return;
+        }
+        if (regionalModel.ownsPreparation()) {
+            root.snapshotPending = root.snapshotPending || !required;
+            root.requiredPending = root.requiredPending || required;
+            regionalModel.invalidate("");
+            // Optional preflight cancellation must be reaped before recovery
+            // or discovery can claim the shared snapshot owner.
+            if (regionalModel.ownsPreparation()) return;
+        }
+        if (root.snapshotOwned || root.discoveryBatch) {
             root.snapshotPending = root.snapshotPending || !required;
             root.requiredPending = root.requiredPending || required;
             return;
         }
         required = required || root.requiredPending;
-        if (!required && !discoveryModel.canTake()) return;
+        const ready = root.discoveryReady();
+        if (!required && (!ready || !root.discoveryModels().some(model => model.canTake()))) return;
         root.snapshotPending = false;
         root.requiredPending = false;
         // Claim the owner before any QML signal from discovery.take/publication.
         root.snapshotOwned = true;
-        snapshotProcess.cycleToken = discoveryModel.take();
+        timeReconciliationModel.beforeSnapshot();
         root.requestGeneration++;
         snapshotProcess.generation = root.requestGeneration;
         root.snapshotRequired = required;
+        snapshotProcess.core = required;
+        snapshotProcess.storageOmitted = !required && (!storageDiscoveryModel.ready || storageDiscoveryModel.phase === "blocked");
+        snapshotProcess.command = Commands.terminatingCheckedCommand(Commands.systemManagementCommand(
+            required ? "snapshot-core" : snapshotProcess.storageOmitted ? "snapshot-without-storage" : "snapshot", []));
         root.snapshotHasOutput = false;
         root.snapshotErrorDetail = "";
+        snapshotProcess.cycleTokens = [];
+        // Required recovery can bypass subscription setup, but cannot certify
+        // optional freshness until every domain has a handshake or fallback.
+        if (ready && !required) {
+            for (const model of root.discoveryModels()) {
+                const token = model.take();
+                if (token !== null) snapshotProcess.cycleTokens.push({ model: model, token: token });
+                if (snapshotProcess.generation !== root.requestGeneration) break;
+            }
+        }
         root.confirmationInvalidated();
+        if (snapshotProcess.generation !== root.requestGeneration) {
+            root.finishSnapshot(-1, false);
+            return;
+        }
         root.snapshotState = "loading";
-        root.message = "Reading system update status...";
+        root.message = "Reading system management status...";
+        if (snapshotProcess.generation !== root.requestGeneration) {
+            root.finishSnapshot(-1, false);
+            return;
+        }
         snapshotProcess.running = true;
     }
 
     function finishSnapshot(exitCode, normalExit) {
         if (!root.snapshotOwned) return;
         const current = snapshotProcess.generation === root.requestGeneration;
-        discoveryModel.beforePublish(snapshotProcess.cycleToken);
+        const tokens = snapshotProcess.cycleTokens;
+        for (const item of tokens) item.model.beforePublish(item.token);
         if (current) {
             if (normalExit && exitCode === 0 && root.snapshotHasOutput) {
                 if (root.parseSnapshot(snapshotOutput.text, snapshotProcess.generation))
@@ -703,14 +1170,16 @@ Scope {
         }
         // Reentrant invalidations during parse/acceptSnapshot still belong to
         // this completion handoff. Reserve the settling read before idle.
-        discoveryModel.complete(snapshotProcess.cycleToken, current && root.snapshotState !== "failure");
+        for (const item of tokens) item.model.complete(item.token, current && root.snapshotState !== "failure");
+        timeReconciliationModel.afterSnapshot();
         root.snapshotRequired = false;
         root.snapshotOwned = false;
         // The old process emits runningChanged after exited. Queue the next
         // launch so that signal cannot finalize a new run's ownership.
         Qt.callLater(function() {
             if (root.requiredPending) root.requestSnapshot(true);
-            else if (root.snapshotPending && root.settingsVisible) root.requestSnapshot(false);
+            else if (root.settingsVisible && (root.snapshotPending || root.discoveryModels().some(model => model.canTake())))
+                root.requestSnapshot(false);
         });
     }
 
@@ -722,23 +1191,86 @@ Scope {
         onInvalidated: root.confirmationInvalidated()
     }
 
+    SystemProviderDiscovery {
+        id: timeDiscoveryModel
+        domain: "time"
+        externalUnresolved: timeReconciliationModel.blocked
+        externalDetail: timeReconciliationModel.detail
+        onSnapshotRequested: root.requestSnapshot(false)
+        onInvalidated: {
+            timeReconciliationModel.beforeSnapshot();
+            regionalModel.invalidate("time");
+        }
+        onOwnerArrived: timeReconciliationModel.arrived()
+    }
+    SystemProviderDiscovery {
+        id: localeDiscoveryModel
+        domain: "locale"
+        onSnapshotRequested: root.requestSnapshot(false)
+        onInvalidated: regionalModel.invalidate("locale")
+    }
+    SystemProviderDiscovery {
+        id: accountDiscoveryModel
+        domain: "accounts"
+        onSnapshotRequested: root.requestSnapshot(false)
+        onInvalidated: root.invalidateNativeConfirmation("accounts")
+    }
+    SystemProviderDiscovery {
+        id: printerDiscoveryModel
+        domain: "printers"
+        onSnapshotRequested: root.requestSnapshot(false)
+        onInvalidated: root.invalidateNativeConfirmation("printers")
+    }
+
+    SystemProviderDiscovery {
+        id: storageDiscoveryModel
+        domain: "storage"
+        onSnapshotRequested: root.requestSnapshot(false)
+    }
+    SystemProviderDiscovery {
+        id: securityDiscoveryModel
+        domain: "security"
+        onSnapshotRequested: root.requestSnapshot(false)
+    }
+
+    SystemRegionalSettingsModel {
+        id: regionalModel
+        model: root
+        onReleased: Qt.callLater(function() {
+            if (root.requiredPending) root.requestSnapshot(true);
+            else if (root.snapshotPending && root.settingsVisible) root.requestSnapshot(false);
+            else timeReconciliationModel.requestPending();
+        })
+    }
+
+    SystemTimeReconciliationModel {
+        id: timeReconciliationModel
+        model: root
+        onReleased: Qt.callLater(function() {
+            if (root.requiredPending) root.requestSnapshot(true);
+            else if (root.snapshotPending && root.settingsVisible) root.requestSnapshot(false);
+        })
+    }
+
     SystemOperationModel {
         id: operationModel
-        onDiscoveryInvalidated: discoveryModel.invalidate()
+        onResultChanged: timeReconciliationModel.sampleAfterOperation(result)
+        onDiscoveryInvalidated: actionId => root.invalidateActionDiscovery(actionId)
         onSnapshotRequested: root.requestSnapshot(true)
         onAcknowledged: operationId => {
             if (root.terminalHandoff !== null && root.terminalHandoff.id === operationId)
                 root.terminalHandoff = null;
             if (root.activeOperation !== null && root.activeOperation.id === operationId)
                 root.activeOperation = null;
-            discoveryModel.invalidate();
         }
     }
 
     Process {
         id: snapshotProcess
         property int generation: 0
-        property var cycleToken: null
+        property bool core: false
+        property bool storageOmitted: false
+        property var cycleTokens: []
         command: Commands.terminatingCheckedCommand(
             Commands.systemManagementCommand("snapshot", []))
         running: false

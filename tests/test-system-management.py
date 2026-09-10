@@ -42,6 +42,156 @@ sys.modules[SPEC.name] = provider
 SPEC.loader.exec_module(provider)
 
 
+class ComposedFixtureSnapshotTests(unittest.TestCase):
+    def test_original_snapshot_modes_survive_each_fixture_wrapper(self):
+        for name in ("system-native-discovery-provider.py", "system-regional-settings-provider.py",
+                     "system-delegate-confirmation-provider.py"):
+            for mode in ("snapshot-core", "snapshot-without-storage", "snapshot"):
+                with self.subTest(fixture=name, mode=mode), tempfile.TemporaryDirectory() as directory:
+                    environment = dict(os.environ, PYTHONDONTWRITEBYTECODE="1",
+                        DWM_NATIVE_DISCOVERY_FIXTURE=directory, DWM_NATIVE_ACTION_FIXTURE=directory,
+                        DWM_NATIVE_ACTION="timezone-set", DWM_NATIVE_ACTION_SCENARIO="success")
+                    result = subprocess.run([sys.executable, str(REPO / "tests" / "fixtures" / name), mode],
+                        env=environment, capture_output=True, text=True, timeout=3, check=True)
+                    records = [line.split("\t") for line in result.stdout.splitlines()]
+                    self.assertEqual(records[0], ["system-management-protocol", "1",
+                        "1" if mode == "snapshot-core" else "2"])
+                    self.assertEqual(records[-1], ["complete", "snapshot"])
+                    storage = [row for row in records if row[:2] == ["provider", "storage"]]
+                    filesystems = [row for row in records if row[0] == "filesystem"]
+                    if mode == "snapshot-core":
+                        self.assertEqual(storage, [])
+                        self.assertEqual(filesystems, [])
+                        self.assertFalse(any(row[:2] == ["action", "health-open"] for row in records))
+                    elif mode == "snapshot-without-storage":
+                        self.assertEqual(storage[0][2], "partial")
+                        self.assertEqual(filesystems, [])
+                        summary = next(row for row in records if row[:2] == ["state", "filesystem-summary"])
+                        self.assertEqual(summary[2:4], ["partial", "unknown"])
+                    else:
+                        self.assertEqual(storage[0][2], "available")
+                        self.assertEqual(len(filesystems), 1)
+
+
+class InformationSnapshotTests(unittest.TestCase):
+    def sources(self):
+        source = mock.Mock(spec=provider.InformationSnapshotSources)
+        source.local.return_value = {identifier: provider.InformationState("available", "1", "Local")
+            for identifier in provider.INFORMATION_LOCAL_IDS}
+        source.hardware.return_value = {identifier: provider.InformationState("available", "Hardware", "Host")
+            for identifier in provider.HARDWARE_INFORMATION_FIELDS.values()}
+        source.security.side_effect = lambda identifier: provider.InformationState("available",
+            {"selinux": "enforcing", "root-encryption": "encrypted"}.get(identifier, "enabled"), "Security")
+        source.filesystems.return_value = provider.FilesystemInformation(
+            provider.information_number(1, "Filesystems"), (provider.FilesystemRow(
+                "12", "available", "/dev/test", "/", "ext4", "18446744073709551615", "2", "3", "Bytes"),))
+        return source
+
+    def test_complete_records_and_exact_counters_without_admission(self):
+        with mock.patch.object(provider, "open_journal_directory", side_effect=AssertionError("Journal opened")):
+            result = provider.build_information_snapshot(self.sources())
+        self.assertEqual(len(rows(result, "provider")), 4)
+        self.assertEqual(len(rows(result, "state")), 19)
+        self.assertEqual([row[1] for row in rows(result, "action")], ["health-open"])
+        self.assertEqual(rows(result, "filesystem")[0][6], "18446744073709551615")
+        self.assertTrue(all(row[2] == "available" for row in rows(result, "provider")))
+        self.assertFalse(rows(result, "system-management-protocol"))
+
+    def test_source_failures_preserve_other_states_and_navigation(self):
+        source = self.sources()
+        source.hardware.side_effect = provider.SnapshotFailure("timeout", "Hardware timed out", "unavailable")
+        source.security.side_effect = lambda identifier: (provider.InformationState("restricted", "unknown", "Denied", "permission-denied")
+            if identifier == "selinux" else provider.InformationState("available", "enabled", "Security"))
+        result = provider.build_information_snapshot(source)
+        states = {row[1]: row for row in rows(result, "state")}
+        self.assertEqual(states["hardware-model"][2:4], ["unavailable", "unknown"])
+        self.assertEqual(states["os-name"][2], "available")
+        self.assertEqual(states["selinux"][2:4], ["restricted", "unknown"])
+        self.assertEqual(states["firewalld"][2], "available")
+        self.assertEqual(rows(result, "action")[0][2], "available")
+        self.assertEqual(len([row for row in rows(result, "error") if row[1] == "information"]), 1)
+
+    def test_interruption_stops_all_following_sources(self):
+        for reader in ("local", "hardware", "security", "filesystems"):
+            with self.subTest(reader=reader):
+                source = self.sources()
+                getattr(source, reader).side_effect = InterruptedError("Canceled")
+                with self.assertRaises(InterruptedError):
+                    provider.build_information_snapshot(source)
+                if reader in ("local", "hardware", "security"):
+                    source.filesystems.assert_not_called()
+                if reader in ("local", "hardware"):
+                    source.security.assert_not_called()
+
+    def test_real_parser_overflow_discards_complete_inventory(self):
+        source = self.sources()
+        data = json.dumps({"filesystems": [{"id": index, "source": "/dev/test", "target": "/mnt/test",
+            "fstype": "ext4", "size": 10, "used": 2, "avail": 8} for index in range(257)]}).encode()
+        source.filesystems.side_effect = lambda: provider.parse_filesystem_information(data)
+        result = provider.build_information_snapshot(source)
+        self.assertEqual(rows(result, "filesystem"), [])
+        self.assertTrue(any(row[1:3] == ["storage", "malformed"] for row in rows(result, "error")))
+        self.assertEqual(len(rows(result, "state")), 19)
+
+    def test_missing_state_is_explicit_and_owner_scoped(self):
+        source = self.sources()
+        del source.local.return_value["cpu-model"]
+        result = provider.build_information_snapshot(source)
+        state = next(row for row in rows(result, "state") if row[1] == "cpu-model")
+        self.assertEqual(state[2:4], ["partial", "unknown"])
+        self.assertEqual(len(rows(result, "state")), 19)
+
+    def test_unmonitored_storage_mode_does_not_start_the_filesystem_reader(self):
+        source = provider.InformationSnapshotSources(storage_ready=False)
+        with mock.patch.object(provider, "read_filesystem_information", side_effect=AssertionError("Unmonitored read")) as read:
+            value = source.filesystems()
+        read.assert_not_called()
+        self.assertEqual((value.summary.status, value.summary.value, value.rows), ("partial", "unknown", ()))
+
+    def test_fixed_snapshot_modes_reject_extra_arguments_before_backend_reads(self):
+        with mock.patch.object(provider, "PackageKitBackend") as backend, contextlib.redirect_stderr(io.StringIO()):
+            for command in ("snapshot", "snapshot-core", "snapshot-without-storage"):
+                self.assertEqual(provider.main([command, "arbitrary"]), 2)
+        backend.assert_not_called()
+
+    def test_partial_filesystem_subset_retains_unknown_summary(self):
+        source = self.sources()
+        source.filesystems.return_value = replace(source.filesystems.return_value,
+            summary=provider.InformationState("partial", "unknown", "Incomplete", "malformed"))
+        result = provider.build_information_snapshot(source)
+        self.assertEqual(len(rows(result, "filesystem")), 1)
+        self.assertIn("state\tfilesystem-summary\tpartial\tunknown\tIncomplete", result)
+
+    def test_invalid_filesystem_list_is_discarded_atomically(self):
+        for kind in ("duplicate", "records", "bytes"):
+            with self.subTest(kind=kind):
+                source = self.sources()
+                row = source.filesystems.return_value.rows[0]
+                if kind == "duplicate":
+                    inventory = (row, row)
+                else:
+                    inventory = tuple(replace(row, mount_id=str(index),
+                        source="a" * 512, target="b" * 512, fstype="c" * 512, detail="d" * 512)
+                        for index in range(257 if kind == "records" else 256))
+                source.filesystems.return_value = replace(source.filesystems.return_value, rows=inventory)
+                result = provider.build_information_snapshot(source)
+                self.assertEqual(rows(result, "filesystem"), [])
+                self.assertTrue(any(row[1:4] == ["filesystem-summary", "partial", "unknown"] for row in rows(result, "state")))
+                self.assertTrue(any(row[1:3] == ["storage", "malformed"] for row in rows(result, "error")))
+                self.assertEqual(len(rows(result, "state")), 19)
+
+    def test_all_unavailable_statuses_aggregate_without_hiding_peers(self):
+        for status in ("restricted", "unsupported", "unavailable", "partial"):
+            with self.subTest(status=status):
+                source = self.sources()
+                source.security.side_effect = lambda _identifier: provider.InformationState(status, "unknown", "Absent", "missing-provider")
+                result = provider.build_information_snapshot(source)
+                providers = {row[1]: row for row in rows(result, "provider")}
+                self.assertEqual(providers["security"][2], status)
+                self.assertEqual(providers["information"][2], "available")
+                self.assertEqual(providers["diagnostics"][2], "available")
+
+
 class FixtureBackend:
     def __init__(
         self,
@@ -88,6 +238,973 @@ def rows(lines, kind):
     return [line.split("\t") for line in lines if line.startswith(f"{kind}\t")]
 
 
+class LocalInformationTests(unittest.TestCase):
+    FILES = {
+        "/etc/os-release": b'NAME=ignored\nPRETTY_NAME="Fedora Linux 44 (Fixture)"\nVERSION_ID=44\n',
+        "/proc/cpuinfo": b"processor: 0\nmodel name\t: Fixture CPU\nmodel name: Later CPU\n",
+        "/proc/meminfo": b"MemTotal: 1024 kB\nMemAvailable: 768 kB\nSwapTotal: 256 kB\nSwapFree: 128 kB\n",
+    }
+
+    def read(self, files=None, *, identity=None, count=4, uptime=10.99):
+        """Exercise the fixed reader without files, services, subprocesses, or journals."""
+        contents = dict(self.FILES)
+        contents.update(files or {})
+        streams, reads, opened = [], [], []
+
+        class Source(io.BytesIO):
+            def read(self, size=-1):
+                reads.append(size)
+                return super().read(size)
+
+        def open_source(path, mode):
+            self.assertEqual(mode, "rb")
+            self.assertIn(path, self.FILES)
+            opened.append(path)
+            value = contents[path]
+            if isinstance(value, Exception):
+                raise value
+            stream = Source(value)
+            streams.append(stream)
+            return stream
+
+        identity = identity if identity is not None else types.SimpleNamespace(release="6.fixture", machine="x86_64")
+        def response(value):
+            return {"side_effect": value} if isinstance(value, Exception) else {"return_value": value}
+
+        output = io.StringIO()
+        with mock.patch.object(provider, "open", open_source, create=True), \
+                mock.patch.object(provider.os, "uname", **response(identity)), \
+                mock.patch.object(provider.os, "cpu_count", **response(count)), \
+                mock.patch.object(provider.time, "clock_gettime", **response(uptime)) as clock, \
+                mock.patch.object(provider.subprocess, "Popen", side_effect=AssertionError("Unexpected subprocess")), \
+                mock.patch.object(provider.os, "system", side_effect=AssertionError("Unexpected shell")), \
+                mock.patch.object(provider.ServiceRead, "run", side_effect=AssertionError("Unexpected service read")), \
+                mock.patch.object(provider, "open_journal_directory", side_effect=AssertionError("Unexpected journal")), \
+                contextlib.redirect_stdout(output):
+            result = provider.read_local_information()
+            if getattr(provider.time, "CLOCK_BOOTTIME", None) is not None:
+                clock.assert_called_once_with(provider.time.CLOCK_BOOTTIME)
+            else:
+                clock.assert_not_called()
+        self.assertEqual(output.getvalue(), "")
+        self.assertCountEqual(opened, self.FILES)
+        self.assertEqual(len(reads), len(streams))
+        self.assertTrue(all(stream.closed for stream in streams))
+        self.assertTrue(all(size in (65537, 4194305, 1048577) for size in reads))
+        self.assertEqual(len(result), 11)
+        for state in result.values():
+            if state.status != "available":
+                self.assertEqual(state.value, "unknown")
+                self.assertNotEqual(state.error_code, "")
+        return result
+
+    def test_complete_fixed_local_snapshot(self):
+        result = self.read()
+        self.assertTrue(all(state.status == "available" and state.error_code == "" for state in result.values()))
+        expected = {"os-name": "Fedora Linux 44 (Fixture)", "os-version": "44",
+            "kernel-release": "6.fixture", "architecture": "x86_64", "cpu-model": "Fixture CPU",
+            "logical-cpus": "4", "memory-total-bytes": "1048576", "memory-available-bytes": "786432",
+            "swap-total-bytes": "262144", "swap-free-bytes": "131072", "uptime-seconds": "10"}
+        self.assertEqual({key: state.value for key, state in result.items()}, expected)
+
+    def test_file_failures_remain_source_scoped_and_do_not_expose_exception_text(self):
+        for path, identifier in (("/etc/os-release", "os-name"), ("/proc/cpuinfo", "cpu-model"),
+                                 ("/proc/meminfo", "memory-total-bytes")):
+            for number, status, code in ((errno.ENOENT, "unsupported", "missing-provider"),
+                    (errno.ENOTDIR, "unsupported", "missing-provider"),
+                    (errno.EACCES, "restricted", "permission-denied"),
+                    (errno.EPERM, "restricted", "permission-denied"), (errno.EIO, "unavailable", "internal")):
+                with self.subTest(path=path, errno=number):
+                    result = self.read({path: OSError(number, "private source details")})
+                    self.assertEqual((result[identifier].status, result[identifier].error_code), (status, code))
+                    self.assertEqual(result["logical-cpus"].status, "available")
+                    self.assertEqual(result["kernel-release"].status, "available")
+                    self.assertNotIn("private source details", repr(result))
+
+    def test_each_file_is_capped_before_parsing_and_exact_limit_is_accepted(self):
+        for path, limit, identifier in (("/etc/os-release", 65536, "os-name"),
+                ("/proc/cpuinfo", 4194304, "cpu-model"), ("/proc/meminfo", 1048576, "memory-total-bytes")):
+            with self.subTest(path=path):
+                data = self.FILES[path] + b"#" * (limit - len(self.FILES[path]))
+                self.assertEqual(self.read({path: data})[identifier].status, "available")
+                result = self.read({path: data + b"x"})
+                self.assertEqual(result[identifier].error_code, "malformed")
+                self.assertEqual(result["uptime-seconds"].status, "available")
+
+    def test_os_keys_are_allowlisted_and_quoted_values_are_never_evaluated(self):
+        result = self.read({"/etc/os-release": b"PRETTY_NAME='$(false) literal'\nVERSION_ID=44\nTOKEN=do-not-disclose\nOTHER='unclosed\nUNRELATED=\xff\n"})
+        self.assertEqual(result["os-name"].value, "$(false) literal")
+        self.assertEqual(result["os-version"].value, "44")
+        self.assertNotIn("do-not-disclose", repr(result))
+
+    def test_malformed_os_field_does_not_hide_the_other_key(self):
+        for field in (b'PRETTY_NAME="unclosed', b"PRETTY_NAME=two words", b"PRETTY_NAME=",
+                      b"PRETTY_NAME", b"PRETTY_NAME=one\nPRETTY_NAME=two\nPRETTY_NAME=three"):
+            with self.subTest(field=field):
+                result = self.read({"/etc/os-release": field + b"\nVERSION_ID=44\n"})
+                self.assertEqual(result["os-name"].status, "partial")
+                self.assertEqual(result["os-version"].value, "44")
+
+    def test_missing_fields_and_invalid_utf8_are_scoped(self):
+        result = self.read({"/etc/os-release": b"", "/proc/cpuinfo": b"", "/proc/meminfo": b""})
+        self.assertEqual(sum(state.status == "available" for state in result.values()), 4)
+        for path, identifier, target in (("/etc/os-release", "os-name", b"Fedora Linux 44 (Fixture)"),
+                ("/proc/cpuinfo", "cpu-model", b"Fixture CPU"), ("/proc/meminfo", "memory-total-bytes", b"1024 kB")):
+            result = self.read({path: self.FILES[path].replace(target, b"\xff")})
+            self.assertEqual(result[identifier].error_code, "malformed")
+            self.assertEqual(result["architecture"].status, "available")
+            self.assertEqual(result["os-version"].value, "44")
+            self.assertEqual(result["memory-available-bytes"].value, "786432")
+
+    def test_first_cpu_model_and_utf8_field_bound(self):
+        for name, status in (("", "partial"), ("\x00CPU", "partial"), ("e" * 512, "available"),
+                             ("e" * 513, "partial"), ("\u00e9" * 256, "available"), ("\u00e9" * 257, "partial")):
+            with self.subTest(length=len(name), status=status):
+                result = self.read({"/proc/cpuinfo": ("model name: " + name + "\nmodel name: valid later\n").encode()})
+                self.assertEqual(result["cpu-model"].status, status)
+        result = self.read({"/proc/cpuinfo": b"model name: First\nmodel name: \xff\n"})
+        self.assertEqual(result["cpu-model"].value, "First")
+
+    def test_memory_units_numbers_duplicates_and_unknown_keys(self):
+        for value in ("1 KB", "1 MB", "-1 kB", "+1 kB", "1.5 kB", "1e3 kB", "\u0661 kB", "1 kB extra", "9" * 1000 + " kB"):
+            with self.subTest(value=value[:30]):
+                data = self.FILES["/proc/meminfo"].replace(b"768 kB", value.encode())
+                result = self.read({"/proc/meminfo": data})
+                self.assertEqual(result["memory-available-bytes"].status, "partial")
+                self.assertEqual(result["memory-total-bytes"].value, "1048576")
+        data = self.FILES["/proc/meminfo"] + b"MemAvailable: 1 kB\nMemAvailable: 2 kB\nUnknown: invalid\n"
+        self.assertEqual(self.read({"/proc/meminfo": data})["memory-available-bytes"].error_code, "malformed")
+
+    def test_memory_conversion_overflow_boundary_and_canonical_zeroes(self):
+        maximum = provider.INFORMATION_UINT_MAX // 1024
+        for value, expected in ((str(maximum), str(maximum * 1024)), (str(maximum + 1), "unknown"),
+                                ("00000000000000000001", "1024"), ("0", "0")):
+            result = self.read({"/proc/meminfo": self.FILES["/proc/meminfo"].replace(b"768 kB", (value + " kB").encode())})
+            self.assertEqual(result["memory-available-bytes"].value, expected)
+
+    def test_uname_failure_and_fields_are_independent(self):
+        result = self.read(identity=OSError(errno.EIO, "private uname detail"))
+        self.assertEqual(result["kernel-release"].status, "unavailable")
+        self.assertEqual(result["architecture"].status, "unavailable")
+        self.assertEqual(result["os-name"].status, "available")
+        result = self.read(identity=types.SimpleNamespace(release="bad\nrelease", machine="x86_64"))
+        self.assertEqual(result["kernel-release"].status, "partial")
+        self.assertEqual(result["architecture"].value, "x86_64")
+
+    def test_logical_processor_count_is_checked_without_hiding_other_cpu_data(self):
+        for value in (None, True, False, 0, -1, 1.5, "4", 1 << 64):
+            with self.subTest(value=value):
+                result = self.read(count=value)
+                self.assertEqual(result["logical-cpus"].status, "partial")
+                self.assertEqual(result["cpu-model"].status, "available")
+
+    def test_uptime_is_checked_floored_and_uses_only_boottime(self):
+        for value in (float("nan"), float("inf"), -float("inf"), -0.1, True, "10", 1 << 64, 1 << 10000):
+            result = self.read(uptime=value)
+            self.assertEqual(result["uptime-seconds"].status, "partial")
+            self.assertEqual(result["memory-total-bytes"].status, "available")
+        for value, expected in ((0, "0"), (0.99, "0"), (12.99, "12")):
+            self.assertEqual(self.read(uptime=value)["uptime-seconds"].value, expected)
+        with mock.patch.object(provider.time, "CLOCK_BOOTTIME", None):
+            self.assertEqual(self.read()["uptime-seconds"].status, "unsupported")
+        self.assertEqual(self.read(uptime=OSError(errno.EIO, "clock unavailable"))["uptime-seconds"].status, "unavailable")
+
+
+class LocalSecurityTests(unittest.TestCase):
+    runtime_path = "/sys/fs/selinux/enforce"
+    config_path = "/etc/selinux/config"
+    variable_path = "/sys/firmware/efi/efivars/SecureBoot-8be4df61-93ca-11d2-aa0d-00e098032b8c"
+
+    def read(self, kind, *, runtime=b"1", config=b"SELINUX=disabled\n", variable=b"\x07\x00\x00\x00\x01", efi=None):
+        contents = {self.runtime_path: runtime, self.config_path: config, self.variable_path: variable}
+        limits = {self.runtime_path: 2, self.config_path: 65537, self.variable_path: 6}
+        opened, streams = [], []
+        class Source(io.BytesIO):
+            def read(inner, size=-1):
+                self.assertEqual(size, limits[inner.path])
+                return super().read(size)
+        def source(path, mode):
+            self.assertEqual(mode, "rb")
+            self.assertIn(path, contents)
+            opened.append(path)
+            value = contents[path]
+            if isinstance(value, Exception):
+                raise value
+            stream = Source(value)
+            stream.path = path
+            streams.append(stream)
+            return stream
+        efi = types.SimpleNamespace(st_mode=stat.S_IFDIR | 0o755) if efi is None else efi
+        stat_options = {"side_effect": efi} if isinstance(efi, Exception) else {"return_value": efi}
+        with mock.patch.object(provider, "open", source, create=True), \
+                mock.patch.object(provider.os, "stat", **stat_options) as source_stat, \
+                mock.patch.object(provider.os, "listdir", side_effect=AssertionError("Unexpected enumeration")), \
+                mock.patch.object(provider.os, "scandir", side_effect=AssertionError("Unexpected enumeration")), \
+                mock.patch.object(provider.subprocess, "Popen", side_effect=AssertionError("Unexpected subprocess")), \
+                mock.patch.object(provider, "open_journal_directory", side_effect=AssertionError("Unexpected journal")):
+            result = provider.read_selinux_status() if kind == "selinux" else provider.read_secure_boot_status()
+        self.assertTrue(all(stream.closed for stream in streams))
+        self.assertEqual(len(opened), len(set(opened)))
+        if kind == "selinux":
+            source_stat.assert_not_called()
+        else:
+            source_stat.assert_called_once_with("/sys/firmware/efi/efivars")
+        if result.status != "available":
+            self.assertEqual(result.value, "unknown")
+            self.assertNotEqual(result.error_code, "")
+        self.assertNotIn("private detail", repr(result))
+        return result, opened
+
+    def absent(self):
+        return OSError(errno.ENOENT, "private detail")
+
+    def test_selinux_runtime_is_authoritative_and_config_is_not_read(self):
+        for data, value in ((b"1", "enforcing"), (b"0", "permissive")):
+            result, opened = self.read("selinux", runtime=data, config=AssertionError("Unused config"))
+            self.assertEqual((result.status, result.value), ("available", value))
+            self.assertEqual(opened, [self.runtime_path])
+
+    def test_malformed_or_denied_runtime_never_falls_back_to_disabled(self):
+        for data in (b"", b"1\n", b"2", b"\x01", b"1" * 100):
+            result, opened = self.read("selinux", runtime=data)
+            self.assertEqual(result.status, "partial")
+            self.assertEqual(opened, [self.runtime_path])
+        for number, status in ((errno.EACCES, "restricted"), (errno.EPERM, "restricted"), (errno.EIO, "unavailable")):
+            result, opened = self.read("selinux", runtime=OSError(number, "private detail"))
+            self.assertEqual(result.status, status)
+            self.assertEqual(opened, [self.runtime_path])
+
+    def test_only_disabled_config_can_establish_state_without_runtime(self):
+        for text in (b"SELINUX=disabled", b' SELINUX = "disabled" # comment\nOTHER=\xff\n'):
+            result, opened = self.read("selinux", runtime=self.absent(), config=text)
+            self.assertEqual((result.status, result.value), ("available", "disabled"))
+            self.assertEqual(opened, [self.runtime_path, self.config_path])
+        for text in (b"SELINUX=enforcing", b"SELINUX=permissive", b"SELINUX=DISABLED", b"SELINUX=",
+                     b"SELINUX='unclosed", b"SELINUX=$(false)", b"SELINUX=\xff", b"SELINUX",
+                     b"SELINUX=disabled\nSELINUX=disabled\nSELINUX=disabled"):
+            result, _opened = self.read("selinux", runtime=self.absent(), config=text)
+            self.assertEqual(result.status, "partial")
+
+    def test_missing_config_or_key_is_unsupported_but_denial_is_restricted(self):
+        for config in (self.absent(), b"", b"# SELINUX=disabled\nUNRELATED=value"):
+            result, _opened = self.read("selinux", runtime=self.absent(), config=config)
+            self.assertEqual(result.status, "unsupported")
+        result, _opened = self.read("selinux", runtime=self.absent(), config=PermissionError(errno.EACCES, "private detail"))
+        self.assertEqual(result.status, "restricted")
+
+    def test_selinux_config_byte_limit_precedes_parsing(self):
+        base = b"SELINUX=disabled\n"
+        exact = base + b"#" * (65536 - len(base))
+        self.assertEqual(self.read("selinux", runtime=self.absent(), config=exact)[0].value, "disabled")
+        self.assertEqual(self.read("selinux", runtime=self.absent(), config=exact + b"x")[0].status, "partial")
+
+    def test_secure_boot_exact_binary_payload_and_attributes_prefix(self):
+        for value, state in ((0, "disabled"), (1, "enabled")):
+            result, opened = self.read("secure-boot", variable=b"\xff" * 4 + bytes([value]))
+            self.assertEqual((result.status, result.value), ("available", state))
+            self.assertEqual(opened, [self.variable_path])
+        for data in (b"", b"\x00" * 4, b"\x00" * 6, b"\x00" * 4 + b"1", b"\x00" * 4 + b"\x02"):
+            self.assertEqual(self.read("secure-boot", variable=data)[0].status, "partial")
+
+    def test_secure_boot_platform_absence_and_variable_absence_are_distinct(self):
+        result, opened = self.read("secure-boot", efi=self.absent())
+        self.assertEqual(result.status, "unsupported")
+        self.assertEqual(opened, [])
+        result, opened = self.read("secure-boot", variable=self.absent())
+        self.assertEqual(result.status, "partial")
+        self.assertEqual(opened, [self.variable_path])
+        result, opened = self.read("secure-boot", efi=types.SimpleNamespace(st_mode=stat.S_IFREG))
+        self.assertEqual(result.status, "partial")
+        self.assertEqual(opened, [])
+
+    def test_secure_boot_denial_and_io_failure_never_mean_disabled(self):
+        for source in ("efi", "variable"):
+            for number, status in ((errno.EACCES, "restricted"), (errno.EPERM, "restricted"), (errno.EIO, "unavailable")):
+                result, _opened = self.read("secure-boot", **{source: OSError(number, "private detail")})
+                self.assertEqual(result.status, status)
+
+    def test_source_selector_is_closed_before_open(self):
+        for kind in ("other", "/etc/passwd", [], None):
+            with mock.patch.object(provider, "open", create=True) as source, \
+                    self.assertRaises(provider.SnapshotFailure):
+                provider.read_security_bytes(kind)
+            source.assert_not_called()
+
+
+class FirewalldReadTests(unittest.TestCase):
+    def collect(self, state=None, *, remote=None, mode="normal"):
+        _unused, connection, gio, glib, variant = RegionalReadTests().reader()
+        read = provider.FirewalldRead(gio, glib)
+        gio.dbus_error_get_remote_error.return_value = remote
+        def run():
+            if mode == "connect-timeout":
+                read.expire()
+            read.connected(None, object(), None)
+            if mode == "timeout":
+                read.expire()
+            if remote:
+                connection.call_finish.side_effect = variant.Error("private detail")
+            else:
+                connection.call_finish.return_value = (variant.Variant("(s)", ("bad",)) if mode == "malformed"
+                    else CupsReadTests().reply(variant, state, **{"0": "firewalld.service"}))
+            if mode == "decode-timeout":
+                decode = provider.decode_unit_state
+                def delayed(reply):
+                    read.deadline = time.monotonic() - 1
+                    return decode(reply)
+                with mock.patch.object(provider, "decode_unit_state", side_effect=delayed):
+                    read.replied(connection, object(), None)
+            else:
+                read.replied(connection, object(), None)
+        read.loop.run.side_effect = run
+        with mock.patch.object(provider, "FirewalldRead", return_value=read), \
+                mock.patch.object(provider, "open_journal_directory") as journal:
+            result = provider.read_firewalld_status()
+        journal.assert_not_called()
+        connection.close_sync.assert_not_called()
+        self.assertTrue(read.cancellable.cancel.called)
+        self.assertNotIn("private detail", repr(result))
+        return result, read, connection, gio, glib
+
+    def test_fixed_unit_query_and_known_states(self):
+        for active, value in (("active", "enabled"), ("inactive", "disabled")):
+            result, _read, connection, gio, glib = self.collect(CupsReadTests().state(active=active))
+            self.assertEqual((result.status, result.value), ("available", value))
+            self.assertIn("other firewall", result.detail)
+            connection.call.assert_called_once()
+            args = connection.call.call_args.args
+            self.assertEqual(args[:4], (provider.SYSTEMD_NAME, provider.SYSTEMD_PATH, provider.SYSTEMD_MANAGER, "ListUnitsByNames"))
+            self.assertEqual(args[4].unpack(), (["firewalld.service"],))
+            self.assertEqual(args[6], gio.DBusCallFlags.NO_AUTO_START)
+            self.assertTrue(0 < args[7] <= 10000)
+            glib.source_remove.assert_called_once_with(17)
+
+    def test_absent_failed_transitional_and_malformed_states(self):
+        for active in ("failed", "activating", "deactivating", "reloading", "unknown"):
+            result, *_rest = self.collect(CupsReadTests().state(active=active))
+            self.assertEqual((result.status, result.value), ("partial", "unknown"))
+        result, *_rest = self.collect(CupsReadTests().state(load="not-found"))
+        self.assertEqual((result.status, result.value), ("unsupported", "unknown"))
+        for state in (CupsReadTests().state(load="not-found", active="active"), CupsReadTests().state(active="bad\nstate")):
+            self.assertEqual(self.collect(state)[0].error_code, "malformed")
+        self.assertEqual(self.collect(mode="malformed")[0].status, "partial")
+
+    def test_service_failures_and_late_replies_are_scoped(self):
+        for remote, status, code in (("org.freedesktop.systemd1.NoSuchUnit", "unsupported", "missing-provider"),
+                ("org.freedesktop.DBus.Error.AccessDenied", "unavailable", "permission-denied"),
+                ("org.freedesktop.DBus.Error.ServiceUnknown", "unavailable", "missing-provider")):
+            result, *_rest = self.collect(remote=remote)
+            self.assertEqual((result.status, result.value, result.error_code), (status, "unknown", code))
+        for mode in ("timeout", "connect-timeout"):
+            result, read, connection, _gio, _glib = self.collect(mode=mode)
+            self.assertEqual((result.status, result.error_code), ("unavailable", "timeout"))
+            connection.call_finish.reset_mock()
+            read.replied(connection, object(), None)
+            connection.call_finish.assert_not_called()
+            if mode == "connect-timeout":
+                connection.call.assert_not_called()
+
+    def test_missing_bindings_and_interruption(self):
+        with mock.patch.object(provider, "FirewalldRead", side_effect=provider.SnapshotFailure(
+                "missing-provider", "Bindings unavailable", "unavailable")):
+            self.assertEqual(provider.read_firewalld_status().status, "unavailable")
+        with mock.patch.object(provider, "FirewalldRead"), \
+                mock.patch.object(provider, "run_interruptible_read", side_effect=InterruptedError):
+            with self.assertRaises(InterruptedError):
+                provider.read_firewalld_status()
+
+    def test_decode_deadline_and_completed_callback_cannot_publish_late_state(self):
+        self.assertEqual(self.collect(mode="decode-timeout")[0].error_code, "timeout")
+        _result, read, connection, _gio, _glib = self.collect()
+        connection.call_finish.reset_mock()
+        read.replied(connection, object(), None)
+        connection.call_finish.assert_not_called()
+
+    def test_actual_private_bus_state_deadline_and_shared_connection(self):
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-firewalld-read-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "Private-bus firewalld reads: PASS (fixed query, states, failures, deadline, late reply, shared bus)\n")
+
+
+class FilesystemInformationTests(unittest.TestCase):
+    def row(self, identifier=7, **changes):
+        return dict({"id": identifier, "source": "/dev/fixture", "target": "/", "fstype": "ext4",
+            "size": 1048576, "used": 1024, "avail": 1047552}, **changes)
+
+    def parse(self, rows):
+        return provider.parse_filesystem_information(provider.json.dumps({"filesystems": rows}).encode())
+
+    def test_complete_nested_inventory_is_keyed_and_sorted_by_mount_id(self):
+        result = self.parse([self.row(10, children=[self.row(2)])])
+        self.assertEqual((result.summary.status, result.summary.value), ("available", "2"))
+        self.assertEqual([row.mount_id for row in result.rows], ["2", "10"])
+        self.assertTrue(all(row.status == "available" and row.size_bytes == "1048576" for row in result.rows))
+        self.assertEqual(self.parse([]).summary.value, "0")
+
+    def test_display_sanitization_does_not_merge_distinct_mounts(self):
+        result = self.parse([self.row(1, target="/a\nb", source="/dev/\tfixture"),
+            self.row(2, target="/a b", fstype="x" * 600)])
+        self.assertEqual(result.summary.value, "2")
+        self.assertEqual([row.target for row in result.rows], ["/a b", "/a b"])
+        self.assertEqual(result.rows[0].source, "/dev/ fixture")
+        self.assertEqual(len(result.rows[1].fstype), 512)
+        result = self.parse([self.row(source="\u00e9" * 300)])
+        self.assertEqual(len(result.rows[0].source.encode()), 512)
+
+    def test_bad_rows_and_nested_shape_preserve_valid_peers(self):
+        for bad in (None, [], self.row(id="7"), self.row(id=True), self.row(id=-1),
+                    self.row(source=None), self.row(target=""), self.row(fstype="\ud800")):
+            result = self.parse([bad, self.row(8)])
+            self.assertEqual((result.summary.status, result.summary.value), ("partial", "unknown"))
+            self.assertEqual([row.mount_id for row in result.rows], ["8"])
+        result = self.parse([self.row(children="wrong")])
+        self.assertEqual(result.summary.status, "partial")
+        self.assertEqual(len(result.rows), 1)
+
+    def test_counters_remain_exact_and_failed_values_are_unknown(self):
+        for value in (None, True, False, -1, 1.0, "1", 1 << 64):
+            result = self.parse([self.row(size=value)])
+            self.assertEqual(result.summary.status, "partial")
+            row = result.rows[0]
+            self.assertEqual((row.status, row.size_bytes, row.used_bytes), ("partial", "unknown", "1024"))
+        result = self.parse([self.row(size=(1 << 64) - 1, used=0, avail=0)])
+        self.assertEqual(result.rows[0].size_bytes, str((1 << 64) - 1))
+        self.assertEqual(result.summary.status, "available")
+        result = self.parse([self.row(size=None, used=None, avail=None)])
+        self.assertEqual((result.rows[0].size_bytes, result.rows[0].used_bytes, result.rows[0].available_bytes),
+                         ("unknown", "unknown", "unknown"))
+
+    def test_duplicate_mount_ids_are_removed_even_after_record_limit(self):
+        result = self.parse([self.row(1), self.row(1), self.row(1), self.row(2)])
+        self.assertEqual([row.mount_id for row in result.rows], ["2"])
+        self.assertEqual(result.summary.status, "partial")
+        result = self.parse([self.row(index) for index in range(256)])
+        self.assertEqual((result.summary.status, result.summary.value), ("available", "256"))
+        with self.assertRaisesRegex(provider.SnapshotFailure, "record limit"):
+            self.parse([self.row(index) for index in range(257)] + [self.row(0)])
+
+    def test_invalid_json_shape_duplicate_keys_numbers_and_utf8(self):
+        for data in (b"", b"[]", b"{}", b'{"filesystems":null}', b'{"filesystems": [], "filesystems": []}',
+                     b'{"filesystems":[{"id":1,"id":2}]}', b'{"filesystems":[],"extra":NaN}',
+                     b'{"filesystems":[],"extra":Infinity}', b'\xff', b"[" * 2000 + b"]" * 2000):
+            with self.subTest(data=data[:50]), self.assertRaises(provider.SnapshotFailure) as caught:
+                provider.parse_filesystem_information(data)
+            self.assertEqual(caught.exception.code, "malformed")
+
+    def test_parser_byte_limit_is_checked_before_decoding(self):
+        data = b'{"filesystems":[]}'
+        exact = data + b" " * (provider.FILESYSTEM_OUTPUT_BYTES - len(data))
+        self.assertEqual(provider.parse_filesystem_information(exact).summary.value, "0")
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.parse_filesystem_information(exact + b" ")
+
+
+class ScreenLockTests(unittest.TestCase):
+    def record(self, status="available", enabled="yes", running="yes"):
+        return f"power-protocol\t1\t0\npower-lock\t{status}\t{enabled}\t600\t{running}\tuser-session\tAutomatic locking\n".encode()
+
+    def test_status_and_semantics_are_independent(self):
+        for status in ("available", "partial", "restricted", "unavailable"):
+            for enabled in ("yes", "no"):
+                for running in ("yes", "no"):
+                    result = provider.parse_screen_lock(self.record(status, enabled, running))
+                    expected_status = "partial" if status == "available" and enabled == "yes" and running == "no" else status
+                    expected_value = ("enabled" if enabled == "yes" else "disabled") if expected_status == "available" else "unknown"
+                    self.assertEqual((result.status, result.value), (expected_status, expected_value))
+
+    def test_version_missing_duplicate_and_malformed_records_fail_closed(self):
+        valid = self.record()
+        for data in (b"", b"power-protocol\t1\t0\n", valid[:-1], valid + valid,
+                valid.replace(b"\t1\t0", b"\t2\t0"), valid.replace(b"\t1\t0", b"\t1\t-1"),
+                valid.replace(b"\tyes\t", b"\ttrue\t"), valid.replace(b"\t600\t", b"\t86401\t"),
+                valid.replace(b"user-session", b"privileged"), valid.replace(b"available", b"idle"),
+                valid.replace(b"Automatic locking", b""), valid.replace(b"Automatic locking", b"\xff"),
+                valid.replace(b"Automatic locking", b"x" * 513), valid + b"x" * 8192):
+            with self.subTest(data=data[:80]), self.assertRaises(provider.SnapshotFailure):
+                provider.parse_screen_lock(data)
+
+    def test_additive_records_and_fields_are_forward_compatible(self):
+        data = self.record().replace(b"\t1\t0", b"\t1\t2\tfuture").replace(b"Automatic locking\n", b"Automatic locking\tfuture\n")
+        self.assertEqual(provider.parse_screen_lock(data + b"future-record\tvalue\n").value, "enabled")
+
+    @contextlib.contextmanager
+    def process(self, program):
+        popen = subprocess.Popen
+        children = []
+        def launch(command, **options):
+            self.assertEqual(command, ["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "10",
+                str(REPO / "scripts/dwm-quickshell-controlcenter"), "power-lock-snapshot"])
+            self.assertEqual(options["env"]["DISPLAY"], ":fixture")
+            self.assertEqual(options["env"]["LC_ALL"], "C")
+            self.assertEqual(options["stdin"], subprocess.DEVNULL)
+            self.assertTrue(options["start_new_session"])
+            child = popen(["/usr/bin/python3", "-c", program], **options)
+            children.append(child)
+            return child
+        try:
+            with mock.patch.dict(os.environ, {"DISPLAY": ":fixture"}), \
+                    mock.patch.object(provider.subprocess, "Popen", side_effect=launch):
+                yield
+            self.assertTrue(all(child.returncode is not None and child.stdout.closed and child.stderr.closed for child in children))
+        finally:
+            for child in children:
+                if child.returncode is None:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(child.pid, signal.SIGKILL)
+                    child.wait(timeout=2)
+
+    def test_fixed_power_helper_preserves_session_and_requires_complete_success(self):
+        for code, value, status in ((0, "enabled", "available"), (1, "unknown", "unavailable"), (124, "unknown", "unavailable")):
+            with self.process(f"import sys; sys.stdout.buffer.write({self.record()!r}); sys.exit({code})"), \
+                    mock.patch.object(provider, "open_journal_directory") as journal:
+                state = provider.read_screen_lock()
+            self.assertEqual((state.value, state.status), (value, status))
+            journal.assert_not_called()
+
+    def test_output_budget_and_missing_helper_are_scoped(self):
+        for stream in ("stdout", "stderr"):
+            with self.process(f"import sys; sys.{stream}.write('x' * 8193)"):
+                state = provider.read_screen_lock()
+            self.assertEqual((state.value, state.error_code), ("unknown", "malformed"))
+        with mock.patch.object(provider.subprocess, "Popen", side_effect=FileNotFoundError()):
+            self.assertEqual(provider.read_screen_lock().error_code, "missing-provider")
+
+    def test_deadline_is_bounded_and_cleans_owned_child(self):
+        started = time.monotonic()
+        with self.process("import os, time; os.close(1); os.close(2); time.sleep(30)"):
+            result = provider.read_screen_lock()
+        self.assertEqual((result.status, result.value, result.error_code), ("unavailable", "unknown", "timeout"))
+        self.assertLess(time.monotonic() - started, 13)
+
+    def test_actual_helper_keeps_interrupted_probes_in_owned_group(self):
+        popen = subprocess.Popen
+        for probe in ("xset", "gsettings"):
+            for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                with self.subTest(probe=probe, signal=number), tempfile.TemporaryDirectory() as directory:
+                    path = pathlib.Path(directory)
+                    pidfile = path / "probe.pid"
+                    sleeper = ("#!/usr/bin/python3\nimport os, pathlib, signal, time\n"
+                        + f"pathlib.Path({str(pidfile)!r}).write_text(str(os.getpid()))\n"
+                        + f"os.kill({os.getpid()}, {number})\ntime.sleep(30)\n")
+                    for name in ("xset", "gsettings", "light-locker"):
+                        script = path / name
+                        script.write_text(sleeper if name == probe else
+                            "#!/bin/sh\nprintf 'Screen Saver:\n  timeout: 600 cycle: 600\n'\n")
+                        script.chmod(0o700)
+                    def launch(command, **options):
+                        options["env"] = dict(options["env"], PATH=directory + ":/usr/bin:/bin",
+                            HOME=directory, XDG_CONFIG_HOME=directory, XDG_DATA_HOME=directory)
+                        return popen(command, **options)
+                    try:
+                        with mock.patch.object(provider.subprocess, "Popen", side_effect=launch):
+                            with self.assertRaises(SystemExit) as caught:
+                                provider.read_screen_lock()
+                        self.assertEqual(caught.exception.code, 128 + number)
+                        child = int(pidfile.read_text())
+                        record = pathlib.Path(f"/proc/{child}/stat")
+                        self.assertTrue(not record.exists() or record.read_text().rsplit(") ", 1)[1].split()[0] == "Z",
+                            "Nested power probe survived confirmed reader cleanup")
+                    finally:
+                        if pidfile.exists():
+                            with contextlib.suppress(ProcessLookupError):
+                                os.kill(int(pidfile.read_text()), signal.SIGKILL)
+
+    def test_interruption_retains_signal_and_restores_handlers(self):
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            previous = signal.getsignal(number)
+            with self.process(f"import os, signal, time; os.kill(os.getppid(), {number}); time.sleep(30)"):
+                with self.assertRaises(SystemExit) as caught:
+                    provider.read_screen_lock()
+            self.assertEqual(caught.exception.code, 128 + number)
+            self.assertIs(signal.getsignal(number), previous)
+
+
+class RootEncryptionTests(unittest.TestCase):
+    def node(self, name="disk", **changes):
+        return dict({"name": name, "type": "disk", "fstype": None, "mountpoints": [None], "pkname": None}, **changes)
+
+    def topology(self, encrypted=False):
+        root = self.node("root", type="crypt" if encrypted else "part", fstype="ext4", mountpoints=["/"], pkname="disk")
+        return [self.node(children=[root])]
+
+    def parse(self, rows):
+        return provider.parse_root_encryption(provider.json.dumps({"blockdevices": rows}).encode())
+
+    def assert_unknown(self, rows):
+        with self.assertRaises(provider.SnapshotFailure) as caught:
+            self.parse(rows)
+        self.assertEqual((caught.exception.code, caught.exception.status), ("malformed", "partial"))
+
+    def test_plain_and_crypt_root_ancestry(self):
+        for encrypted, value in ((False, "unencrypted"), (True, "encrypted")):
+            result = self.parse(self.topology(encrypted))
+            self.assertEqual((result.status, result.value), ("available", value))
+            self.assertIn("hardware encryption are not assessed", result.detail)
+        rows = self.topology()
+        rows[0]["fstype"] = "crypto_LUKS"
+        self.assertEqual(self.parse(rows).value, "encrypted")
+
+    def test_mapper_parent_kernel_alias_and_lvm_root(self):
+        root = self.node("fedora-root", type="lvm", fstype="btrfs", mountpoints=["/", "/home"], pkname="dm-0")
+        crypt = self.node("luks-volume", type="crypt", pkname="disk", children=[root])
+        self.assertEqual(self.parse([self.node(children=[crypt])]).value, "encrypted")
+        # kpartx mapper partitions also have a PART-prefixed UUID and alias.
+        crypt["type"] = "part"
+        self.assertEqual(self.parse([self.node(fstype="crypto_LUKS", children=[crypt])]).value, "encrypted")
+        # A second child must observe the same kernel identity for this mapper.
+        crypt["children"].append(self.node("fedora-swap", type="lvm", fstype="swap", pkname="dm-1"))
+        self.assert_unknown([self.node(children=[crypt])])
+
+    def test_multiple_backing_paths_all_encrypted_or_mixed(self):
+        def branch(name, encrypted):
+            root = self.node("root", type="raid1", fstype="ext4", mountpoints=["/"], pkname=name)
+            return self.node(name, fstype="crypto_LUKS" if encrypted else None, children=[root])
+        self.assertEqual(self.parse([branch("a", True), branch("b", True)]).value, "encrypted")
+        self.assertEqual(self.parse([branch("a", False), branch("b", False)]).value, "unencrypted")
+        self.assert_unknown([branch("a", True), branch("b", False)])
+
+    def test_encryption_above_mixed_backing_paths_covers_every_path(self):
+        root = self.node("crypt-root", type="crypt", fstype="ext4", mountpoints=["/"], pkname="md0")
+        rows = [self.node(name, fstype=fs, children=[self.node("md0", type="raid1", pkname=name, children=[root])])
+                for name, fs in (("a", None), ("b", "crypto_LUKS"))]
+        self.assertEqual(self.parse(rows).value, "encrypted")
+
+    def test_multiple_root_mounts_must_agree(self):
+        rows = [self.node("a", fstype="ext4", mountpoints=["/"]), self.node("b", fstype="btrfs", mountpoints=["/"])]
+        self.assertEqual(self.parse(rows).value, "unencrypted")
+        rows += self.topology(True)
+        self.assert_unknown(rows)
+
+    def test_missing_root_or_incomplete_root_backing_is_unknown(self):
+        for rows in ([], [self.node()], [self.node(mountpoints=["/"])],
+                     [self.node(fstype="crypto_LUKS", mountpoints=["/"])],
+                     [self.node(fstype="ext4", mountpoints=["/root", "//"])],
+                     [self.node(type="loop", fstype="ext4", mountpoints=["/"])],
+                     [self.node(type="crypt", fstype="ext4", mountpoints=["/"])],
+                     [self.node(type="part", fstype="ext4", mountpoints=["/"], pkname="absent")]):
+            self.assert_unknown(rows)
+        rows = self.topology(True)
+        rows[0]["type"] = "loop"
+        self.assert_unknown(rows)
+        # An unrelated unmounted loop does not invalidate resolved root paths.
+        self.assertEqual(self.parse(self.topology() + [self.node("loop0", type="loop")]).value, "unencrypted")
+
+    def test_bad_parent_identity_and_conflicting_duplicate_metadata(self):
+        rows = self.topology()
+        rows[0]["children"][0]["pkname"] = "wrong"
+        self.assert_unknown(rows)
+        rows[0]["children"][0]["pkname"] = "dm-0"
+        self.assert_unknown(rows)  # Physical disks do not have mapper aliases.
+        for field, value in (("type", "crypt"), ("fstype", "btrfs"), ("mountpoints", ["/home"])):
+            rows = self.topology()
+            rows[0]["children"].append(dict(rows[0]["children"][0], **{field: value}))
+            self.assert_unknown(rows)
+        rows = self.topology()
+        rows[0]["children"].append(dict(rows[0]["children"][0]))
+        self.assertEqual(self.parse(rows).value, "unencrypted")
+
+    def test_cycles_and_ambiguous_kernel_aliases_are_unknown(self):
+        a = self.node("a", type="lvm", pkname="disk")
+        b = self.node("b", type="lvm", pkname="dm-0")
+        a["children"] = [b]
+        b["children"] = [dict(a, pkname="dm-1", children=[])]
+        self.assert_unknown(self.topology() + [self.node(children=[a])])
+        rows = []
+        for name in ("a", "b"):
+            rows.append(self.node(name, type="lvm", children=[self.node(name + "-child", pkname="dm-0")]))
+        self.assert_unknown(self.topology() + rows)
+
+    def test_selected_fields_and_children_are_strict(self):
+        for field, value in (("name", ""), ("name", "bad\nname"), ("name", "\ud800"),
+                ("name", "x" * 513), ("name", "\u00e9" * 257), ("type", None), ("fstype", []),
+                ("mountpoints", None), ("mountpoints", [False]), ("children", None), ("children", [None])):
+            rows = self.topology()
+            rows[0][field] = value
+            self.assert_unknown(rows)
+        for field in ("name", "type", "fstype", "mountpoints", "pkname"):
+            rows = self.topology()
+            del rows[0][field]
+            self.assert_unknown(rows)
+
+    def test_unique_record_cap_includes_repeated_rows_without_dropping_evidence(self):
+        rows = [self.node(str(index)) for index in range(1024)]
+        rows[0].update(fstype="ext4", mountpoints=["/"])
+        self.assertEqual(self.parse(rows + [dict(rows[0])]).value, "unencrypted")
+        self.assert_unknown(rows + [self.node("extra")])
+
+    def test_nested_topology_is_resolved_without_recursive_graph_walk(self):
+        child = self.node("root", type="part", fstype="ext4", mountpoints=["/"], pkname="p0")
+        for index in range(150):
+            child = self.node("p" + str(index), type="part", pkname="p" + str(index + 1), children=[child])
+        child["pkname"] = "disk"
+        self.assertEqual(self.parse([self.node(children=[child])]).value, "unencrypted")
+
+    def test_json_byte_limit_keys_numbers_and_decoding_fail_closed(self):
+        for data in (b"", b"[]", b"{}", b'{"blockdevices":null}', b'{"blockdevices":[],"blockdevices":[]}',
+                b'{"blockdevices":[{"name":"a","name":"b"}]}', b'{"blockdevices":[],"extra":NaN}',
+                b"\xff", b"[" * 2000 + b"]" * 2000):
+            with self.assertRaises(provider.SnapshotFailure):
+                provider.parse_root_encryption(data)
+        data = provider.json.dumps({"blockdevices": self.topology()}).encode()
+        exact = data + b" " * (provider.FILESYSTEM_OUTPUT_BYTES - len(data))
+        self.assertEqual(provider.parse_root_encryption(exact).value, "unencrypted")
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.parse_root_encryption(exact + b" ")
+
+
+class FilesystemProcessTests(unittest.TestCase):
+    source_command = ["/usr/bin/findmnt", "--json", "--bytes", "--real", "--uniq", "--output",
+                      "ID,SOURCE,TARGET,FSTYPE,SIZE,USED,AVAIL"]
+    source_fixture = "system-filesystem-process.py"
+
+    @contextlib.contextmanager
+    def source(self, mode="success", *arguments, signal_number=None, expect_cleanup=True):
+        popen, processes = subprocess.Popen, []
+        def launch(command, **options):
+            self.assertEqual(command, ["/usr/bin/timeout", "--signal=TERM", "--kill-after=1", "3"] + self.source_command)
+            self.assertEqual(options["env"], {"PATH": "/usr/bin:/bin", "LANG": "C", "LC_ALL": "C"})
+            self.assertEqual(options["stdin"], subprocess.DEVNULL)
+            self.assertTrue(options["start_new_session"])
+            self.assertNotIn("preexec_fn", options)
+            process = popen(command[:4] + ["/usr/bin/python3",
+                str(REPO / "tests/fixtures" / self.source_fixture), mode, *arguments], **options)
+            processes.append(process)
+            if signal_number is not None:
+                signal.raise_signal(signal_number)
+            return process
+        try:
+            with mock.patch.object(provider.subprocess, "Popen", side_effect=launch):
+                yield processes
+            if expect_cleanup:
+                self.assertTrue(all(p.returncode is not None and p.stdout.closed and p.stderr.closed for p in processes))
+        finally:
+            for process in processes:
+                if process.returncode is None:
+                    with contextlib.suppress(ProcessLookupError):
+                        os.killpg(process.pid, signal.SIGKILL)
+                    process.wait(timeout=2)
+                for stream in (process.stdout, process.stderr):
+                    if stream:
+                        stream.close()
+
+    def test_fixed_fresh_command_and_exact_combined_budget(self):
+        with self.source() as processes, mock.patch.dict(os.environ, {"LC_ALL": "invalid"}), \
+                mock.patch.object(provider, "open_journal_directory") as journal:
+            for _ in range(2):
+                result = provider.read_filesystem_information()
+                self.assertEqual((result.summary.status, result.summary.value), ("available", "1"))
+            self.assertEqual(len(processes), 2)
+            journal.assert_not_called()
+        with self.source("exact-budget"):
+            self.assertEqual(provider.read_filesystem_information().summary.status, "available")
+        with self.source("empty-json"):
+            self.assertEqual(provider.read_filesystem_information().summary.value, "0")
+
+    def test_bad_output_is_scoped_and_never_publishes_rows(self):
+        for mode in ("bad-json", "invalid-utf8", "stdout-overflow", "stderr-overflow", "combined-overflow"):
+            with self.subTest(mode=mode), self.source(mode):
+                result = provider.read_filesystem_information()
+                self.assertEqual((result.summary.status, result.summary.value, result.summary.error_code),
+                                 ("partial", "unknown", "malformed"))
+                self.assertEqual(result.rows, ())
+
+    def test_exit_status_is_required_and_stderr_is_not_disclosed(self):
+        for status, code in ((1, "internal"), (125, "internal"), (126, "internal"),
+                             (127, "missing-provider"), (124, "timeout"), (137, "timeout")):
+            with self.subTest(status=status), self.source("exit", str(status)):
+                result = provider.read_filesystem_information()
+                self.assertEqual((result.summary.status, result.summary.error_code), ("unavailable", code))
+                self.assertEqual(result.rows, ())
+                self.assertNotIn("private diagnostic", repr(result))
+
+    def test_missing_command_and_permission_denial_restore_handlers(self):
+        handlers = {n: signal.getsignal(n) for n in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        for error, status, code in ((FileNotFoundError(), "unavailable", "missing-provider"),
+                (PermissionError(errno.EACCES, "private"), "restricted", "permission-denied")):
+            with mock.patch.object(provider.subprocess, "Popen", side_effect=error):
+                result = provider.read_filesystem_information()
+            self.assertEqual((result.summary.status, result.summary.error_code), (status, code))
+            self.assertEqual(result.rows, ())
+        self.assertEqual(handlers, {n: signal.getsignal(n) for n in handlers})
+
+    def test_wall_clock_changes_do_not_extend_timeout_or_preserve_descendants(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pid_file = str(pathlib.Path(directory) / "child-pid")
+            started = time.monotonic()
+            with self.source("descendant", pid_file), mock.patch.object(provider.time, "time", side_effect=[9999, -9999]):
+                result = provider.read_filesystem_information()
+            self.assertEqual((result.summary.status, result.summary.error_code), ("unavailable", "timeout"))
+            self.assertLess(time.monotonic() - started, 5.5)
+            LocaleEnumerationTests().assert_process_stopped(int(pathlib.Path(pid_file).read_text()))
+
+    def test_eof_without_exit_still_times_out(self):
+        with self.source("closed-pipes"):
+            self.assertEqual(provider.read_filesystem_information().summary.error_code, "timeout")
+
+    def test_decoding_after_deadline_never_publishes_success_or_malformed(self):
+        monotonic = time.monotonic
+        for malformed in (False, True):
+            offset = [0]
+            def decode(_data):
+                offset[0] = 4
+                if malformed:
+                    raise provider.SnapshotFailure("malformed", "Late failure")
+                return provider.FilesystemInformation(provider.InformationState("available", "0", "Fixture"))
+            with self.source(), mock.patch.object(provider.time, "monotonic", side_effect=lambda: monotonic() + offset[0]), \
+                    mock.patch.object(provider, "parse_filesystem_information", side_effect=decode):
+                result = provider.read_filesystem_information()
+            self.assertEqual(result.summary.error_code, "timeout")
+            self.assertEqual(result.rows, ())
+
+    def test_interruption_cleans_owned_children_before_exit(self):
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            previous = signal.getsignal(number)
+            with self.source("closed-pipes", signal_number=number):
+                with self.assertRaises(SystemExit) as caught:
+                    provider.read_filesystem_information()
+                self.assertEqual(caught.exception.code, 128 + number)
+            self.assertIs(signal.getsignal(number), previous)
+
+    def test_cleanup_failure_never_publishes_success_or_hides_interruption(self):
+        for number in (None, signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            def cleanup(_process):
+                if number is not None:
+                    signal.raise_signal(number)
+                raise provider.SnapshotFailure("timeout", "Private cleanup detail", "unavailable")
+            with self.source(expect_cleanup=False), mock.patch.object(provider, "close_locale_process", side_effect=cleanup):
+                if number is not None:
+                    with self.assertRaises(SystemExit) as caught:
+                        provider.read_filesystem_information()
+                    self.assertEqual(caught.exception.code, 128 + number)
+                else:
+                    result = provider.read_filesystem_information()
+                    self.assertEqual(result.summary.error_code, "timeout")
+                    self.assertEqual(result.rows, ())
+                    self.assertNotIn("Private cleanup detail", repr(result))
+
+    def test_unavailable_child_ownership_prevents_launch(self):
+        with mock.patch.object(provider.signal, "getsignal", return_value=signal.SIG_IGN), \
+                mock.patch.object(provider.subprocess, "Popen") as launch:
+            self.assertEqual(provider.read_filesystem_information().summary.status, "unavailable")
+            launch.assert_not_called()
+        results = []
+        with mock.patch.object(provider.subprocess, "Popen") as launch:
+            thread = threading.Thread(target=lambda: results.append(provider.read_filesystem_information()))
+            thread.start()
+            thread.join(timeout=2)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(results[0].summary.status, "unavailable")
+            launch.assert_not_called()
+
+
+class RootEncryptionProcessTests(unittest.TestCase):
+    source_command = ["/usr/bin/lsblk", "--json", "--output", "NAME,TYPE,FSTYPE,MOUNTPOINTS,PKNAME"]
+    source_fixture = "system-encryption-process.py"
+    source = FilesystemProcessTests.source
+
+    def test_fixed_fresh_command_and_exact_shared_output_budget(self):
+        with self.source() as processes, mock.patch.dict(os.environ, {"LC_ALL": "invalid"}), \
+                mock.patch.object(provider, "open_journal_directory") as journal:
+            for _ in range(2):
+                state = provider.read_root_encryption()
+                self.assertEqual((state.status, state.value), ("available", "unencrypted"))
+            self.assertEqual(len(processes), 2)
+            journal.assert_not_called()
+        with self.source("exact-budget"):
+            self.assertEqual(provider.read_root_encryption().value, "unencrypted")
+
+    def test_bad_missing_and_excess_evidence_never_claims_encryption(self):
+        for mode in ("bad-json", "empty-json", "invalid-utf8", "stdout-overflow", "stderr-overflow", "combined-overflow"):
+            with self.subTest(mode=mode), self.source(mode):
+                state = provider.read_root_encryption()
+                self.assertEqual((state.status, state.value, state.error_code), ("partial", "unknown", "malformed"))
+
+    def test_exit_status_is_required_and_stderr_is_not_disclosed(self):
+        for status, code in ((1, "internal"), (125, "internal"), (126, "internal"),
+                             (127, "missing-provider"), (124, "timeout"), (137, "timeout")):
+            with self.source("exit", str(status)):
+                state = provider.read_root_encryption()
+                self.assertEqual((state.status, state.value, state.error_code), ("unavailable", "unknown", code))
+                self.assertNotIn("private diagnostic", repr(state))
+
+    def test_missing_command_and_read_denial_restore_handlers(self):
+        handlers = {n: signal.getsignal(n) for n in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        for error, status in ((FileNotFoundError(), "unavailable"), (PermissionError(errno.EACCES, "private"), "restricted")):
+            with mock.patch.object(provider.subprocess, "Popen", side_effect=error):
+                state = provider.read_root_encryption()
+            self.assertEqual((state.status, state.value), (status, "unknown"))
+            self.assertNotIn("private", repr(state))
+        self.assertEqual(handlers, {n: signal.getsignal(n) for n in handlers})
+
+    def test_monotonic_deadline_cleans_descendants_and_closed_pipes(self):
+        with tempfile.TemporaryDirectory() as directory:
+            pid_file = str(pathlib.Path(directory) / "child-pid")
+            started = time.monotonic()
+            with self.source("descendant", pid_file), mock.patch.object(provider.time, "time", side_effect=[9999, -9999]):
+                self.assertEqual(provider.read_root_encryption().error_code, "timeout")
+            self.assertLess(time.monotonic() - started, 5.5)
+            LocaleEnumerationTests().assert_process_stopped(int(pathlib.Path(pid_file).read_text()))
+        with self.source("closed-pipes"):
+            self.assertEqual(provider.read_root_encryption().error_code, "timeout")
+
+    def test_decoding_after_deadline_cannot_publish_a_result(self):
+        monotonic = time.monotonic
+        for malformed in (False, True):
+            offset = [0]
+            def decode(_data):
+                offset[0] = 4
+                if malformed:
+                    raise provider.SnapshotFailure("malformed", "Late failure")
+                return provider.InformationState("available", "encrypted", "Fixture")
+            with self.source(), mock.patch.object(provider.time, "monotonic", side_effect=lambda: monotonic() + offset[0]), \
+                    mock.patch.object(provider, "parse_root_encryption", side_effect=decode):
+                state = provider.read_root_encryption()
+            self.assertEqual((state.value, state.error_code), ("unknown", "timeout"))
+
+    def test_interruption_and_cleanup_failure_never_hide_termination(self):
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            previous = signal.getsignal(number)
+            with self.source("closed-pipes", signal_number=number):
+                with self.assertRaises(SystemExit) as caught:
+                    provider.read_root_encryption()
+                self.assertEqual(caught.exception.code, 128 + number)
+            self.assertIs(signal.getsignal(number), previous)
+        for number in (None, signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            def cleanup(_process):
+                if number is not None:
+                    signal.raise_signal(number)
+                raise provider.SnapshotFailure("timeout", "Private cleanup detail", "unavailable")
+            with self.source(expect_cleanup=False), mock.patch.object(provider, "close_locale_process", side_effect=cleanup):
+                if number is not None:
+                    with self.assertRaises(SystemExit) as caught:
+                        provider.read_root_encryption()
+                    self.assertEqual(caught.exception.code, 128 + number)
+                else:
+                    state = provider.read_root_encryption()
+                    self.assertEqual((state.value, state.error_code), ("unknown", "timeout"))
+                    self.assertNotIn("Private cleanup detail", repr(state))
+
+    def test_closed_source_selector_and_unavailable_ownership_prevent_launch(self):
+        for kind in ("other", "/usr/bin/lsblk", [], None):
+            with mock.patch.object(provider.subprocess, "Popen") as launch, self.assertRaises(provider.SnapshotFailure):
+                provider.read_storage_information(kind)
+            launch.assert_not_called()
+        with mock.patch.object(provider.signal, "getsignal", return_value=signal.SIG_IGN), \
+                mock.patch.object(provider.subprocess, "Popen") as launch:
+            self.assertEqual(provider.read_root_encryption().status, "unavailable")
+            launch.assert_not_called()
+        result = []
+        with mock.patch.object(provider.subprocess, "Popen") as launch:
+            thread = threading.Thread(target=lambda: result.append(provider.read_root_encryption()))
+            thread.start()
+            thread.join(timeout=2)
+            self.assertFalse(thread.is_alive())
+            self.assertEqual(result[0].status, "unavailable")
+            launch.assert_not_called()
+
+
 class RegionalPreflightTests(unittest.TestCase):
     def time_state(self, **changes):
         return replace(provider.RegionalTimeState("UTC", True, False, True), **changes)
@@ -111,7 +1228,7 @@ class RegionalPreflightTests(unittest.TestCase):
 
     def test_ntp_generation_has_exact_framing_and_ignores_synchronization_samples(self):
         preview = provider.make_regional_preview("ntp-set", "enabled", self.time_state())
-        framed = b"dwm-titus-regional-preview-v1"
+        framed = b"dwm-jangir-regional-preview-v1"
         for value in (b"ntp-set", b"enabled", b"yes", b"disabled"):
             framed += len(value).to_bytes(8, "big") + value
         self.assertEqual(preview.generation, hashlib.sha256(framed).hexdigest())
@@ -168,7 +1285,7 @@ class RegionalPreflightTests(unittest.TestCase):
     def test_locale_generation_counts_utf8_bytes_in_each_length_prefix(self):
         preview = provider.make_regional_preview("locale-set", "LANG=en_US.utf8",
             provider.parse_locale_configuration(["LANGUAGE=français", "LANG=C"]), ["en_US.utf8"])
-        self.assertEqual(preview.generation, "09ff64d6ea53aa4d497cec2d722b95701f913c40576c7024dfdc6377e9b8fd83")
+        self.assertEqual(preview.generation, "2e8ad5836d0bf34259d4519f329402b582ae3d256f89eccfed3d3a9e17f748e2")
 
     def test_preflight_uses_only_fresh_fixed_readers(self):
         states = {"time-state": self.time_state(), "timezone-choices": ("UTC", "Etc/UTC"),
@@ -1399,10 +2516,13 @@ class RegionalMutationTests(unittest.TestCase):
         self.gio, self.glib = gio, glib
         return client
 
-    def run_client(self, client):
+    def run_client(self, client, *, interruptible=False):
         with mock.patch.object(provider, "read_fedora_identity", return_value={"ID": "fedora"}), \
                 mock.patch.object(provider, "read_locale_choices", return_value=("C", "en_US.utf8")), \
                 mock.patch.object(provider.time, "monotonic", side_effect=lambda: self.clock):
+            if interruptible:
+                with contextlib.ExitStack() as retained:
+                    return provider.run_interruptible_regional(client, retained)
             return client.run()
 
     def failure(self, client, code):
@@ -1501,6 +2621,40 @@ class RegionalMutationTests(unittest.TestCase):
             self.assertLessEqual(self.context.iteration.call_count, provider.REGIONAL_CALLBACK_LIMIT)
             if scenario == "checkpoint":
                 self.assertIsInstance(client.hook_error, OSError)
+
+    def test_stop_after_final_drain_prevents_mutating_request(self):
+        for action, argument in (("timezone-set", "Etc/UTC"), ("ntp-set", "enabled"),
+                                 ("locale-set", "LANG=en_US.utf8")):
+            for stage in ("arguments", "timer", "request"):
+                for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+                    with self.subTest(action=action, stage=stage, signum=signum):
+                        client = self.client(action, argument)
+                        self.glib.idle_add = mock.Mock(return_value=1000)
+                        self.glib.PRIORITY_HIGH = -100
+                        variant, timer = self.glib.Variant, self.glib.timeout_add.side_effect
+                        variant_type = self.glib.VariantType
+                        def arguments(signature, values):
+                            if stage == "arguments" and signature in ("(sb)", "(bb)", "(asb)"):
+                                signal.raise_signal(signum)
+                            return variant(signature, values)
+                        def arm(milliseconds, callback):
+                            if stage == "timer" and milliseconds == 60000:
+                                signal.raise_signal(signum)
+                            return next(timer)
+                        def expected_type(signature):
+                            if stage == "request" and client.sent:
+                                signal.raise_signal(signum)
+                            return variant_type.new(signature)
+                        self.glib.Variant = arguments
+                        self.glib.VariantType = types.SimpleNamespace(new=expected_type)
+                        self.glib.timeout_add.side_effect = arm
+                        with self.assertRaises(provider.RegionalCommandInterrupted):
+                            self.run_client(client, interruptible=True)
+                        self.assertEqual(self.mutations(), [])
+                        # Once handoff has begun, a stopped request remains
+                        # conservatively unconfirmed even if the bus was not called.
+                        self.assertEqual(client.sent, stage == "request")
+                        self.assertEqual([event[0] for event in self.events], ["authorizing"])
 
     def test_matching_notifications_are_accepted_but_conflict_history_is_retained(self):
         for conflict in (False, True):
@@ -2043,12 +3197,23 @@ class LocaleEnumerationTests(unittest.TestCase):
         while time.monotonic() < deadline:
             try:
                 state = pathlib.Path(f"/proc/{pid}/stat").read_text().rsplit(")", 1)[1].split()[0]
-            except FileNotFoundError:
+            except (FileNotFoundError, ProcessLookupError):
                 return
             if state == "Z":
                 return
             time.sleep(0.02)
         self.fail(f"Owned locale fixture {pid} remained running")
+
+    def test_stopped_process_assertion_accepts_disappearance_during_read(self):
+        for error in (FileNotFoundError, ProcessLookupError):
+            with self.subTest(error=error), \
+                    mock.patch.object(pathlib.Path, "read_text", side_effect=error):
+                self.assert_process_stopped(123)
+
+    def test_stopped_process_assertion_preserves_other_read_errors(self):
+        with mock.patch.object(pathlib.Path, "read_text", side_effect=PermissionError):
+            with self.assertRaises(PermissionError):
+                self.assert_process_stopped(123)
 
     def test_non_main_thread_cannot_install_process_signal_handlers(self):
         errors = []
@@ -2376,6 +3541,253 @@ class DelegatedToolTests(unittest.TestCase):
             self.assertEqual(caught.exception.code, "interrupted")
             self.assertIn("may already be open", caught.exception.detail)
             launch.assert_called_once()
+
+
+class MountMonitorTests(unittest.TestCase):
+    def start(self, body, *, delay=0, baseline=True, pass_fds=()):
+        directory = tempfile.TemporaryDirectory()
+        self.addCleanup(directory.cleanup)
+        path = pathlib.Path(directory.name) / "child"
+        fixture = (f"import time\nopen({str(path)!r}, 'w').write(str(os.getpid()))\n"
+                   f"time.sleep({delay!r})\n"
+                   + ("baseline = open('/proc/self/mountinfo')\nos.set_inheritable(baseline.fileno(), True)\n" if baseline else "")
+                   + body + "\ntime.sleep(60)\n")
+        code = provider.MOUNT_MONITOR_EXEC.replace(
+            "os.execv('/usr/bin/findmnt', ['findmnt', '--poll', '--raw', '--noheadings', '--output', 'ACTION'])",
+            fixture)
+        runner = (f"import runpy,sys\np=runpy.run_path({str(PROVIDER_PATH)!r})\n"
+                  f"p['watch_mount_events'].__globals__['MOUNT_MONITOR_EXEC']={code!r}\n"
+                  "sys.exit(p['watch_mount_events']())\n")
+        process = subprocess.Popen([sys.executable, "-c", runner], stdout=subprocess.PIPE,
+                                   stderr=subprocess.PIPE, pass_fds=pass_fds, bufsize=0)
+        self.addCleanup(self.stop, process)
+        deadline = time.monotonic() + 2
+        while not path.exists() and time.monotonic() < deadline:
+            time.sleep(0.01)
+        self.assertTrue(path.exists())
+        child = int(path.read_text())
+        return process, child
+
+    @staticmethod
+    def stop(process):
+        if process.poll() is None:
+            process.terminate()
+            try:
+                process.wait(timeout=3)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=2)
+        process.stdout.close()
+        process.stderr.close()
+
+    def row(self, process, timeout=2):
+        self.assertTrue(select.select([process.stdout], [], [], timeout)[0], "monitor output timed out")
+        return process.stdout.readline()
+
+    def gone(self, child):
+        deadline = time.monotonic() + 2
+        while time.monotonic() < deadline:
+            try:
+                state = pathlib.Path(f"/proc/{child}/stat").read_text().rsplit(") ", 1)[1].split()[0]
+            except FileNotFoundError:
+                return
+            if state == "Z":  # An orphan awaits the host's reaper after parent KILL.
+                return
+            time.sleep(0.01)
+        self.fail("mount child remains running")
+
+    def test_readiness_precedes_queued_events_and_all_fixed_actions_are_preserved(self):
+        process, child = self.start("os.write(1, b'mount\\numount\\nmove\\nremount\\n')")
+        self.assertEqual(self.row(process), b"mount-monitor-ready\n")
+        for action in (b"mount", b"umount", b"move", b"remount"):
+            self.assertEqual(self.row(process), b"mount-change\t" + action + b"\n")
+        process.terminate()
+        self.assertEqual(process.wait(timeout=3), 143)
+        self.gone(child)
+
+    def test_delayed_baseline_emits_nothing_early(self):
+        process, child = self.start("", delay=0.3)
+        self.assertFalse(select.select([process.stdout], [], [], 0.1)[0])
+        self.assertEqual(self.row(process), b"mount-monitor-ready\n")
+        self.stop(process)
+        self.gone(child)
+
+    def test_real_findmnt_parsing_open_is_not_its_polling_baseline(self):
+        with tempfile.TemporaryDirectory() as directory:
+            directory = pathlib.Path(directory)
+            source, library, marker = directory / "pause.c", directory / "pause.so", directory / "parsing"
+            source.write_text(r"""
+#define _GNU_SOURCE
+#include <dlfcn.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <fcntl.h>
+#include <unistd.h>
+FILE *fopen64(const char *path, const char *mode) {
+    FILE *(*original)(const char *, const char *) = dlsym(RTLD_NEXT, "fopen64");
+    FILE *result = original(path, mode);
+    if (result && strstr(path, "/mountinfo") && strchr(mode, 'e')) {
+        int fd = open(getenv("DWM_MOUNT_PARSE_MARKER"), O_WRONLY | O_CREAT, 0600);
+        if (fd >= 0) close(fd);
+        usleep(350000);
+    }
+    return result;
+}
+""")
+            subprocess.run(["cc", "-shared", "-fPIC", "-o", str(library), str(source), "-ldl"],
+                           check=True, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+            environment = {"PATH": "/usr/bin:/bin", "LC_ALL": "C", "LD_PRELOAD": str(library),
+                           "DWM_MOUNT_PARSE_MARKER": str(marker)}
+            process, child = self.start("os.execve('/usr/bin/findmnt', "
+                "['findmnt', '--poll', '--raw', '--noheadings', '--output', 'ACTION'], "
+                + repr(environment) + ")", baseline=False)
+            deadline = time.monotonic() + 1
+            while not marker.exists() and time.monotonic() < deadline:
+                time.sleep(0.005)
+            self.assertTrue(marker.exists(), "real findmnt did not reach its initial parsing open")
+            self.assertFalse(select.select([process.stdout], [], [], 0.15)[0])
+            self.assertEqual(self.row(process), b"mount-monitor-ready\n")
+            self.stop(process)
+            self.gone(child)
+
+    def test_temporary_parsing_descriptor_cannot_acknowledge_readiness(self):
+        process, child = self.start("baseline = open('/proc/self/mountinfo')\n"
+            "time.sleep(0.35)\nbaseline.close()\n"
+            "baseline = open('/proc/self/mountinfo')\nos.set_inheritable(baseline.fileno(), True)", baseline=False)
+        self.assertFalse(select.select([process.stdout], [], [], 0.2)[0])
+        self.assertEqual(self.row(process), b"mount-monitor-ready\n")
+        self.stop(process)
+        self.gone(child)
+
+    def test_missing_baseline_has_one_second_deadline_and_cleanup(self):
+        started = time.monotonic()
+        process, child = self.start("", baseline=False)
+        self.assertEqual(process.wait(timeout=3), 1)
+        self.assertLess(time.monotonic() - started, 2.8)
+        self.assertEqual(process.stdout.read(), b"")
+        self.assertIn(b"reload storage status explicitly", process.stderr.read())
+        self.gone(child)
+
+    def test_bad_output_and_unexpected_exit_fail_closed(self):
+        for body in ("os.write(1, b'unknown\\n')", "os.write(1, b'\\n')",
+                     "os.write(1, b'x' * 257)", "os.write(2, b'failure')",
+                     "sys.exit(0)"):
+            with self.subTest(body=body):
+                process, child = self.start(body)
+                self.assertEqual(process.wait(timeout=3), 1)
+                self.assertNotIn(b"mount-change", process.stdout.read())
+                self.gone(child)
+
+    def test_signal_cleanup_and_parent_death(self):
+        for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP, signal.SIGKILL):
+            with self.subTest(number=number):
+                process, child = self.start("")
+                self.assertEqual(self.row(process), b"mount-monitor-ready\n")
+                process.send_signal(number)
+                expected = -number if number == signal.SIGKILL else 128 + number
+                self.assertEqual(process.wait(timeout=3), expected)
+                self.gone(child)
+
+    def test_nonstandard_descriptors_do_not_reach_child(self):
+        with tempfile.TemporaryFile() as inherited:
+            identity = os.fstat(inherited.fileno())
+            body = ("for name in os.listdir('/proc/self/fd'):\n"
+                    "    try: item = os.fstat(int(name))\n"
+                    "    except OSError: continue\n"
+                    f"    if (item.st_dev, item.st_ino) == {(identity.st_dev, identity.st_ino)!r}:\n"
+                    "        os.write(2, b'inherited descriptor')\n"
+                    "os.write(1, b'mount\\n')\n")
+            process, child = self.start(body, pass_fds=(inherited.fileno(),))
+            self.assertEqual(self.row(process), b"mount-monitor-ready\n")
+            self.assertEqual(self.row(process), b"mount-change\tmount\n")
+            self.stop(process)
+            self.gone(child)
+
+    def test_lost_output_consumer_stops_child(self):
+        process, child = self.start("time.sleep(0.15)\nos.write(1, b'mount\\n')")
+        self.assertEqual(self.row(process), b"mount-monitor-ready\n")
+        process.stdout.close()
+        self.assertEqual(process.wait(timeout=3), 1)
+        self.gone(child)
+
+    def test_socket_outputs_are_rejected_before_starting_a_child(self):
+        for mode in ("plain", "input", "read-half", "write-half", "full-buffer"):
+            with self.subTest(mode=mode):
+                sender, reader = socket.socketpair()
+                with sender, reader, tempfile.TemporaryFile() as diagnostics, \
+                        os.fdopen(os.dup(sender.fileno()), "wb", buffering=0) as output:
+                    if mode == "input":
+                        reader.sendall(b"not a closure")
+                    elif mode == "read-half":
+                        reader.shutdown(socket.SHUT_RD)
+                    elif mode == "write-half":
+                        reader.shutdown(socket.SHUT_WR)
+                    elif mode == "full-buffer":
+                        sender.setblocking(False)
+                        try:
+                            while True:
+                                sender.send(b"x" * 4096)
+                        except BlockingIOError:
+                            pass
+                    blocking = os.get_blocking(sender.fileno())
+                    with mock.patch.object(provider.sys, "stdout", output), \
+                            mock.patch.object(provider.sys, "stderr", diagnostics), \
+                            mock.patch.object(provider.subprocess, "Popen", side_effect=AssertionError("Child started")) as spawn:
+                        self.assertEqual(provider.watch_mount_events(), 1)
+                    spawn.assert_not_called()
+                    self.assertEqual(os.get_blocking(sender.fileno()), blocking)
+                    diagnostics.seek(0)
+                    self.assertIn(b"requires write-only pipe output", diagnostics.read())
+
+    def test_regular_and_read_write_fifo_outputs_are_rejected_before_child(self):
+        with tempfile.TemporaryDirectory() as directory, tempfile.TemporaryFile() as regular:
+            fifo = pathlib.Path(directory) / "output"
+            os.mkfifo(fifo, 0o600)
+            with os.fdopen(os.open(fifo, os.O_RDWR | os.O_NONBLOCK), "wb", buffering=0) as retained_reader:
+                for output in (regular, retained_reader):
+                    with self.subTest(mode=os.fstat(output.fileno()).st_mode), tempfile.TemporaryFile() as diagnostics, \
+                            mock.patch.object(provider.sys, "stdout", output), \
+                            mock.patch.object(provider.sys, "stderr", diagnostics), \
+                            mock.patch.object(provider.subprocess, "Popen", side_effect=AssertionError("Child started")) as spawn:
+                        self.assertEqual(provider.watch_mount_events(), 1)
+                        spawn.assert_not_called()
+                        diagnostics.seek(0)
+                        self.assertIn(b"requires write-only pipe output", diagnostics.read())
+
+    def test_idle_output_liveness_watch_does_not_spin(self):
+        process, child = self.start("")
+        self.assertEqual(self.row(process), b"mount-monitor-ready\n")
+        def ticks():
+            fields = pathlib.Path(f"/proc/{process.pid}/stat").read_text().rsplit(") ", 1)[1].split()
+            return int(fields[11]) + int(fields[12])
+        before = ticks()
+        time.sleep(0.3)
+        self.assertLessEqual(ticks() - before, 1, "Idle mount supervisor consumed CPU ticks")
+        self.stop(process)
+        self.gone(child)
+
+    def test_idle_lost_output_consumer_stops_child_without_mount_events(self):
+        process, child = self.start("")
+        self.assertEqual(self.row(process), b"mount-monitor-ready\n")
+        process.stdout.close()
+        self.assertEqual(process.wait(timeout=3), 1)
+        self.gone(child)
+
+    def test_proc_identity_change_and_exited_child_are_rejected(self):
+        process = types.SimpleNamespace(pid=123)
+        with mock.patch.object(provider, "locale_process_status", return_value=None), \
+                mock.patch.object(provider.os, "stat", return_value=types.SimpleNamespace(st_dev=1, st_ino=3)):
+            with self.assertRaises(OSError):
+                provider.mount_baseline_ready(process, (1, 2))
+        with mock.patch.object(provider, "locale_process_status", return_value=object()):
+            with self.assertRaises(OSError):
+                provider.mount_baseline_ready(process, (1, 2))
+
+    def test_fixed_command_rejects_arguments(self):
+        result = subprocess.run([str(PROVIDER_PATH), "watch-mounts", "other"], capture_output=True)
+        self.assertEqual(result.returncode, 2)
+        self.assertEqual(result.stdout, b"")
 
 
 class UpdateEventMonitorTests(unittest.TestCase):
@@ -2746,6 +4158,72 @@ class RegionalEventMonitorTests(unittest.TestCase):
             self.assertEqual(result.stdout, kind + " private-bus event monitor: PASS\n")
 
 
+class TimeEventMonitorTests(unittest.TestCase):
+    owner = RegionalEventMonitorTests.owner
+    properties = RegionalEventMonitorTests.properties
+
+    def monitor(self):
+        _regional, emitted, gio, glib, unix = RegionalEventMonitorTests().monitor()
+        monitor = provider.TimeEventMonitor(gio, glib, unix, emitted.append)
+        monitor.deadline = time.monotonic() + 10
+        monitor.deadline_source = 7
+        monitor.connection = gio.bus_get_finish.return_value
+        return monitor, emitted, gio, glib
+
+    def test_arrivals_are_distinct_but_departure_and_untrusted_signals_are_quiet(self):
+        monitor, emitted, _gio, glib = self.monitor()
+        monitor.ready, monitor.owner = True, ":1.2"
+        self.owner(monitor, glib, ":1.2", "")
+        self.properties(monitor, glib, ["NTP"])
+        self.owner(monitor, glib, "", ":1.8", sender=":1.8")
+        self.assertEqual(emitted, [])
+        self.owner(monitor, glib, "", ":1.3")
+        self.owner(monitor, glib, ":1.3", ":1.4")
+        self.assertEqual(emitted, ["time-event\towner-arrived"] * 2)
+        self.properties(monitor, glib, ["NTP"], sender=":1.3")
+        self.properties(monitor, glib, ["Timezone"], sender=":1.4")
+        self.properties(monitor, glib, invalidated=["NTPSynchronized"], sender=":1.4")
+        self.assertEqual(emitted[2:], ["time-event\tchanged"] * 2)
+        monitor.stop(0)
+        self.owner(monitor, glib, ":1.4", ":1.5")
+        self.assertEqual(len(emitted), 4)
+
+    def test_setup_arrivals_and_properties_coalesce_without_losing_owner_epoch(self):
+        monitor, emitted, _gio, glib = self.monitor()
+        self.owner(monitor, glib, "", ":1.2")
+        self.properties(monitor, glib, ["NTP"])
+        self.owner(monitor, glib, ":1.2", ":1.3")
+        self.assertEqual(emitted, [])
+        monitor.connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+        monitor.owner_resolved(monitor.connection, object(), 0)
+        self.assertEqual(monitor.owner, ":1.3")
+        self.assertEqual(emitted, ["time-event\tready", "time-event\tchanged"])
+        self.assertFalse(monitor.dirty)
+
+    def test_failed_arrival_output_stops_monitor(self):
+        monitor, _emitted, _gio, glib = self.monitor()
+        monitor.ready = True
+        monitor.emit = mock.Mock(side_effect=BlockingIOError())
+        self.owner(monitor, glib, "", ":1.2")
+        self.assertTrue(monitor.stopped)
+        self.assertEqual(monitor.exit_code, 1)
+
+    def test_fixed_cli_and_real_private_bus_lifecycle(self):
+        with mock.patch.object(provider, "watch_service_events", return_value=0) as watch, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                contextlib.redirect_stderr(io.StringIO()):
+            self.assertEqual(provider.main(["watch-time"]), 0)
+            for args in (["time"], ["locale"], ["--system"], ["extra", "argument"]):
+                self.assertEqual(provider.main(["watch-time", *args]), 2)
+            watch.assert_called_once_with("time-discovery")
+            backend.assert_not_called()
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-update-events-bus.py"), str(PROVIDER_PATH), "time-discovery"],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=30)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "time-discovery private-bus event monitor: PASS\n")
+
+
 class AccountEventMonitorTests(unittest.TestCase):
     def monitor(self):
         _regional, emitted, gio, glib, unix = RegionalEventMonitorTests().monitor()
@@ -2897,6 +4375,360 @@ class AccountEventMonitorTests(unittest.TestCase):
             self.assertEqual(result.stdout, expected)
 
 
+class UnitEventMonitorTests(unittest.TestCase):
+    def monitor(self, kind="printers"):
+        _regional, emitted, gio, glib, unix = RegionalEventMonitorTests().monitor()
+        monitor = provider.UnitEventMonitor(kind, gio, glib, unix, emitted.append)
+        monitor.deadline = time.monotonic() + 10
+        monitor.deadline_source = 7
+        monitor.connection = mock.Mock()
+        gio.DBusConnection.new_for_address_finish.return_value = monitor.connection
+        return monitor, emitted, gio, glib, unix
+
+    def resolve(self, monitor, glib):
+        identity = (monitor.resolution_epoch, monitor.resolve_round)
+        for index, name in enumerate(monitor.units):
+            monitor.connection.call_finish.return_value = glib.Variant("(o)",
+                (provider.SYSTEMD_PATH + "/unit/Alias" + str(index),))
+            monitor.unit_resolved(monitor.connection, object(), (*identity, name))
+
+    def setup(self, monitor, glib, finish=True):
+        connection = monitor.connection
+        monitor.connected(None, object(), None)
+        for index, rule in enumerate(monitor.match_rules):
+            connection.call_finish.return_value = glib.Variant("()", ())
+            monitor.match_finished(connection, object(), rule)
+            if index == 0:
+                connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+                monitor.owner_initialized(connection, object(), 0)
+        connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+        monitor.owner_resolved(connection, object(), 0)
+        connection.call_finish.return_value = glib.Variant("()", ())
+        monitor.subscribed(connection, object(), None)
+        self.resolve(monitor, glib)
+        if finish:
+            connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+            monitor.final_owner(connection, object(), (0, monitor.resolution_epoch))
+
+    def manager(self, monitor, glib, member="UnitNew", sender=":1.2"):
+        monitor.manager_event(None, sender, monitor.path, provider.SYSTEMD_MANAGER, member,
+            glib.Variant("(so)", ("unrelated.service", provider.SYSTEMD_PATH + "/unit/Unknown")), None)
+
+    def test_private_connection_fixed_calls_and_all_barriers_precede_readiness(self):
+        for kind, count in (("printers", 2), ("security", 1)):
+            monitor, emitted, gio, glib, _unix = self.monitor(kind)
+            self.setup(monitor, glib)
+            self.assertEqual(emitted, ["units-event\tready"])
+            gio.bus_get.assert_not_called()
+            gio.bus_get_finish.assert_not_called()
+            calls = monitor.connection.call.call_args_list
+            self.assertEqual([call.args[3] for call in calls],
+                ["AddMatch", "GetNameOwner", *(["AddMatch"] * 5), "GetNameOwner",
+                 "Subscribe", *(["GetUnit"] * count), "GetNameOwner"])
+            system_calls = [call for call in calls if call.args[0] == ":1.2"]
+            self.assertEqual([call.args[3] for call in system_calls], ["Subscribe", *(["GetUnit"] * count)])
+            self.assertEqual([call.args[4].unpack()[0] for call in system_calls[1:]], list(monitor.units))
+            self.assertTrue(all(call.args[6] == gio.DBusCallFlags.NO_AUTO_START for call in system_calls))
+            subscriptions = monitor.connection.signal_subscribe.call_args_list
+            self.assertEqual(len(subscriptions), 6)
+            self.assertEqual(subscriptions[-1].args[3:5], (None, provider.SYSTEMD_NAME + ".Unit"))
+            self.assertEqual(set(monitor.paths), set(monitor.units))
+
+    def test_authentication_precedes_decoding_during_setup_and_after_readiness(self):
+        for ready in (False, True):
+            monitor, emitted, _gio, glib, _unix = self.monitor()
+            monitor.ready = ready
+            for owner in ("", ":1.2"):
+                monitor.owner = owner
+                bad = glib.Variant("(s)", ("x" * 70000,))
+                monitor.manager_event(None, ":1.9", monitor.path, provider.SYSTEMD_MANAGER, "UnitNew", bad, None)
+                monitor.properties_changed(None, ":1.9", provider.SYSTEMD_PATH + "/unit/Alias",
+                    provider.PROPERTIES_INTERFACE, "PropertiesChanged", bad, None)
+            self.assertFalse(monitor.stopped)
+            self.assertFalse(monitor.dirty)
+            self.assertEqual(emitted, [])
+
+    def test_reconciliation_has_one_settling_pass_and_rejects_late_epochs(self):
+        monitor, emitted, _gio, glib, _unix = self.monitor()
+        self.setup(monitor, glib)
+        monitor.connection.call.reset_mock()
+        self.manager(monitor, glib)
+        old_identity = (monitor.resolution_epoch - 1, 0, monitor.units[0])
+        monitor.unit_resolved(monitor.connection, object(), old_identity)
+        self.assertEqual(monitor.waiting, set(monitor.units))
+        for _ in range(100):
+            self.manager(monitor, glib)
+        self.resolve(monitor, glib)
+        self.assertEqual(monitor.resolve_round, 1)
+        for _ in range(100):
+            self.manager(monitor, glib)
+        self.resolve(monitor, glib)
+        self.assertTrue(monitor.stopped)
+        self.assertEqual(monitor.exit_code, 1)
+        self.assertEqual(len(monitor.connection.call.call_args_list), 4)
+        self.assertEqual(emitted, ["units-event\tready"])
+
+    def test_event_during_final_barrier_cannot_publish_stale_or_duplicate_ready(self):
+        monitor, emitted, _gio, glib, _unix = self.monitor()
+        self.setup(monitor, glib, finish=False)
+        old = (0, monitor.resolution_epoch)
+        self.manager(monitor, glib)
+        monitor.connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+        monitor.final_owner(monitor.connection, object(), old)
+        self.assertEqual(emitted, [])
+        self.resolve(monitor, glib)
+        monitor.connection.call_finish.return_value = glib.Variant("(s)", (":1.2",))
+        current = (0, monitor.resolution_epoch)
+        monitor.final_owner(monitor.connection, object(), current)
+        monitor.final_owner(monitor.connection, object(), old)
+        monitor.final_owner(monitor.connection, object(), current)
+        self.assertEqual(emitted, ["units-event\tready"])
+
+    def test_typed_scope_deadline_and_owner_loss_fail_without_reconnect(self):
+        for invalid in ("signature", "path", "deadline", "owner"):
+            monitor, emitted, gio, glib, _unix = self.monitor()
+            self.setup(monitor, glib)
+            if invalid == "owner":
+                RegionalEventMonitorTests().owner(monitor, glib, ":1.2", ":1.3")
+            else:
+                monitor.reconcile()
+                if invalid == "deadline":
+                    monitor.resolve_deadline = time.monotonic() - 1
+                signature, value = ("(s)", "bad") if invalid == "signature" else ("(o)", "/wrong_scope")
+                monitor.connection.call_finish.return_value = glib.Variant(signature, (value,))
+                monitor.unit_resolved(monitor.connection, object(),
+                    (monitor.resolution_epoch, monitor.resolve_round, monitor.units[0]))
+            self.assertTrue(monitor.stopped)
+            self.assertEqual(monitor.exit_code, 1)
+            gio.bus_get.assert_not_called()
+            self.assertEqual(emitted[0], "units-event\tready")
+
+    def test_property_bounds_and_synchronous_call_errors_fail_closed(self):
+        for signature, value in (("(s)", ("x",)),
+                ("(sa{sv}as)", (provider.SYSTEMD_NAME + ".Unit", {"ActiveState": None}, []))):
+            monitor, emitted, _gio, glib, _unix = self.monitor()
+            self.setup(monitor, glib)
+            if signature == "(sa{sv}as)":
+                value[1]["ActiveState"] = glib.Variant("b", True)
+            monitor.properties_changed(None, ":1.2", monitor.paths[monitor.units[0]],
+                provider.PROPERTIES_INTERFACE, "PropertiesChanged", glib.Variant(signature, value), None)
+            self.assertTrue(monitor.stopped)
+            self.assertEqual(emitted, ["units-event\tready"])
+        monitor, _emitted, _gio, glib, _unix = self.monitor()
+        self.setup(monitor, glib)
+        monitor.connection.call.side_effect = glib.Error("fixture call failure")
+        monitor.reconcile()
+        self.assertTrue(monitor.stopped)
+
+    def test_cli_grammar_and_real_private_bus_lifecycle(self):
+        with mock.patch.object(provider, "watch_service_events", return_value=0) as watch, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                contextlib.redirect_stderr(io.StringIO()):
+            for kind in ("printers", "security"):
+                self.assertEqual(provider.main(["watch-units", kind]), 0)
+            for args in ([], ["cups.service"], ["printers", "extra"], ["--system"]):
+                self.assertEqual(provider.main(["watch-units", *args]), 2)
+            self.assertEqual(watch.call_args_list, [mock.call("printers"), mock.call("security")])
+            backend.assert_not_called()
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-unit-events-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=45)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "Private-bus unit events: PASS\n")
+
+
+class HardwareReadTests(unittest.TestCase):
+    def reader(self):
+        _regional, connection, gio, glib, variant = RegionalReadTests().reader()
+        return provider.HardwareRead(gio, glib), connection, gio, glib, variant
+
+    def reply(self, read, connection, variant, field, value="Fixture"):
+        connection.call_finish.return_value = variant.Variant("(v)", (variant.Variant("s", value),))
+        read.replied(connection, object(), field)
+
+    def test_fixed_gets_reply_orders_cleanup_and_single_use(self):
+        for order in (("HardwareVendor", "HardwareModel"), ("HardwareModel", "HardwareVendor")):
+            read, connection, gio, glib, variant = self.reader()
+            def run():
+                read.connected(None, object(), None)
+                for field in order:
+                    self.reply(read, connection, variant, field, field)
+            read.loop.run.side_effect = run
+            result = read.run()
+            self.assertEqual({key: state.value for key, state in result.items()},
+                {"hardware-vendor": "HardwareVendor", "hardware-model": "HardwareModel"})
+            self.assertTrue(all(state.status == "available" for state in result.values()))
+            calls = connection.call.call_args_list
+            self.assertEqual(len(calls), 2)
+            for call, field in zip(calls, ("HardwareVendor", "HardwareModel")):
+                self.assertEqual(call.args[:4], ("org.freedesktop.hostname1", "/org/freedesktop/hostname1",
+                    provider.PROPERTIES_INTERFACE, "Get"))
+                self.assertEqual(call.args[4].unpack(), ("org.freedesktop.hostname1", field))
+                self.assertEqual(call.args[5].dup_string(), "(v)")
+                self.assertEqual(call.args[6], gio.DBusCallFlags.NONE)
+                self.assertTrue(0 < call.args[7] <= 10000)
+                self.assertIs(call.args[8], read.cancellable)
+            glib.timeout_add.assert_called_once_with(10000, read.expire)
+            glib.source_remove.assert_called_once_with(17)
+            self.assertTrue(read.cancellable.cancel.called)
+            connection.close_sync.assert_not_called()
+            with self.assertRaises(RuntimeError):
+                read.run()
+
+    def test_property_errors_preserve_the_peer(self):
+        for field in provider.HARDWARE_INFORMATION_FIELDS:
+            peer = next(key for key in provider.HARDWARE_INFORMATION_FIELDS if key != field)
+            for remote, status, code in (("UnknownProperty", "unsupported", "unsupported"),
+                    ("AccessDenied", "restricted", "permission-denied"),
+                    ("NoReply", "unavailable", "timeout")):
+                read, connection, gio, _glib, variant = self.reader()
+                def run():
+                    read.connected(None, object(), None)
+                    gio.dbus_error_get_remote_error.return_value = "org.freedesktop.DBus.Error." + remote
+                    connection.call_finish.side_effect = variant.Error("private service detail")
+                    read.replied(connection, object(), field)
+                    connection.call_finish.side_effect = None
+                    self.reply(read, connection, variant, peer)
+                read.loop.run.side_effect = run
+                result = read.run()
+                failed = result[provider.HARDWARE_INFORMATION_FIELDS[field]]
+                self.assertEqual((failed.status, failed.value, failed.error_code), (status, "unknown", code))
+                self.assertEqual(result[provider.HARDWARE_INFORMATION_FIELDS[peer]].status, "available")
+                self.assertNotIn("private service detail", repr(result))
+
+    def test_malformed_envelope_type_text_and_byte_bound_are_scoped(self):
+        from gi.repository import GLib
+        cases = [(GLib.Variant("(s)", ("wrong",)), False),
+            (GLib.Variant("(v)", (GLib.Variant("b", True),)), False)]
+        for text, valid in (("", False), ("\n", False), ("x" * 512, True), ("x" * 513, False),
+                            ("\u00e9" * 256, True), ("\u00e9" * 257, False), ("x" * 4096, False)):
+            cases.append((GLib.Variant("(v)", (GLib.Variant("s", text),)), valid))
+        for reply, valid in cases:
+            read, connection, _gio, _glib, variant = self.reader()
+            def run():
+                read.connected(None, object(), None)
+                connection.call_finish.return_value = reply
+                read.replied(connection, object(), "HardwareVendor")
+                self.reply(read, connection, variant, "HardwareModel")
+            read.loop.run.side_effect = run
+            result = read.run()
+            self.assertEqual(result["hardware-vendor"].status, "available" if valid else "partial")
+            self.assertEqual(result["hardware-model"].value, "Fixture")
+
+    def test_oversized_reply_is_rejected_before_child_extraction(self):
+        read, connection, _gio, _glib, variant = self.reader()
+        reply = mock.Mock()
+        reply.get_type_string.return_value = "(v)"
+        reply.get_size.return_value = 1000000
+        def run():
+            read.connected(None, object(), None)
+            connection.call_finish.return_value = reply
+            read.replied(connection, object(), "HardwareVendor")
+            self.reply(read, connection, variant, "HardwareModel")
+        read.loop.run.side_effect = run
+        self.assertEqual(read.run()["hardware-vendor"].error_code, "malformed")
+        reply.get_child_value.assert_not_called()
+
+    def test_aggregate_timeout_preserves_a_valid_peer_and_discards_late_replies(self):
+        for field in provider.HARDWARE_INFORMATION_FIELDS:
+            peer = next(key for key in provider.HARDWARE_INFORMATION_FIELDS if key != field)
+            read, connection, _gio, glib, variant = self.reader()
+            def run():
+                read.connected(None, object(), None)
+                self.reply(read, connection, variant, peer)
+                read.expire()
+            read.loop.run.side_effect = run
+            result = read.run()
+            self.assertEqual(result[provider.HARDWARE_INFORMATION_FIELDS[peer]].status, "available")
+            failed = result[provider.HARDWARE_INFORMATION_FIELDS[field]]
+            self.assertEqual((failed.status, failed.value, failed.error_code), ("unavailable", "unknown", "timeout"))
+            connection.call_finish.reset_mock()
+            read.replied(connection, object(), field)
+            read.replied(connection, object(), peer)
+            connection.call_finish.assert_not_called()
+            glib.source_remove.assert_not_called()
+
+    def test_deadline_crossed_during_decode_cannot_publish_late_success(self):
+        read, connection, _gio, _glib, variant = self.reader()
+        original = provider.information_text
+        def decode(value, detail):
+            read.deadline = time.monotonic() - 1
+            return original(value, detail)
+        def run():
+            read.connected(None, object(), None)
+            self.reply(read, connection, variant, "HardwareModel")
+            with mock.patch.object(provider, "information_text", side_effect=decode):
+                self.reply(read, connection, variant, "HardwareVendor")
+        read.loop.run.side_effect = run
+        result = read.run()
+        self.assertEqual(result["hardware-model"].status, "available")
+        self.assertEqual(result["hardware-vendor"].error_code, "timeout")
+
+    def test_expired_connection_never_dispatches(self):
+        read, connection, gio, _glib, _variant = self.reader()
+        def run():
+            read.deadline = time.monotonic() - 1
+            read.connected(None, object(), None)
+        read.loop.run.side_effect = run
+        self.assertTrue(all(state.error_code == "timeout" for state in read.run().values()))
+        gio.bus_get_finish.assert_not_called()
+        connection.call.assert_not_called()
+
+    def test_duplicate_callback_cannot_replace_an_already_validated_property(self):
+        read, connection, _gio, _glib, variant = self.reader()
+        def run():
+            read.connected(None, object(), None)
+            self.reply(read, connection, variant, "HardwareVendor", "First")
+            self.reply(read, connection, variant, "HardwareVendor", "Duplicate")
+            self.reply(read, connection, variant, "HardwareModel")
+        read.loop.run.side_effect = run
+        self.assertEqual(read.run()["hardware-vendor"].value, "First")
+        self.assertEqual(connection.call_finish.call_count, 2)
+
+    def test_dispatch_failure_does_not_prevent_peer_dispatch(self):
+        read, connection, gio, _glib, variant = self.reader()
+        connection.call.side_effect = [variant.Error("denied"), None]
+        gio.dbus_error_get_remote_error.return_value = "org.freedesktop.DBus.Error.AccessDenied"
+        def run():
+            read.connected(None, object(), None)
+            self.reply(read, connection, variant, "HardwareModel")
+        read.loop.run.side_effect = run
+        result = read.run()
+        self.assertEqual(connection.call.call_count, 2)
+        self.assertEqual(result["hardware-vendor"].status, "restricted")
+        self.assertEqual(result["hardware-model"].status, "available")
+
+    def test_bus_failure_and_missing_bindings_are_scoped(self):
+        read, connection, gio, _glib, variant = self.reader()
+        gio.bus_get_finish.side_effect = variant.Error("private bus failure")
+        read.loop.run.side_effect = lambda: read.connected(None, object(), None)
+        result = read.run()
+        self.assertTrue(all(state.status == "unavailable" for state in result.values()))
+        self.assertNotIn("private bus failure", repr(result))
+        connection.call.assert_not_called()
+        failure = provider.SnapshotFailure("missing-provider", "Bindings unavailable", "unavailable")
+        with mock.patch.object(provider, "HardwareRead", side_effect=failure), \
+                mock.patch.object(provider, "open_journal_directory") as journal:
+            result = provider.read_hardware_information()
+        self.assertEqual(len(result), 2)
+        self.assertTrue(all(state.error_code == "missing-provider" for state in result.values()))
+        journal.assert_not_called()
+
+    def test_wrapper_keeps_cooperative_interruption(self):
+        with mock.patch.object(provider, "HardwareRead") as reader, \
+                mock.patch.object(provider, "run_interruptible_read", side_effect=InterruptedError) as run:
+            with self.assertRaises(InterruptedError):
+                provider.read_hardware_information()
+            run.assert_called_once_with(reader.return_value)
+
+    def test_real_private_bus_property_isolation_and_aggregate_deadlines(self):
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-hardware-read-bus.py"), str(PROVIDER_PATH)],
+            stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=70)
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(result.stdout, "Private-bus hardware reads: PASS (fixed properties, isolation, four real deadlines, late replies, shared bus)\n")
+
+
 class NtpReadTests(unittest.TestCase):
     def reader(self):
         _regional, connection, gio, glib, variant = RegionalReadTests().reader()
@@ -2949,6 +4781,328 @@ class NtpReadTests(unittest.TestCase):
             connection.call_finish.reset_mock(side_effect=True)
             read.replied(connection, object(), "NTPSynchronized")
             connection.call_finish.assert_not_called()
+
+
+class TimeStatusCommandTests(unittest.TestCase):
+    header = "time-status-protocol\t1\t0\n"
+    complete = "complete\ttime-status\n"
+
+    def test_exact_tuple_and_strict_validation(self):
+        for can_ntp in (False, True):
+            for enabled in (False, True):
+                for synchronized in (False, True):
+                    state = provider.RegionalTimeState("Etc/UTC", can_ntp, enabled, synchronized)
+                    with mock.patch.object(provider, "RegionalRead") as reader:
+                        reader.return_value.run.return_value = state
+                        output, code = provider.time_status_output()
+                    reader.assert_called_once_with("time-state")
+                    self.assertEqual(code, 0)
+                    self.assertEqual(output, self.header + "time\tEtc/UTC\t"
+                        + "\t".join("yes" if value else "no" for value in (can_ntp, enabled, synchronized))
+                        + "\n" + self.complete)
+        for state in (None, ("UTC", True, True, True),
+                      provider.RegionalTimeState("UTC", 1, True, True),
+                      provider.RegionalTimeState("UTC", True, "yes", True),
+                      provider.RegionalTimeState("UTC", True, True, 0),
+                      provider.RegionalTimeState("UTC\nrecord", True, True, True)):
+            with mock.patch.object(provider, "RegionalRead") as reader:
+                reader.return_value.run.return_value = state
+                output, code = provider.time_status_output()
+            self.assertEqual(code, 1)
+            self.assertIn("\nerror\ttime-status\tmalformed\t", output)
+            self.assertNotIn("\ntime\t", output)
+
+    def test_scoped_error_bounds_and_fixed_cli(self):
+        for error_code in (*sorted(provider.NTP_SAMPLE_ERROR_CODES), "other"):
+            with mock.patch.object(provider, "RegionalRead", side_effect=provider.SnapshotFailure(
+                    error_code, "failure\n\t\x00\ud800" + "é" * 600)):
+                output, code = provider.time_status_output()
+            self.assertEqual(code, 1)
+            self.assertEqual(len(output.splitlines()), 3)
+            self.assertTrue(output.startswith(self.header + "error\ttime-status\t"
+                + ("internal" if error_code == "other" else error_code) + "\t"))
+            self.assertTrue(output.endswith(self.complete))
+            self.assertLessEqual(len(output.encode()), provider.TIME_STATUS_STREAM_BYTES)
+        with mock.patch.object(provider, "RegionalRead") as reader, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                mock.patch.object(provider, "open_journal_directory") as journal, \
+                mock.patch.object(provider, "native_command") as mutation, \
+                contextlib.redirect_stdout(io.StringIO()) as output, \
+                contextlib.redirect_stderr(io.StringIO()):
+            reader.return_value.run.return_value = provider.RegionalTimeState("UTC", True, False, True)
+            self.assertEqual(provider.main(["time-status"]), 0)
+            self.assertEqual(output.getvalue(), self.header + "time\tUTC\tyes\tno\tyes\n" + self.complete)
+            for args in (["time"], ["--system"], ["Timezone"], ["extra", "argument"]):
+                self.assertEqual(provider.main(["time-status", *args]), 2)
+            reader.assert_called_once_with("time-state")
+            backend.assert_not_called()
+            journal.assert_not_called()
+            mutation.assert_not_called()
+
+    def test_output_failure_and_interruption_never_report_success(self):
+        for failure in (0, 1, BlockingIOError(), BrokenPipeError(), InterruptedError()):
+            writer = mock.Mock(side_effect=failure) if isinstance(failure, OSError) else mock.Mock(return_value=failure)
+            with mock.patch.object(provider, "control_output_writers", return_value=contextlib.nullcontext((writer, None))), \
+                    mock.patch.object(provider, "RegionalRead") as reader:
+                reader.return_value.run.return_value = provider.RegionalTimeState("UTC", True, False, True)
+                self.assertEqual(provider.main(["time-status"]), 1)
+            writer.assert_called_once_with((self.header + "time\tUTC\tyes\tno\tyes\n" + self.complete).encode())
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            previous = signal.getsignal(signum)
+            with mock.patch.object(provider, "RegionalRead") as reader, \
+                    contextlib.redirect_stdout(io.StringIO()) as output:
+                def stop():
+                    signal.raise_signal(signum)
+                    signal.raise_signal(signum)
+                    return provider.RegionalTimeState("UTC", True, False, True)
+                reader.return_value.run.side_effect = stop
+                self.assertEqual(provider.main(["time-status"]), 1)
+                self.assertEqual(output.getvalue(), "")
+                reader.return_value.GLib.idle_add.assert_called_once()
+                reader.return_value.GLib.source_remove.assert_called_once()
+            self.assertIs(signal.getsignal(signum), previous)
+
+    def test_actual_command_handles_missing_output_and_unused_diagnostics(self):
+        code = """
+import os, runpy, sys
+from unittest import mock
+provider = runpy.run_path(sys.argv[1], run_name="time_output_fixture")
+mode = sys.argv[2]
+descriptor = 2 if mode.startswith("stderr") else 1
+if mode.endswith("readonly"):
+    source = os.open("/dev/null", os.O_RDONLY)
+    os.dup2(source, descriptor)
+    if source != descriptor:
+        os.close(source)
+elif mode.endswith("stream-closed"):
+    sys.stdout.close()
+else:
+    os.close(descriptor)
+    if mode.endswith("none"):
+        if descriptor == 1:
+            sys.stdout = None
+        else:
+            sys.stderr = None
+output = "time-status-protocol\\t1\\t0\\ntime\\tUTC\\tyes\\tno\\tyes\\ncomplete\\ttime-status\\n"
+reader = (lambda: (output, 0)) if descriptor == 2 else mock.Mock(side_effect=AssertionError("Read without output"))
+with mock.patch.dict(provider["main"].__globals__, time_status_output=reader):
+    raise SystemExit(provider["main"](["time-status"]))
+"""
+        for mode in ("stdout-closed", "stdout-readonly", "stdout-none", "stdout-stream-closed",
+                     "stderr-closed", "stderr-readonly", "stderr-none"):
+            with self.subTest(mode=mode):
+                result = subprocess.run([sys.executable, "-c", code, str(PROVIDER_PATH), mode],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
+                available = mode.startswith("stderr")
+                self.assertEqual(result.returncode, 0 if available else 1)
+                self.assertEqual(result.stdout,
+                    (self.header + "time\tUTC\tyes\tno\tyes\n" + self.complete).encode() if available else b"")
+                self.assertEqual(result.stderr, b"")
+
+
+class NtpSampleCommandTests(unittest.TestCase):
+    header = "ntp-sample-protocol\t1\t0\n"
+    complete = "complete\tntp-sample\n"
+
+    def test_all_boolean_pairs_have_one_exact_bounded_stream(self):
+        for can_ntp in (False, True):
+            for synchronized in (False, True):
+                with mock.patch.object(provider, "NtpRead") as reader:
+                    reader.return_value.run.return_value = provider.NtpSample(can_ntp, synchronized)
+                    output, code = provider.ntp_sample_output()
+                self.assertEqual(code, 0)
+                self.assertEqual(output, self.header + "sample\t"
+                    + ("yes" if can_ntp else "no") + "\t" + ("yes" if synchronized else "no") + "\n" + self.complete)
+                self.assertLessEqual(len(output.encode()), provider.NTP_SAMPLE_STREAM_BYTES)
+                reader.assert_called_once_with()
+                reader.return_value.run.assert_called_once_with()
+
+    def test_invalid_values_never_coerce_to_a_successful_sample(self):
+        for value in (None, (True, True), provider.NtpSample(1, True),
+                      provider.NtpSample(True, "yes")):
+            with mock.patch.object(provider, "NtpRead") as reader:
+                reader.return_value.run.return_value = value
+                output, code = provider.ntp_sample_output()
+            self.assertEqual(code, 1)
+            self.assertIn("\nerror\tntp-sample\tmalformed\t", output)
+            self.assertNotIn("\nsample\t", output)
+
+    def test_typed_errors_are_bounded_and_cannot_inject_records(self):
+        for error_code in (*sorted(provider.NTP_SAMPLE_ERROR_CODES), "unrecognized"):
+            failure = provider.SnapshotFailure(error_code, "denied\t\n\r\x00\ud800" + "é" * 600)
+            with mock.patch.object(provider, "NtpRead", side_effect=failure):
+                output, code = provider.ntp_sample_output()
+            self.assertEqual(code, 1)
+            self.assertEqual(len(output.splitlines()), 3)
+            expected_code = "internal" if error_code == "unrecognized" else error_code
+            self.assertTrue(output.startswith(self.header + "error\tntp-sample\t" + expected_code + "\t"))
+            self.assertTrue(output.endswith(self.complete))
+            self.assertNotIn("\nsample\t", output)
+            self.assertLessEqual(len(output.encode()), provider.NTP_SAMPLE_STREAM_BYTES)
+            self.assertTrue(output.splitlines()[1].split("\t")[3].isprintable())
+
+    def test_fixed_cli_never_enters_packagekit_journal_or_mutation_paths(self):
+        with mock.patch.object(provider, "NtpRead") as reader, \
+                mock.patch.object(provider, "PackageKitBackend") as backend, \
+                mock.patch.object(provider, "open_journal_directory") as journal, \
+                mock.patch.object(provider, "native_command") as mutation, \
+                contextlib.redirect_stdout(io.StringIO()) as output, \
+                contextlib.redirect_stderr(io.StringIO()):
+            reader.return_value.run.return_value = provider.NtpSample(True, False)
+            self.assertEqual(provider.main(["ntp-sample"]), 0)
+            self.assertEqual(output.getvalue(), self.header + "sample\tyes\tno\n" + self.complete)
+            for arguments in (["time"], ["--system"], ["CanNTP"], ["enabled"], ["extra", "argument"]):
+                self.assertEqual(provider.main(["ntp-sample", *arguments]), 2)
+            reader.assert_called_once_with()
+            backend.assert_not_called()
+            journal.assert_not_called()
+            mutation.assert_not_called()
+
+    def test_short_or_failed_write_cannot_report_completion(self):
+        for result in (0, 1, BlockingIOError(), BrokenPipeError(), InterruptedError()):
+            writer = mock.Mock(side_effect=result) if isinstance(result, OSError) else mock.Mock(return_value=result)
+            with mock.patch.object(provider, "control_output_writers", return_value=contextlib.nullcontext((writer, None))), \
+                    mock.patch.object(provider, "NtpRead") as reader:
+                reader.return_value.run.return_value = provider.NtpSample(True, False)
+                self.assertEqual(provider.ntp_sample_command(), 1)
+            writer.assert_called_once_with((self.header + "sample\tyes\tno\n" + self.complete).encode())
+
+    def test_real_pipe_output_preserves_parent_flags_and_fails_when_full(self):
+        for blocking in (False, True):
+            for full in (False, True):
+                read_fd, write_fd = os.pipe()
+                try:
+                    os.set_blocking(write_fd, False)
+                    if full:
+                        with self.assertRaises(BlockingIOError):
+                            while True:
+                                os.write(write_fd, b"x" * 4096)
+                    os.set_blocking(write_fd, blocking)
+                    original = provider.fcntl.fcntl(write_fd, provider.fcntl.F_GETFL)
+                    with mock.patch.object(provider.sys, "stdout", types.SimpleNamespace(fileno=lambda: write_fd)), \
+                            contextlib.redirect_stderr(io.StringIO()), \
+                            mock.patch.object(provider, "NtpRead") as reader:
+                        reader.return_value.run.return_value = provider.NtpSample(False, False)
+                        started = time.monotonic()
+                        self.assertEqual(provider.ntp_sample_command(), 1 if full else 0)
+                        self.assertLess(time.monotonic() - started, 1)
+                    self.assertEqual(provider.fcntl.fcntl(write_fd, provider.fcntl.F_GETFL), original)
+                    if not full:
+                        self.assertTrue(select.select([read_fd], [], [], 1)[0])
+                        self.assertEqual(os.read(read_fd, 4096), (self.header + "sample\tno\tno\n" + self.complete).encode())
+                finally:
+                    os.close(read_fd)
+                    os.close(write_fd)
+
+    def test_unused_stderr_does_not_prevent_stdout_sampling(self):
+        code = """
+import os, runpy, sys
+from unittest import mock
+provider = runpy.run_path(sys.argv[1], run_name="ntp_output_fixture")
+if sys.argv[2] == "readonly":
+    descriptor = os.open("/dev/null", os.O_RDONLY)
+    os.dup2(descriptor, 2)
+    if descriptor != 2:
+        os.close(descriptor)
+else:
+    os.close(2)
+    if sys.argv[2] == "none":
+        sys.stderr = None
+with mock.patch.dict(provider["ntp_sample_output"].__globals__,
+        read_ntp_sample=lambda: provider["NtpSample"](True, False)):
+    raise SystemExit(provider["main"](["ntp-sample"]))
+"""
+        for mode in ("closed", "readonly", "none"):
+            with self.subTest(mode=mode):
+                result = subprocess.run([sys.executable, "-c", code, str(PROVIDER_PATH), mode],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
+                self.assertEqual(result.returncode, 0)
+                self.assertEqual(result.stdout,
+                    (self.header + "sample\tyes\tno\n" + self.complete).encode())
+                self.assertEqual(result.stderr, b"")
+
+    def test_unavailable_stdout_is_a_controlled_failure(self):
+        code = """
+import os, runpy, sys
+from unittest import mock
+provider = runpy.run_path(sys.argv[1], run_name="ntp_output_fixture")
+mode = sys.argv[2]
+if mode == "readonly":
+    descriptor = os.open("/dev/null", os.O_RDONLY)
+    os.dup2(descriptor, 1)
+    if descriptor != 1:
+        os.close(descriptor)
+elif mode == "stream-closed":
+    sys.stdout.close()
+else:
+    os.close(1)
+    if mode == "none":
+        sys.stdout = None
+with mock.patch.dict(provider["ntp_sample_output"].__globals__,
+        read_ntp_sample=mock.Mock(side_effect=AssertionError("Read without output"))):
+    raise SystemExit(provider["main"](["ntp-sample"]))
+"""
+        for mode in ("closed", "readonly", "none", "stream-closed"):
+            with self.subTest(mode=mode):
+                result = subprocess.run([sys.executable, "-c", code, str(PROVIDER_PATH), mode],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, timeout=5, check=False)
+                self.assertEqual(result.returncode, 1)
+                self.assertEqual(result.stdout, b"")
+                self.assertEqual(result.stderr, b"")
+
+    def test_interruption_releases_output_context_and_restores_handlers(self):
+        handlers = {signum: signal.getsignal(signum) for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        for signum in handlers:
+            with contextlib.redirect_stdout(io.StringIO()) as output, \
+                    contextlib.redirect_stderr(io.StringIO()), mock.patch.object(provider, "NtpRead") as reader:
+                def signal_read():
+                    signal.raise_signal(signum)
+                    signal.raise_signal(signum)
+                    return provider.NtpSample(True, True)
+                reader.return_value.run.side_effect = signal_read
+                self.assertEqual(provider.ntp_sample_command(), 1)
+                self.assertEqual(output.getvalue(), "")
+                reader.return_value.fail.assert_not_called()
+                reader.return_value.GLib.idle_add.assert_called_once()
+                reader.return_value.GLib.source_remove.assert_called_once_with(
+                    reader.return_value.GLib.idle_add.return_value)
+            for selected, handler in handlers.items():
+                self.assertIs(signal.getsignal(selected), handler)
+
+    def test_signal_between_done_check_and_loop_start_cannot_lose_quit(self):
+        from gi.repository import GLib
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            gio = mock.Mock()
+            read = provider.NtpRead(gio, GLib)
+            loop = read.loop
+            expired = []
+
+            def guarded_stop():
+                expired.append(True)
+                loop.quit()
+                return GLib.SOURCE_REMOVE
+
+            def start():
+                # ServiceRead.run has already passed `if not self.done`.
+                signal.raise_signal(signum)
+                loop.run()
+
+            read.loop = types.SimpleNamespace(run=start, quit=loop.quit)
+            guard = GLib.timeout_add(200, guarded_stop)
+            try:
+                with mock.patch.object(provider, "NtpRead", return_value=read), \
+                        contextlib.redirect_stdout(io.StringIO()) as output, \
+                        contextlib.redirect_stderr(io.StringIO()) as diagnostic:
+                    self.assertEqual(provider.ntp_sample_command(), 1)
+                self.assertEqual(expired, [], "Cancellation quit before the main loop could observe it")
+                self.assertEqual(output.getvalue(), "")
+                # PyGObject's first loop may emit Python deprecation warnings.
+                self.assertNotIn("Traceback", diagnostic.getvalue())
+                self.assertTrue(read.done)
+                gio.bus_get_finish.assert_not_called()
+            finally:
+                if not expired:
+                    GLib.source_remove(guard)
 
 
 class OperationStreamTests(unittest.TestCase):
@@ -3133,7 +5287,7 @@ class ObservedUpdateTests(unittest.TestCase):
         accepted = [(11, "update", "pkg;2;x86_64;updates"),
                     (12, "install", "dep;1;x86_64;updates"),
                     (14, "obsolete", "old;1;noarch;installed")]
-        expected = hashlib.sha256(b"dwm-titus-update-observed-v1")
+        expected = hashlib.sha256(b"dwm-jangir-update-observed-v1")
         for info, action, package_id in accepted:
             self.assertTrue(observed.observe(info, package_id))
             for field in (action, package_id):
@@ -3262,14 +5416,14 @@ class SnapshotTests(unittest.TestCase):
         self.assertEqual(
             output[1],
             "snapshot-generation\t"
-            "0626a3347e1e76f4394deb0948b444a89b9ec8875696a1735c893b0db7258bac",
+            "499e8db9495b48be76f9bdf5b803b53bcba25864cc89161ab0dc1b4039d551e8",
         )
 
     def test_empty_snapshot_has_stable_generation_and_skips_simulation(self):
         backend = FixtureBackend()
         output = provider.build_snapshot(backend)
 
-        expected = hashlib.sha256(b"dwm-titus-update-plan-v1").hexdigest()
+        expected = hashlib.sha256(b"dwm-jangir-update-plan-v1").hexdigest()
         self.assertEqual(output[1], f"snapshot-generation\t{expected}")
         self.assertEqual(backend.simulated_ids, None)
         self.assertIn(
@@ -5305,7 +7459,7 @@ class JournalStateLoadTests(unittest.TestCase):
 
     def open_initialized_chain(self, directory):
         state = pathlib.Path(directory) / "state"
-        journal = state / "dwm-titus" / "system-management"
+        journal = state / "dwm-jangir" / "system-management"
         chain = provider.open_journal_directory_chain(str(journal))
         provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
         return state, journal, chain
@@ -5657,7 +7811,7 @@ class JournalWritableOpenTests(unittest.TestCase):
     boot_id = "01234567-89ab-cdef-0123-456789abcdef"
 
     def open_initialized_chain(self, directory):
-        journal = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+        journal = pathlib.Path(directory) / "state" / "dwm-jangir" / "system-management"
         chain = provider.open_journal_directory_chain(str(journal))
         provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
         return journal, chain
@@ -5875,7 +8029,7 @@ class JournalWritableCommitTests(unittest.TestCase):
     boot_id = "01234567-89ab-cdef-0123-456789abcdef"
 
     def open_initialized_chain(self, directory):
-        journal = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+        journal = pathlib.Path(directory) / "state" / "dwm-jangir" / "system-management"
         chain = provider.open_journal_directory_chain(str(journal))
         provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
         return journal, chain
@@ -6048,7 +8202,7 @@ class JournalRetainedSessionTests(unittest.TestCase):
     @contextlib.contextmanager
     def session(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+            path = pathlib.Path(directory) / "state" / "dwm-jangir" / "system-management"
             with provider.open_journal_directory_chain(str(path)) as chain:
                 provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
                 with provider.retain_writable_journal(chain) as journal:
@@ -6219,7 +8373,7 @@ class JournalLifecycleTests(unittest.TestCase):
     @contextlib.contextmanager
     def journal(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+            path = pathlib.Path(directory) / "state" / "dwm-jangir" / "system-management"
             with provider.open_journal_directory_chain(str(path)) as chain:
                 provider.initialize_journal_layout(
                     chain.directory_descriptor, self.boot_id
@@ -6562,7 +8716,7 @@ class JournalAdmissionTests(unittest.TestCase):
     operation_id = "op-0123456789abcdef0123456789abcdef"
 
     def open_initialized_chain(self, directory):
-        journal = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+        journal = pathlib.Path(directory) / "state" / "dwm-jangir" / "system-management"
         chain = provider.open_journal_directory_chain(str(journal))
         provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
         return journal, chain
@@ -6955,21 +9109,21 @@ class JournalDirectoryChainTests(unittest.TestCase):
             provider.journal_directory_path(
                 {"XDG_STATE_HOME": "/var/tmp/state", "HOME": "/ignored"}
             ),
-            "/var/tmp/state/dwm-titus/system-management",
+            "/var/tmp/state/dwm-jangir/system-management",
         )
         self.assertEqual(
             provider.journal_directory_path({"HOME": "/var/tmp/home"}),
-            "/var/tmp/home/.local/state/dwm-titus/system-management",
+            "/var/tmp/home/.local/state/dwm-jangir/system-management",
         )
         self.assertEqual(
             provider.journal_directory_path(
                 {"XDG_STATE_HOME": "relative", "HOME": "/var/tmp/home/"}
             ),
-            "/var/tmp/home/.local/state/dwm-titus/system-management",
+            "/var/tmp/home/.local/state/dwm-jangir/system-management",
         )
         self.assertEqual(
             provider.journal_directory_path({"XDG_STATE_HOME": "/var/tmp/state/"}),
-            "/var/tmp/state/dwm-titus/system-management",
+            "/var/tmp/state/dwm-jangir/system-management",
         )
 
     def test_invalid_state_inputs_fail_before_filesystem_access(self):
@@ -6996,7 +9150,7 @@ class JournalDirectoryChainTests(unittest.TestCase):
             try:
                 self.assertEqual(
                     chain.path,
-                    str(state_home / "dwm-titus" / "system-management"),
+                    str(state_home / "dwm-jangir" / "system-management"),
                 )
                 self.assertEqual(len(descriptors), len(chain.names) + 1)
                 self.assertEqual(
@@ -7020,7 +9174,7 @@ class JournalDirectoryChainTests(unittest.TestCase):
     def test_execute_only_existing_ancestor_can_be_retained(self):
         with tempfile.TemporaryDirectory() as directory:
             ancestor = pathlib.Path(directory) / "traverse-only"
-            journal = ancestor / "state" / "dwm-titus" / "system-management"
+            journal = ancestor / "state" / "dwm-jangir" / "system-management"
             journal.mkdir(parents=True, mode=0o700)
             os.chmod(journal, 0o700)
             os.chmod(ancestor, 0o311)
@@ -7047,7 +9201,7 @@ class JournalDirectoryChainTests(unittest.TestCase):
                 return original_open(path, flags, *args, **kwargs)
 
             try:
-                journal = ancestor / "state" / "dwm-titus" / "system-management"
+                journal = ancestor / "state" / "dwm-jangir" / "system-management"
                 with mock.patch.object(
                     provider.os, "open", side_effect=reject_readable_ancestor
                 ):
@@ -7062,7 +9216,7 @@ class JournalDirectoryChainTests(unittest.TestCase):
     def test_restrictive_umask_cannot_remove_created_owner_access(self):
         with tempfile.TemporaryDirectory() as directory:
             journal = (
-                pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+                pathlib.Path(directory) / "state" / "dwm-jangir" / "system-management"
             )
             previous_umask = os.umask(0o777)
             try:
@@ -7076,7 +9230,7 @@ class JournalDirectoryChainTests(unittest.TestCase):
 
     def test_interrupted_mode_repair_leaves_a_retryable_private_directory(self):
         with tempfile.TemporaryDirectory() as directory:
-            parent = pathlib.Path(directory) / "state" / "dwm-titus"
+            parent = pathlib.Path(directory) / "state" / "dwm-jangir"
             parent.mkdir(parents=True)
             journal = parent / "system-management"
             previous_umask = os.umask(0o777)
@@ -7100,7 +9254,7 @@ class JournalDirectoryChainTests(unittest.TestCase):
 
     def test_retry_resyncs_an_indeterminate_created_parent_entry(self):
         with tempfile.TemporaryDirectory() as directory:
-            parent = pathlib.Path(directory) / "state" / "dwm-titus"
+            parent = pathlib.Path(directory) / "state" / "dwm-jangir"
             parent.mkdir(parents=True)
             journal = parent / "system-management"
             parent_identity = (parent.stat().st_dev, parent.stat().st_ino)
@@ -7146,7 +9300,7 @@ class JournalDirectoryChainTests(unittest.TestCase):
 
     def test_retry_resyncs_an_indeterminate_created_directory(self):
         with tempfile.TemporaryDirectory() as directory:
-            parent = pathlib.Path(directory) / "state" / "dwm-titus"
+            parent = pathlib.Path(directory) / "state" / "dwm-jangir"
             parent.mkdir(parents=True)
             journal = parent / "system-management"
             original_fsync = os.fsync
@@ -7210,14 +9364,14 @@ class JournalDirectoryChainTests(unittest.TestCase):
             ancestor.mkdir(mode=0o755)
             os.chmod(ancestor, 0o755)
             with provider.open_journal_directory_chain(
-                str(ancestor / "state" / "dwm-titus" / "system-management")
+                str(ancestor / "state" / "dwm-jangir" / "system-management")
             ) as chain:
                 chain.validate()
                 self.assertEqual(stat.S_IMODE(ancestor.stat().st_mode), 0o755)
 
     def test_nonprivate_existing_journal_is_rejected_without_chmod(self):
         with tempfile.TemporaryDirectory() as directory:
-            journal = pathlib.Path(directory) / "dwm-titus" / "system-management"
+            journal = pathlib.Path(directory) / "dwm-jangir" / "system-management"
             journal.mkdir(parents=True, mode=0o755)
             os.chmod(journal, 0o755)
             with self.assertRaisesRegex(
@@ -7241,13 +9395,13 @@ class JournalDirectoryChainTests(unittest.TestCase):
                     state.write_text("not a directory", encoding="utf-8")
                 with self.assertRaises(provider.JournalLayoutError):
                     provider.open_journal_directory_chain(
-                        str(state / "dwm-titus" / "system-management")
+                        str(state / "dwm-jangir" / "system-management")
                     )
 
     def test_renamed_ancestor_fails_identity_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             state = pathlib.Path(directory) / "state"
-            journal = state / "dwm-titus" / "system-management"
+            journal = state / "dwm-jangir" / "system-management"
             chain = provider.open_journal_directory_chain(str(journal))
             try:
                 moved = pathlib.Path(directory) / "state-moved"
@@ -7263,7 +9417,7 @@ class JournalDirectoryChainTests(unittest.TestCase):
     def test_renamed_journal_fails_identity_validation(self):
         with tempfile.TemporaryDirectory() as directory:
             state = pathlib.Path(directory) / "state"
-            journal = state / "dwm-titus" / "system-management"
+            journal = state / "dwm-jangir" / "system-management"
             chain = provider.open_journal_directory_chain(str(journal))
             try:
                 moved = journal.with_name("system-management-moved")
@@ -7557,7 +9711,7 @@ class PackageKitExecutionTests(unittest.TestCase):
     @contextlib.contextmanager
     def journal(self):
         with tempfile.TemporaryDirectory() as directory:
-            path = pathlib.Path(directory) / "state" / "dwm-titus" / "system-management"
+            path = pathlib.Path(directory) / "state" / "dwm-jangir" / "system-management"
             with provider.open_journal_directory_chain(str(path)) as chain:
                 provider.initialize_journal_layout(chain.directory_descriptor, self.boot_id)
                 with provider.retain_writable_journal(chain) as journal:
@@ -9967,6 +12121,100 @@ class OperationWatchTests(unittest.TestCase):
             self.assertEqual(provider.load_journal_state(journal.chain).handoff.operation_id, operation.operation_id)
 
 
+class RegionalInterruptionTests(unittest.TestCase):
+    catalog = LocaleEnumerationTests.catalog
+
+    def run_client(self, client):
+        with contextlib.ExitStack() as retained:
+            return provider.run_interruptible_regional(client, retained)
+
+    def test_locale_enumeration_stop_reaps_child_and_becomes_typed_rejection(self):
+        from gi.repository import GLib
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            gio = mock.Mock()
+            client = provider.RegionalMutation("locale-set", "LANG=C", "a" * 64,
+                mock.Mock(), mock.Mock(), gio, GLib)
+            with self.subTest(signum=signum), self.catalog("closed-pipes", signal_number=signum) as processes:
+                with mock.patch.object(provider, "read_fedora_identity"), \
+                        self.assertRaises(provider.RegionalCommandInterrupted) as raised:
+                    self.run_client(client)
+                self.assertIn("no change was sent", raised.exception.detail)
+                self.assertFalse(client.sent)
+                gio.bus_get.assert_not_called()
+                self.assertTrue(all(p.returncode is not None and p.stdout.closed and p.stderr.closed for p in processes))
+
+    def test_repeated_stop_coalesces_and_rejects_a_just_completed_read(self):
+        handlers = {number: signal.getsignal(number)
+                    for number in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP)}
+        for signum in handlers:
+            for sent in (False, True):
+                with self.subTest(signum=signum, sent=sent):
+                    client = mock.Mock(sent=sent)
+                    def run():
+                        signal.raise_signal(signum)
+                        signal.raise_signal(signum)
+                        return "verified"
+                    client.run.side_effect = run
+                    with self.assertRaises(provider.RegionalCommandInterrupted) as raised:
+                        self.run_client(client)
+                    self.assertEqual(raised.exception.code, "interrupted")
+                    self.assertIn("may still complete" if sent else "no change was sent", raised.exception.detail)
+                    client.GLib.idle_add.assert_called_once()
+                    client.GLib.source_remove.assert_called_once_with(client.GLib.idle_add.return_value)
+                    client.fail.assert_not_called()
+                    for number, handler in handlers.items():
+                        self.assertIs(signal.getsignal(number), handler)
+
+    def test_unrelated_system_exit_is_not_reclassified_as_a_stop(self):
+        for action, started, code in (("timezone-set", False, 143),
+                                      ("locale-set", True, 143), ("locale-set", False, 2)):
+            client = mock.Mock(action=action, started=started, sent=False)
+            client.run.side_effect = SystemExit(code)
+            with self.subTest(action=action, started=started, code=code), self.assertRaises(SystemExit) as raised:
+                self.run_client(client)
+            self.assertEqual(raised.exception.code, code)
+            client.GLib.idle_add.assert_not_called()
+
+    def test_startup_gap_cannot_lose_the_queued_stop(self):
+        from gi.repository import GLib
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            gio = mock.Mock()
+            client = provider.RegionalMutation("timezone-set", "Etc/UTC", "a" * 64,
+                mock.Mock(), mock.Mock(), gio, GLib)
+            loop = client.loop
+            expired = []
+            def guard_stop():
+                expired.append(True)
+                loop.quit()
+                return GLib.SOURCE_REMOVE
+            def start():
+                signal.raise_signal(signum)
+                loop.run()
+            client.loop = types.SimpleNamespace(run=start, quit=loop.quit)
+            guard = GLib.timeout_add(200, guard_stop)
+            try:
+                with mock.patch.object(provider, "read_fedora_identity"), \
+                        contextlib.redirect_stderr(io.StringIO()) as diagnostic, \
+                        self.assertRaises(provider.RegionalCommandInterrupted):
+                    self.run_client(client)
+                self.assertEqual(expired, [], "Regional stop was lost before loop startup")
+                self.assertNotIn("Traceback", diagnostic.getvalue())
+                self.assertTrue(client.done)
+                self.assertFalse(client.sent)
+                gio.bus_get_finish.assert_not_called()
+            finally:
+                if not expired:
+                    GLib.source_remove(guard)
+
+    def test_actual_cli_signal_matrix_on_private_bus(self):
+        result = subprocess.run(["dbus-run-session", "--", "/usr/bin/python3",
+            str(REPO / "tests/fixtures/system-regional-interruption-bus.py"), str(PROVIDER_PATH)],
+            capture_output=True, text=True, timeout=90, check=False)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(result.stdout.count("Regional signal case: PASS"), 18)
+        self.assertIn("Private-bus regional interruption: PASS", result.stdout)
+
+
 class RegionalOwnerTests(unittest.TestCase):
     boot_id = JournalRetainedSessionTests.boot_id
     session = JournalRetainedSessionTests.session
@@ -10120,6 +12368,115 @@ class RegionalOwnerTests(unittest.TestCase):
             self.assertEqual(output, [])
             admitted.assert_not_called()
             self.assertEqual(provider.load_journal_state(journal.chain), before)
+
+    def test_local_stop_terminalizes_a_running_owner_without_another_service_wait(self):
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            with self.subTest(signum=signum), self.session() as (_path, _chain, journal):
+                def configure():
+                    self.before_admission = lambda: setattr(self.client, "GLib", mock.Mock())
+                    self.during = lambda: signal.raise_signal(signum)
+                terminal, output, fresh = self.invoke(journal, configure=configure)
+                self.assertEqual((terminal.state, terminal.error_code), ("interrupted", "interrupted"))
+                self.assertEqual([row[4] for row in rows(output.splitlines(), "operation")],
+                    ["pending", "authorizing", "running", "interrupted"])
+                fresh.assert_not_called()
+                durable = provider.load_journal_state(journal.chain)
+                self.assertIsNone(durable.active)
+                self.assertEqual(durable.terminals[durable.handoff.slot], terminal)
+                self.assertTrue(provider._try_native_owner_lock(journal.descriptor("active")))
+                provider._unlock_native_owner(journal.descriptor("active"))
+
+    def test_repeated_stop_during_terminal_commit_and_lease_release_is_coalesced(self):
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            with self.subTest(signum=signum), self.session() as (_path, _chain, journal):
+                def configure():
+                    self.before_admission = lambda: setattr(self.client, "GLib", mock.Mock())
+                    self.during = lambda: signal.raise_signal(signum)
+                advance, unlock = provider.advance_journal_operation, provider._unlock_native_owner
+                terminal_started = []
+                def commit(current_journal, current, following, **kwargs):
+                    if following.state == "interrupted":
+                        terminal_started.append(True)
+                        signal.raise_signal(signum)
+                    return advance(current_journal, current, following, **kwargs)
+                def release(descriptor):
+                    if terminal_started:
+                        signal.raise_signal(signum)
+                    return unlock(descriptor)
+                with contextlib.redirect_stdout(io.StringIO()), contextlib.redirect_stderr(io.StringIO()), \
+                        provider.control_output_writers(), \
+                        mock.patch.object(provider, "advance_journal_operation", side_effect=commit), \
+                        mock.patch.object(provider, "_unlock_native_owner", side_effect=release):
+                    terminal, _output, fresh = self.invoke(journal, configure=configure)
+                self.assertEqual(terminal.state, "interrupted")
+                fresh.assert_not_called()
+                durable = provider.load_journal_state(journal.chain)
+                self.assertIsNone(durable.active)
+                self.assertEqual(durable.terminals[durable.handoff.slot], terminal)
+                self.assertTrue(provider._try_native_owner_lock(journal.descriptor("active")))
+                provider._unlock_native_owner(journal.descriptor("active"))
+
+    def test_first_stop_during_timeout_handoff_skips_the_optional_read(self):
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            with self.subTest(signum=signum), self.session() as (_path, _chain, journal):
+                complete = provider.complete_journal_terminal
+                def handoff(*args, **kwargs):
+                    signal.raise_signal(signum)
+                    return complete(*args, **kwargs)
+                with mock.patch.object(provider, "complete_journal_terminal", side_effect=handoff):
+                    terminal, _output, fresh = self.invoke(journal, mode="timeout")
+                self.assertEqual((terminal.state, terminal.error_code), ("interrupted", "timeout"))
+                self.assertTrue(self.client.local_interrupted)
+                fresh.assert_not_called()
+                durable = provider.load_journal_state(journal.chain)
+                self.assertIsNone(durable.active)
+                self.assertEqual(durable.terminals[durable.handoff.slot], terminal)
+
+    def test_stop_during_independent_read_preserves_the_durable_terminal(self):
+        from gi.repository import GLib
+        for signum in (signal.SIGTERM, signal.SIGINT, signal.SIGHUP):
+            with self.subTest(signum=signum), self.session() as (_path, _chain, journal):
+                factory, generation = self.setup_client(journal, mode="transport")
+                gio = mock.Mock()
+                read = provider.RegionalRead("time-state", gio, GLib)
+                expired, output = [], []
+                trigger_source = 0
+                def trigger():
+                    nonlocal trigger_source
+                    trigger_source = 0
+                    durable = provider.load_journal_state(journal.chain)
+                    self.assertIsNone(durable.active)
+                    self.assertEqual(durable.terminals[durable.handoff.slot].state, "interrupted")
+                    self.assertTrue(provider._try_native_owner_lock(journal.descriptor("active")))
+                    provider._unlock_native_owner(journal.descriptor("active"))
+                    signal.raise_signal(signum)
+                    return GLib.SOURCE_REMOVE
+                def guard_stop():
+                    expired.append(True)
+                    read.loop.quit()
+                    return GLib.SOURCE_REMOVE
+                guard = GLib.timeout_add(1000, guard_stop)
+                trigger_source = GLib.idle_add(trigger)
+                try:
+                    with mock.patch.object(provider, "RegionalMutation", side_effect=factory), \
+                            mock.patch.object(provider, "RegionalRead", return_value=read), \
+                            contextlib.redirect_stdout(io.StringIO()), \
+                            contextlib.redirect_stderr(io.StringIO()) as diagnostic, \
+                            provider.control_output_writers():
+                        terminal = provider.run_regional_mutation(journal, "timezone-set", "Etc/UTC",
+                            generation, output.append)
+                    self.assertEqual(expired, [], "Independent read ignored the local stop")
+                    self.assertNotIn("Traceback", diagnostic.getvalue())
+                    self.assertTrue(read.done)
+                    self.assertEqual((terminal.state, terminal.error_code), ("interrupted", "interrupted"))
+                    durable = provider.load_journal_state(journal.chain)
+                    self.assertEqual(durable.terminals[durable.handoff.slot], terminal)
+                    self.assertTrue(output[-1].endswith("complete\toperation\n"))
+                finally:
+                    if not expired:
+                        GLib.source_remove(guard)
+                    if trigger_source:
+                        GLib.source_remove(trigger_source)
 
     def test_output_loss_before_dispatch_aborts_but_after_dispatch_keeps_verification(self):
         for phase in ("pending", "authorizing", "running", "succeeded"):
@@ -10962,19 +13319,36 @@ class RecoverySnapshotTests(unittest.TestCase):
     def restart_row(self, output):
         return next(row for row in rows(output, "state") if row[1] == "update-restart")
 
+    def test_core_cli_never_constructs_optional_information_readers(self):
+        with tempfile.TemporaryDirectory() as directory, \
+                mock.patch.dict(os.environ, {"XDG_STATE_HOME": directory}), \
+                mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
+                mock.patch.object(provider, "PackageKitBackend", return_value=self.backend()), \
+                mock.patch.object(provider, "NativeSnapshotSources", return_value=FixtureNativeSources()), \
+                mock.patch.object(provider, "InformationSnapshotSources", side_effect=AssertionError("Optional probe")) as information, \
+                contextlib.redirect_stdout(io.StringIO()) as stdout:
+            self.assertEqual(provider.main(["snapshot-core"]), 0)
+        information.assert_not_called()
+        self.assertEqual(stdout.getvalue().splitlines()[0], "system-management-protocol\t1\t1")
+        self.assertEqual(len(rows(stdout.getvalue().splitlines(), "provider")), 6)
+
     def test_cli_initializes_only_its_fixed_journal_and_offers_safe_refresh(self):
         with tempfile.TemporaryDirectory() as directory, \
                 mock.patch.dict(os.environ, {"XDG_STATE_HOME": directory}), \
                 mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
                 mock.patch.object(provider, "PackageKitBackend", return_value=self.backend()), \
+                mock.patch.object(provider, "NativeSnapshotSources", return_value=FixtureNativeSources()), \
+                mock.patch.object(provider, "InformationSnapshotSources", return_value=InformationSnapshotTests().sources()), \
                 contextlib.redirect_stdout(io.StringIO()) as stdout:
             self.assertEqual(provider.main(["snapshot"]), 0)
             output = stdout.getvalue().splitlines()
             self.assertEqual(output[-1], "complete\tsnapshot")
             self.assertEqual(self.restart_row(output)[2:4], ["available", "none"])
-            self.assertEqual([row[2] for row in rows(output, "action")],
+            self.assertEqual([row[2] for row in rows(output, "action")[:3]],
                 ["available", "unavailable", "unavailable"])
-            path = pathlib.Path(directory) / "dwm-titus" / "system-management"
+            self.assertEqual(output[0], "system-management-protocol\t1\t2")
+            self.assertEqual(len(rows(output, "action")), 11)
+            path = pathlib.Path(directory) / "dwm-jangir" / "system-management"
             self.assertEqual({item.name for item in path.iterdir()}, set(provider.JOURNAL_NAMES))
             self.assertEqual(stat.S_IMODE(path.stat().st_mode), 0o700)
 
@@ -11215,9 +13589,219 @@ class RecoverySnapshotTests(unittest.TestCase):
             with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(pathlib.Path(journal.chain.path).parents[1])}), \
                     mock.patch.object(provider, "read_boot_id", return_value=self.boot_id), \
                     mock.patch.object(provider, "PackageKitBackend", side_effect=provider.SnapshotFailure("missing-provider", "Bindings missing")), \
+                    mock.patch.object(provider, "NativeSnapshotSources", return_value=FixtureNativeSources()), \
+                mock.patch.object(provider, "InformationSnapshotSources", return_value=InformationSnapshotTests().sources()), \
                     contextlib.redirect_stdout(io.StringIO()) as stdout:
                 self.assertEqual(provider.main(["snapshot"]), 0)
             self.assertEqual(rows(stdout.getvalue().splitlines(), "terminal-handoff")[0][1], operation.operation_id)
+
+
+class FixtureNativeSources:
+    """Typed finite results; no test silently consults or launches host providers."""
+
+    def __init__(self):
+        self.time_state = mock.Mock(return_value=provider.RegionalTimeState("America/Chicago", True, True, False))
+        self.locale_state = mock.Mock(return_value=provider.parse_locale_configuration(("LANG=en_US.UTF-8", "LC_TIME=C")))
+        account = provider.AccountRecord("/arbitrary/current", "current", "Current user", "fixture", True)
+        self.accounts = mock.Mock(return_value=provider.AccountInventory((account,), (account.path,), account.path, "available", ()))
+        self.printers = mock.Mock(return_value=provider.CupsState("available", "socket-ready", (), ()))
+        self.repositories = mock.Mock(return_value=(provider.RepositoryRow("fedora", True, "Fedora"),
+            provider.RepositoryRow("disabled", False, "Disabled source")))
+        self.delegate = mock.Mock(return_value=(("/usr/bin/fixed-fixture",), "Fixture tool"))
+        self.admission = mock.Mock()
+
+
+class NativeSnapshotTests(unittest.TestCase):
+    def snapshot(self, sources=None, *, backend=None, active=False, recovery_failure=None, missing_state=False, information=None):
+        fixture = RecoverySnapshotTests()
+        sources = sources or FixtureNativeSources()
+        backend = backend or fixture.backend()
+        with fixture.journal() as journal:
+            if active:
+                fixture.begin(journal, "timezone")
+            recovery = provider.RecoverySnapshot(None if missing_state else provider.load_journal_state(journal.chain),
+                failures=(recovery_failure,) if recovery_failure else ())
+            with mock.patch.object(provider, "read_recovery_snapshot", return_value=recovery), \
+                    mock.patch.object(provider, "launch_delegated_tool") as launch:
+                output = provider.build_managed_snapshot(backend, native_sources=sources, information_sources=information)
+            launch.assert_not_called()
+            return output
+
+    def by_id(self, output, kind):
+        return {row[1]: row for row in rows(output, kind)}
+
+    def test_minor_two_keeps_information_and_health_available_during_blocked_recovery(self):
+        source = FixtureNativeSources()
+        source.admission.side_effect = provider.SnapshotFailure("conflict", "Journal blocked")
+        output = self.snapshot(source, information=InformationSnapshotTests().sources())
+        self.assertEqual(output[0], "system-management-protocol\t1\t2")
+        self.assertEqual(len(rows(output, "provider")), 10)
+        self.assertEqual(len(rows(output, "state")), 28)
+        actions = self.by_id(output, "action")
+        self.assertEqual(actions["health-open"][2:5], ["available", "user-session", "diagnostics"])
+        self.assertEqual(actions["timezone-set"][2], "unavailable")
+        self.assertEqual(self.by_id(output, "state")["selinux"][2:4], ["available", "enforcing"])
+        self.assertEqual(len(rows(output, "filesystem")), 1)
+        self.assertEqual(rows(output, "snapshot-generation"), rows(self.snapshot(), "snapshot-generation"))
+        output = self.snapshot(active=True, information=InformationSnapshotTests().sources())
+        self.assertEqual(self.by_id(output, "action")["health-open"][2], "available")
+
+    def test_information_requires_the_complete_native_minor(self):
+        with self.assertRaises(ValueError), mock.patch.object(provider, "read_recovery_snapshot") as recovery:
+            provider.build_managed_snapshot(FixtureBackend(), information_sources=InformationSnapshotTests().sources())
+        recovery.assert_not_called()
+
+    def test_complete_cumulative_set_and_no_dispatch(self):
+        sources = FixtureNativeSources()
+        output = self.snapshot(sources)
+        self.assertEqual(output[0], "system-management-protocol\t1\t1")
+        self.assertEqual(output[-1], "complete\tsnapshot")
+        self.assertEqual(len(rows(output, "provider")), 6)
+        self.assertEqual(len(rows(output, "state")), 9)
+        self.assertEqual(len(rows(output, "action")), 10)
+        self.assertEqual(len(rows(output, "account")), 1)
+        self.assertEqual(len(rows(output, "repository")), 2)
+        self.assertEqual(self.by_id(output, "state")["accounts-count"][2:4], ["available", "1"])
+        self.assertEqual(self.by_id(output, "state")["ntp-synchronized"][3], "no")
+        self.assertEqual(self.by_id(output, "state")["locale"][3:], ["en_US.UTF-8", "LC_TIME=C"])
+        for method in (sources.time_state, sources.locale_state, sources.accounts,
+                       sources.printers, sources.repositories, sources.admission):
+            method.assert_called_once_with()
+        self.assertEqual({call.args[0] for call in sources.delegate.call_args_list}, provider.DELEGATED_ACTIONS)
+        self.assertEqual(rows(output, "error"), [])
+        self.assertEqual(provider.build_snapshot(FixtureBackend())[0], "system-management-protocol\t1\t0")
+
+    def test_independent_reader_failures_keep_every_mandatory_record(self):
+        for name, owner, state_id in (("time_state", "regional", "timezone"),
+                ("locale_state", "regional", "locale"), ("accounts", "accounts", "accounts-count"),
+                ("printers", "printers", "cups-service"), ("repositories", "sources", None)):
+            with self.subTest(name=name):
+                sources = FixtureNativeSources()
+                getattr(sources, name).side_effect = provider.SnapshotFailure("permission-denied", "Read denied", "restricted")
+                output = self.snapshot(sources)
+                self.assertEqual(len(rows(output, "provider")), 6)
+                self.assertEqual(len(rows(output, "state")), 9)
+                self.assertEqual(len(rows(output, "action")), 10)
+                if state_id:
+                    self.assertEqual(self.by_id(output, "state")[state_id][2:4], ["restricted", "unknown"])
+                self.assertIn(["error", owner, "permission-denied", "Read denied"], rows(output, "error"))
+                self.assertEqual(self.by_id(output, "state")["locale" if name == "time_state" else "timezone"][2], "available")
+                self.assertEqual(self.by_id(output, "action")["accounts-open"][2], "available")
+
+    def test_missing_tools_preserve_rows_and_readable_state(self):
+        sources = FixtureNativeSources()
+        sources.delegate.side_effect = provider.SnapshotFailure("missing-provider", "Tool is missing", "unavailable")
+        output = self.snapshot(sources)
+        self.assertEqual(len(rows(output, "account")), 1)
+        self.assertEqual(len(rows(output, "repository")), 2)
+        self.assertEqual(self.by_id(output, "state")["cups-service"][2:4], ["available", "socket-ready"])
+        for identifier in provider.DELEGATED_ACTIONS:
+            self.assertEqual(self.by_id(output, "action")[identifier][2], "unavailable")
+        self.assertEqual(self.by_id(output, "action")["timezone-set"][2], "available")
+
+    def test_partial_accounts_and_running_printer_survive_scoped_errors(self):
+        sources = FixtureNativeSources()
+        failure = provider.SnapshotFailure("timeout", "Optional lookup timed out", "unavailable")
+        sources.accounts.return_value = replace(sources.accounts.return_value, status="partial", errors=(failure,))
+        sources.printers.return_value = provider.CupsState("available", "running", (), (failure,))
+        output = self.snapshot(sources)
+        self.assertEqual(len(rows(output, "account")), 1)
+        self.assertEqual(self.by_id(output, "state")["accounts-count"][2:4], ["partial", "unknown"])
+        self.assertEqual(self.by_id(output, "state")["cups-service"][2:4], ["available", "running"])
+        self.assertEqual(self.by_id(output, "provider")["printers"][2], "partial")
+
+    def test_native_offers_do_not_require_packagekit_or_logind_safety(self):
+        fixture = RecoverySnapshotTests()
+        backend = fixture.backend()
+        backend.require_mutation_safe.side_effect = provider.SnapshotFailure("unsupported", "Update security floor is unavailable")
+        for failure in (None, provider.SnapshotFailure("missing-provider", "No logind session", "unavailable")):
+            with self.subTest(failure=failure):
+                sources = FixtureNativeSources()
+                output = self.snapshot(sources, backend=backend, recovery_failure=failure)
+                actions = self.by_id(output, "action")
+                self.assertEqual(actions["updates-refresh"][2], "unavailable")
+                for identifier in provider.JOURNAL_OPERATION_ACTION_KINDS:
+                    if identifier not in {"updates-refresh", "updates-install-all"}:
+                        self.assertEqual(actions[identifier][2], "available")
+                sources.admission.assert_called_once_with()
+
+    def test_missing_recovery_active_owner_and_admission_failures_block_native(self):
+        for scenario in ("missing", "active", "admission"):
+            with self.subTest(scenario=scenario):
+                sources = FixtureNativeSources()
+                if scenario == "admission":
+                    sources.admission.side_effect = provider.SnapshotFailure("conflict", "Journal is busy")
+                output = self.snapshot(sources, active=scenario == "active", missing_state=scenario == "missing")
+                for row in rows(output, "action")[3:]:
+                    self.assertEqual(row[2], "unavailable")
+                if scenario != "admission":
+                    sources.admission.assert_not_called()
+                self.assertEqual(self.by_id(output, "state")["timezone"][2], "available")
+
+    def test_ntp_and_unwritable_locale_preserve_readable_status(self):
+        for assignments in (("LANG=en_US.UTF-8", "LANGUAGE=en:fr"), ("LANG=en_US.UTF-8", "LC_TIME=")):
+            sources = FixtureNativeSources()
+            sources.time_state.return_value = replace(sources.time_state.return_value, can_ntp=False)
+            sources.locale_state.return_value = provider.parse_locale_configuration(assignments)
+            output = self.snapshot(sources)
+            actions = self.by_id(output, "action")
+            self.assertEqual(actions["ntp-set"][2], "unavailable")
+            self.assertEqual(actions["locale-set"][2], "unavailable")
+            self.assertEqual(actions["timezone-set"][2], "available")
+            self.assertEqual(self.by_id(output, "state")["locale"][2:4], ["available", "en_US.UTF-8"])
+        sources.locale_state.return_value = provider.parse_locale_configuration(("LANG=old:invalid", "LC_TIME=C"))
+        self.assertEqual(self.by_id(self.snapshot(sources), "action")["locale-set"][2], "available")
+        sources.locale_state.return_value = provider.parse_locale_configuration(("LANG=",))
+        output = self.snapshot(sources)
+        self.assertEqual(self.by_id(output, "state")["locale"][2:4], ["available", ""])
+        self.assertEqual(self.by_id(output, "action")["locale-set"][2], "available")
+
+    def test_list_count_byte_and_duplicate_failures_discard_only_owner(self):
+        for family in ("account-count", "account-bytes", "account-duplicate", "repository-count", "repository-bytes", "repository-duplicate"):
+            with self.subTest(family=family):
+                sources = FixtureNativeSources()
+                if family.startswith("account"):
+                    original = sources.accounts.return_value
+                    count = 257 if family.endswith("count") else 256 if family.endswith("bytes") else 2
+                    records = tuple(provider.AccountRecord("/arbitrary/" + str(i) if not family.endswith("duplicate") else "/same",
+                        "other", "x" * 512, "y" * 512, True) for i in range(count))
+                    sources.accounts.return_value = replace(original, records=records)
+                    owner, kind = "accounts", "account"
+                else:
+                    count = 513 if family.endswith("count") else 512 if family.endswith("bytes") else 2
+                    records = tuple(provider.RepositoryRow((str(i) + "x" * 500) if not family.endswith("duplicate") else "same",
+                        True, "y" * 512) for i in range(count))
+                    sources.repositories.return_value = records
+                    owner, kind = "sources", "repository"
+                output = self.snapshot(sources)
+                self.assertEqual(rows(output, kind), [])
+                self.assertTrue(any(row[1:3] == [owner, "malformed"] for row in rows(output, "error")))
+                self.assertEqual(self.by_id(output, "state")["timezone"][2], "available")
+
+    def test_non_list_and_total_byte_reservations(self):
+        provider.validate_snapshot_size(["account\trow"] * 9216)
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.validate_snapshot_size(["account\trow"] * 9217)
+        provider.validate_snapshot_size(["future\t" + "x" * (1024 * 1024 - 8)])
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.validate_snapshot_size(["future\t" + "x" * (1024 * 1024 - 7)])
+        with self.assertRaises(provider.SnapshotFailure):
+            provider.validate_snapshot_size(["account\t" + "x" * (8 * 1024 * 1024)])
+
+    def test_real_native_admission_is_fedora_gated_and_does_not_commit(self):
+        fixture = RecoverySnapshotTests()
+        with fixture.journal() as journal:
+            before = {name: os.pread(journal.descriptor(name), provider.JOURNAL_FILE_SIZE, 0) for name in provider.JOURNAL_NAMES}
+            with mock.patch.dict(os.environ, {"XDG_STATE_HOME": str(pathlib.Path(journal.chain.path).parents[1])}), \
+                    mock.patch.object(provider, "read_fedora_identity", return_value={"ID": "fedora"}) as identity:
+                provider.NativeSnapshotSources().admission()
+                identity.assert_called_once_with()
+            self.assertEqual(before, {name: os.pread(journal.descriptor(name), provider.JOURNAL_FILE_SIZE, 0) for name in provider.JOURNAL_NAMES})
+            with mock.patch.object(provider, "read_fedora_identity", side_effect=provider.SnapshotFailure("unsupported", "Not Fedora")), \
+                    mock.patch.object(provider, "open_journal_directory") as open_journal:
+                with self.assertRaises(provider.SnapshotFailure):
+                    provider.NativeSnapshotSources().admission()
+                open_journal.assert_not_called()
 
 
 if __name__ == "__main__":

@@ -12,7 +12,7 @@
 
 ![The dwm-jangir desktop with its Quickshell panel](./dwm-jangir-qs-4x.webp)
 
-dwm-jangir is Rahul Jangir's public fork of the upstream dwm-titus Fedora X11
+dwm-jangir is Rahul Jangir's public fork of the upstream dwm-jangir Fedora X11
 desktop.
 It keeps upstream compatibility while adding documented, minimal fork-specific
 behavior. It is designed for people who want a responsive keyboard-first
@@ -195,6 +195,22 @@ metadata refresh and package installation. Review all package changes, including
 dependency additions and removals, before confirming. PackageKit owns
 authorization and cancellation; closing Settings does not cancel an operation.
 If discovery or recovery is incomplete, reload status and follow its guidance.
+
+The same section provides confirmed account, password, printer, and software-source
+tool launches. Missing tools or stale provider status disable only the affected
+entry. Account and repository inventories remain read-only. A successful launch
+does not mean administration inside the tool completed; authorize and confirm
+those changes in the tool itself. Enter passwords only in the terminal prompt.
+
+For timezone or system locale, **Load choices**, filter and select a reported
+value, then **Review change**. Network time offers fixed enable/disable previews.
+Review the complete preview before **Apply change**: a sent regional change
+cannot be canceled. Cancel only dismisses the preview, and closing Settings does
+not undo an action. An uncertain result requires fresh status and new confirmation,
+not automatic retry. Locale changes apply to new sessions; log out manually when
+ready. Synchronization status is labeled as the last read.
+The panel and System Settings share one minute-level local clock. A newly
+reported timezone refreshes both displays without restarting Quickshell.
 
 Start with the built-in diagnostic report:
 

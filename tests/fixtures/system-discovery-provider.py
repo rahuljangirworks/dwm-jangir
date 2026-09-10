@@ -7,6 +7,10 @@ from pathlib import Path
 import signal
 import stat
 import sys
+
+# These fixtures reuse one projection for the fixed bounded snapshot modes.
+if sys.argv[1:] in (["snapshot-core"], ["snapshot-without-storage"]):
+    sys.argv[1] = "snapshot"
 import time
 
 
@@ -33,6 +37,16 @@ def changed(count):
 
 
 def main():
+    if tuple(sys.argv[1:]) in (("watch-time",), ("watch-regional", "locale"),
+                              ("watch-accounts",), ("watch-units", "printers"), ("watch-units", "security"), ("watch-mounts",)):
+        prefix = "time-event" if sys.argv[1] == "watch-time" else "regional-event" if sys.argv[1] == "watch-regional" else (
+            "accounts-event" if sys.argv[1] == "watch-accounts" else "units-event")
+        if sys.argv[1] == "watch-mounts":
+            row("mount-monitor-ready")
+        else:
+            row(prefix, "ready")
+        signal.pause()
+        return
     action = sys.argv[1]
     if action == "fixture-control":
         if sys.argv[2] == "events":

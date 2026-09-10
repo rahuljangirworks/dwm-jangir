@@ -25,6 +25,32 @@ the complete layout for 15 seconds, then **Keep changes** to accept it or
 restores the prior layout. Saved layouts can be reused later; **Use at next
 login** installs the selected layout for future X11 sessions after a separate
 confirmation and administrator authorization.
+
+Monitor cards and the layout preview share the same numbers. To arrange an
+enabled monitor, choose another monitor in its reference selector and click
+**Left of**, **Right of**, **Above**, or **Below**. The preview updates before
+anything changes on your desktop. Horizontal placements align top edges;
+vertical placements align left edges. After changing resolution or rotation,
+choose a placement again to realign the edges. Disabled monitors keep their
+cards but do not appear in the preview or reference choices.
+
+**Automatic layouts** provides separate **Undocked** (built-in only) and
+**Docked** profiles, with saved monitor previews and refresh rates. The status
+line distinguishes matching hardware from the layout actually applied.
+Choose **Edit saved**, adjust the draft below, then **Save draft as undocked**
+or **Save draft as docked** and confirm. Saving does not change live screens;
+use **Apply changes** and **Keep changes** to test first. You can prepare the
+Undocked layout while the dock remains connected. Connect the saved monitors
+before editing a Docked layout.
+
+This optional feature uses Fedora's `autorandr` login and hotplug integration,
+without administrator approval. Saving Undocked makes it the default fallback.
+Docked matches the connected monitor identities, not just the connector type.
+Replaced profiles are backed up in the dwm-jangir `display-profile-backups`
+configuration directory. Only one Docked slot is managed here; advanced
+multi-dock profiles remain available through autorandr. These user profiles
+are separate from the administrator-controlled **Use at next login** action.
+
 The machine-oriented `dwm-settings-display` helper exposes `discover` and
 `watch`, complete-layout `save` and `preview`, named `preview-profile`, timed
 `keep`, `revert`, and `preview-status`, plus authorized `install-profile` and
@@ -57,6 +83,28 @@ ordinary popup duration, or reset both choices to Do Not Disturb off and six
 seconds. These choices persist for future managed Quickshell sessions. Settings
 keeps them read-only when another notification daemon owns the session D-Bus
 name.
+
+The System section includes **Manage accounts**, **Change my password**,
+**Manage printers**, and **Manage software sources**. Each opens a fixed trusted
+Fedora tool only after a separate confirmation. Missing tools and stale provider
+status are explained beside the affected control. Reported accounts and enabled
+or disabled software sources are read-only lists here. The tool owns its own
+authorization and changes; an accepted launch is not proof that work inside it
+completed. Enter passwords only in the configured terminal's `passwd` prompt.
+Cancel returns keyboard focus to the originating control. Closing Settings does
+not close a launched tool or undo its changes.
+
+For timezone and system locale, select **Load choices**, filter the reported
+catalog, and select with click or Enter. **Review change** reads a fresh preview;
+it does not apply the selection. Network time offers fixed enable/disable
+previews. Confirm the complete current and target values with **Apply change**.
+A sent change cannot be canceled; Cancel only dismisses the preview. Uncertain
+results require fresh status and a new confirmation, never automatic retry or
+rollback. Locale changes apply to new sessions without automatic logout. NTP
+synchronization is explicitly labeled as last-read status.
+The local date and time readout shares the panel's minute-level clock. A newly
+reported timezone refreshes both displays without restarting the shell. This
+does not add background timezone discovery while System Settings is closed.
 
 Type to search section names and descriptions. Use Up and Down to move through
 the filtered sections, Enter to select one, or Escape to close Settings. The

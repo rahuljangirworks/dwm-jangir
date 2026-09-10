@@ -2,6 +2,7 @@ import QtQuick
 import Quickshell
 import Quickshell.Io
 import qs.core
+import "DisplayLayout.js" as DisplayLayout
 
 Scope {
     id: root
@@ -31,9 +32,15 @@ Scope {
     property var capabilities: []
     property int selectedIndex: 0
     property var displayOutputs: []
+    readonly property var displayArrangement: DisplayLayout.preview(root.displayOutputs)
     property var displayModes: []
     property var displayProfiles: []
     property var displayUnsupportedProfiles: []
+    property var automaticDisplayState: ({ available: false, profiles: [], detected: [], current: [], default: "", error: "Loading automatic layouts" })
+    property string automaticDisplayMessage: ""
+    property string displayEditingRole: "live"
+    property bool automaticDisplayRefreshPending: false
+    readonly property bool automaticDisplayBusy: automaticDisplaySaveProcess.running || automaticDisplayStatusProcess.running
     property string displayState: "idle"
     property string displayMessage: ""
     property string displayBaseline: ""
@@ -181,6 +188,7 @@ Scope {
     function parseDisplays(text) {
         const outputs = [];
         const modes = [];
+        const modeSizes = [];
         const profiles = [];
         const unsupportedProfiles = [];
         let valid = false;
@@ -189,13 +197,19 @@ Scope {
             if (fields[0] === "display-protocol" && fields[1] === "1") {
                 valid = true;
             } else if (fields[0] === "output" && fields.length >= 9) {
+                const geometry = DisplayLayout.size({ mode: fields[4], rotation: fields[7] });
                 outputs.push({
                     "name": fields[1], "enabled": fields[2] === "1",
                     "primary": fields[3] === "1", "mode": fields[4],
                     "rate": "", "x": Number(fields[5]), "y": Number(fields[6]),
+                    "pixelWidth": geometry ? geometry.width : 0,
+                    "pixelHeight": geometry ? geometry.height : 0,
                     "rotation": fields[7], "tearfree": fields[8],
                     "fullCompositionPipeline": fields.length >= 10 ? fields[9] : "unsupported"
                 });
+            } else if (fields[0] === "mode-size" && fields.length >= 6) {
+                modeSizes.push({ output: fields[1], mode: fields[2], rate: fields[3],
+                    pixelWidth: Number(fields[4]), pixelHeight: Number(fields[5]) });
             } else if (fields[0] === "mode" && fields.length >= 6) {
                 modes.push({
                     "output": fields[1], "mode": fields[2], "rate": fields[3],
@@ -207,6 +221,14 @@ Scope {
                 unsupportedProfiles.push({ "name": fields[1], "detail": fields.slice(2).join("\t") });
             }
         }
+        for (const mode of modes) {
+            const dimensions = modeSizes.find(function(item) {
+                return item.output === mode.output && item.mode === mode.mode && item.rate === mode.rate;
+            });
+            const size = DisplayLayout.size(dimensions || mode);
+            mode.pixelWidth = size ? size.width : 0;
+            mode.pixelHeight = size ? size.height : 0;
+        }
         for (let index = 0; index < outputs.length; index++) {
             const current = modes.find(function(mode) {
                 return mode.output === outputs[index].name && mode.current;
@@ -214,6 +236,10 @@ Scope {
             if (current) {
                 outputs[index].mode = current.mode;
                 outputs[index].rate = current.rate;
+                if (current.pixelWidth && current.pixelHeight) {
+                    outputs[index].pixelWidth = current.pixelWidth;
+                    outputs[index].pixelHeight = current.pixelHeight;
+                }
             } else {
                 const preferred = modes.find(function(mode) {
                     return mode.output === outputs[index].name && mode.preferred;
@@ -221,10 +247,13 @@ Scope {
                 if (preferred) {
                     outputs[index].mode = preferred.mode;
                     outputs[index].rate = preferred.rate;
+                    outputs[index].pixelWidth = preferred.pixelWidth;
+                    outputs[index].pixelHeight = preferred.pixelHeight;
                 }
             }
         }
         root.displayOutputs = outputs;
+        root.displayEditingRole = "live";
         root.displayBaseline = valid ? root.displayLayoutKey(outputs) : "";
         root.displayModes = modes;
         root.displayProfiles = profiles;
@@ -262,6 +291,7 @@ Scope {
     }
 
     function updateDisplay(index, field, value) {
+        if (root.previewOperationLocked) return;
         const outputs = root.displayOutputs.slice();
         const changed = Object.assign({}, outputs[index]);
         changed[field] = value;
@@ -271,6 +301,23 @@ Scope {
                 if (other !== index) outputs[other] = Object.assign({}, outputs[other], { "primary": false });
             }
         }
+        root.displayOutputs = outputs;
+        root.displayMessage = root.displayLayoutKey(outputs) !== root.displayBaseline
+            ? "Display changes are ready to apply" : outputs.length + " connected outputs";
+    }
+
+    function displayPlacementTargets(index) {
+        return DisplayLayout.targets(root.displayOutputs, index);
+    }
+
+    function displayRelation(index, anchorIndex) {
+        return DisplayLayout.relation(root.displayOutputs, index, anchorIndex);
+    }
+
+    function placeDisplay(index, anchorIndex, direction) {
+        if (root.previewOperationLocked) return;
+        const outputs = DisplayLayout.place(root.displayOutputs, index, anchorIndex, direction);
+        if (!outputs) return;
         root.displayOutputs = outputs;
         root.displayMessage = root.displayLayoutKey(outputs) !== root.displayBaseline
             ? "Display changes are ready to apply" : outputs.length + " connected outputs";
@@ -333,6 +380,8 @@ Scope {
         const changed = Object.assign({}, outputs[index]);
         changed.mode = mode.mode;
         changed.rate = mode.rate;
+        changed.pixelWidth = mode.pixelWidth;
+        changed.pixelHeight = mode.pixelHeight;
         outputs[index] = changed;
         root.displayOutputs = outputs;
         root.displayMessage = root.displayLayoutKey(outputs) !== root.displayBaseline
@@ -429,6 +478,94 @@ Scope {
             root.runDisplay("save", [name.trim()].concat(specs));
     }
 
+    function automaticDisplayProfile(role) {
+        return root.automaticDisplayState.profiles.find(function(profile) { return profile.role === role; })
+            || { role: role, name: role === "undocked" ? "mobile" : "docked", saved: false, outputs: [], error: "" };
+    }
+
+    function automaticDisplaySummary(role) {
+        const profile = root.automaticDisplayProfile(role);
+        if (profile.error) return profile.error;
+        if (!profile.saved) return "Not saved";
+        return profile.outputs.filter(function(output) { return output.enabled; }).map(function(output) {
+            const index = root.displayOutputs.findIndex(function(item) { return item.name === output.name; });
+            return (index >= 0 ? "Monitor " + (index + 1) + " - " : "") + output.name + ": "
+                + output.mode + " @ " + output.rate + " Hz" + (output.primary ? " (primary)" : "");
+        }).join("\n");
+    }
+
+    function automaticDisplayArrangement(role) {
+        const profile = root.automaticDisplayProfile(role);
+        const ordered = root.displayOutputs.map(function(output) {
+            const saved = profile.outputs.find(function(item) { return item.name === output.name; });
+            if (!saved) return { name: output.name, enabled: false };
+            const mode = root.displayModes.find(function(candidate) {
+                return candidate.output === saved.name && candidate.mode === saved.mode && candidate.rate === saved.rate;
+            });
+            return Object.assign({}, mode || {}, saved);
+        });
+        for (const saved of profile.outputs) {
+            if (!ordered.some(function(item) { return item.name === saved.name; })) ordered.push(saved);
+        }
+        return DisplayLayout.preview(ordered);
+    }
+
+    function editAutomaticDisplay(role) {
+        if (root.previewOperationLocked || root.automaticDisplayBusy) return;
+        const profile = root.automaticDisplayProfile(role);
+        if (profile.error) { root.automaticDisplayMessage = profile.error; return; }
+        if (profile.saved && profile.outputs.some(function(saved) {
+            return saved.enabled && !root.displayOutputs.some(function(live) { return live.name === saved.name; });
+        })) {
+            root.automaticDisplayMessage = "Connect the saved monitors before editing this layout.";
+            return;
+        }
+        if (!profile.saved && role === "undocked"
+                && !root.displayOutputs.some(function(output) { return /^(eDP|LVDS|DSI)[-0-9]/.test(output.name); })) {
+            root.automaticDisplayMessage = "No built-in monitor is connected.";
+            return;
+        }
+        root.displayOutputs = root.displayOutputs.map(function(output) {
+            const saved = profile.outputs.find(function(item) { return item.name === output.name; });
+            const item = Object.assign({}, output);
+            if (profile.saved) {
+                item.enabled = !!saved && saved.enabled;
+                item.primary = item.enabled && saved.primary;
+                if (item.enabled) {
+                    Object.assign(item, saved);
+                    item.pixelWidth = saved.pixelWidth || 0;
+                    item.pixelHeight = saved.pixelHeight || 0;
+                }
+            } else if (role === "undocked") {
+                item.enabled = /^(eDP|LVDS|DSI)[-0-9]/.test(item.name);
+                item.primary = item.enabled;
+                item.x = 0; item.y = 0;
+            }
+            const mode = root.displayModes.find(function(candidate) {
+                return candidate.output === item.name && candidate.mode === item.mode && candidate.rate === item.rate;
+            });
+            if (mode) { item.pixelWidth = mode.pixelWidth; item.pixelHeight = mode.pixelHeight; }
+            return item;
+        });
+        root.displayEditingRole = role;
+        root.automaticDisplayMessage = "Editing " + role + " draft below. Live monitors have not changed.";
+    }
+
+    function saveAutomaticDisplay(role) {
+        if (root.previewOperationLocked || root.automaticDisplayBusy) return;
+        const specs = root.displaySpecs();
+        if (!specs) return;
+        automaticDisplaySaveProcess.command = Commands.settingsDisplayProfilesCommand("save", [role].concat(specs));
+        automaticDisplaySaveProcess.running = true;
+    }
+
+    function refreshAutomaticDisplays() {
+        if (!root.visible) return;
+        if (automaticDisplayStatusProcess.running) { root.automaticDisplayRefreshPending = true; return; }
+        root.automaticDisplayRefreshPending = false;
+        automaticDisplayStatusProcess.running = true;
+    }
+
     function installDisplayProfile(name) {
         if (name.trim().length > 0) root.runDisplay("install-profile", [name.trim()]);
     }
@@ -502,6 +639,7 @@ Scope {
 
     function refreshDisplays() {
         if (!root.visible) return;
+        root.refreshAutomaticDisplays();
         if (displayDiscoverProcess.running) {
             root.displayRefreshPending = true;
             return;
@@ -660,6 +798,8 @@ Scope {
         root.capabilityRefreshPending = false;
         root.displayRefreshPending = false;
         displayDiscoverProcess.running = false;
+        automaticDisplayStatusProcess.running = false;
+        root.automaticDisplayRefreshPending = false;
         root.inputRefreshPending = false;
         inputDiscoverProcess.running = false;
         displayWatchProcess.running = false;
@@ -727,6 +867,41 @@ Scope {
         path: "/proc/" + Quickshell.processId.toString() + "/stat"
         blockLoading: true
         printErrors: false
+    }
+
+    Process {
+        id: automaticDisplayStatusProcess
+        command: Commands.settingsDisplayProfilesCommand("status")
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try {
+                    const state = JSON.parse(this.text);
+                    if (state.version !== 1 || !Array.isArray(state.profiles)
+                            || !Array.isArray(state.detected) || !Array.isArray(state.current)) throw new Error("Invalid profile response");
+                    root.automaticDisplayState = state;
+                } catch (error) {
+                    if (this.text.trim())
+                        root.automaticDisplayMessage = "Could not read automatic layouts: " + error;
+                }
+            }
+        }
+        stderr: StdioCollector { onStreamFinished: { if (this.text.trim()) root.automaticDisplayMessage = this.text.trim(); } }
+        onRunningChanged: {
+            if (!running && root.automaticDisplayRefreshPending && root.visible)
+                Qt.callLater(function() { root.refreshAutomaticDisplays(); });
+        }
+    }
+
+    Process {
+        id: automaticDisplaySaveProcess
+        stdout: StdioCollector {
+            onStreamFinished: {
+                try { root.automaticDisplayMessage = JSON.parse(this.text).message; }
+                catch (error) { if (this.text.trim()) root.automaticDisplayMessage = "Invalid save response"; }
+            }
+        }
+        stderr: StdioCollector { onStreamFinished: { if (this.text.trim()) root.automaticDisplayMessage = this.text.trim(); } }
+        onRunningChanged: { if (!running) root.refreshAutomaticDisplays(); }
     }
 
     Process {

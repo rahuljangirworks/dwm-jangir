@@ -114,7 +114,7 @@ are terminated without canceling the PackageKit transaction. Three delayed
 snapshot-and-watch retries use one, two, and four seconds; exhaustion and failed
 acknowledgment retain explicit reload guidance. Pane-only reads still stop when
 Settings closes, while required recovery reads continue. The root owner also
-accepts the two fixed update origins, validates their origin-specific exit code,
+accepts the two fixed update origins and seven fixed native origins, validates their origin-specific exit code,
 and retains nonterminal progress logs until a verified terminal can be appended.
 Pre-admission failed requests reconcile a fresh empty journal without inventing
 a handoff or acknowledgment. Uncertain origins use the same bounded watch
@@ -157,8 +157,13 @@ Captured evidence shows the [final preview rows](public/images/p6-update-preview
 and [keyboard-focused confirmation controls](public/images/p6-update-confirmation-focus.png)
 inside the compact viewport.
 
-An identity-free snapshot establishes an empty journal only when recovery is
-available. Incomplete journal evidence retains the readable snapshot and takes
+An identity-free snapshot establishes an empty journal when recovery is
+available, or a complete minor 1 snapshot with structurally valid recovery
+contains a validated available native offer. The producer offers native actions
+only after independent journal admission; missing update security or session
+evidence cannot block that independent path. Invalid native owners and missing
+or malformed recovery cannot supply this proof. Update controls still require
+available update recovery. Incomplete journal evidence retains the readable snapshot and takes
 the same bounded recovery path; it cannot silently abandon an unknown owner.
 An exact validated active identity or handoff remains usable when unrelated
 restart or session evidence is partial.
@@ -474,11 +479,50 @@ deadline.
 Actual CLI/private-bus fixtures cover all three fixed calls, live leases,
 durable handoffs, denial, stale generation, ambiguous replies, output loss after
 dispatch, retained replay, and acknowledgment without repeating the action.
-For an ambiguous sent result, a new independent read begins only after durable
+For an ambiguous sent result other than an explicit local stop, a new
+independent read begins only after durable
 interruption and lease release; it cannot reclassify the terminal result.
-Settings still needs its own display refresh and confirmation/origin controls,
-and the cumulative snapshot remains minor zero. These fixtures do not change
+That read uses the same cooperative read boundary as the finite NTP sample;
+a signal during it stops observation without changing the retained terminal.
+Settings still needs its own display refresh and confirmation/origin controls.
+Cumulative minor 1 discovery is described below. These fixtures do not change
 host settings or qualify graphical polkit authorization.
+
+The native CLI handles TERM, INT, and HUP during regional service observation
+without raising through GLib callbacks, where Python exceptions can be swallowed.
+The first signal sets a synchronous stop flag and queues one high-priority
+main-context stop; repeated signals coalesce. Pending work and final dispatch
+checks consult that flag, including after argument and timeout preparation, so
+the current callback cannot ignore a stop while the queued callback waits.
+Queuing prevents a quit just before `MainLoop.run()` from being lost.
+Pending stop sources are removed when observation ends. Cooperative handlers
+remain installed through durable terminalization and native-lease release, then
+are restored; repeated stops cannot interrupt that cleanup. A first stop during
+cleanup also suppresses any optional follow-up read without queuing an unused
+main-loop source. The caller rejects success explicitly if interruption races
+with observer completion. Locale enumeration retains its own subprocess-group
+cleanup and signal coalescing; its handled signal exit is converted into the
+typed regional preflight rejection only after that cleanup returns.
+A pre-admission stop emits the normal typed rejection without creating an
+operation or sending a mutation. After dispatch, the existing durable owner
+records `interrupted`, retains the terminal/handoff, and releases its lease;
+the platform change may still complete. No service-side cancellation or rollback
+is claimed. An explicit local stop does not enter the optional post-terminal
+service read, allowing the command to return after cleanup. Settings must still
+refresh state before another confirmation. Existing journal persistence failures
+remain uncertain recovery, not fabricated terminal completion.
+
+Eighteen private-bus cases run actual CLI children for all three fixed actions,
+with each handled signal before and after dispatch. They require normal exit 1
+within a four-second fixture guard, no traceback, no pre-dispatch mutation,
+durable interrupted post-dispatch handoff, released lease, no automatic retry or
+post-stop read, and no terminal change after a late service reply. Separate
+tests inject the startup gap, locale enumeration stops, repeated signals at
+just-completed reads, and signals during terminal commit and lease release.
+Twenty-seven argument-construction, timer-arming, and final request-preparation
+injections also prove stops after the last preflight event drain prevent all
+three mutating bus calls. Once dispatch handoff has begun, a stop still retains
+the conservative unconfirmed result rather than claiming the platform did nothing.
 
 Each regional mutation uses a 60-second monotonic aggregate deadline beginning
 immediately before the fixed mutating D-Bus method is sent and covering its
@@ -565,13 +609,112 @@ typed regional error and exits 1. Locale detail is the complete preserved
 override description, not a truncated summary. Preflight is not authorization
 or proof that a future mutation is available.
 
+The standalone QML `SystemRegionalPreflightProtocol.js` parser consumes
+cumulative raw bytes with a per-result lifetime. It checks the immutable prefix,
+strict UTF-8, control-free fields, exact record shape and ordering, catalog identity
+and payload limits, selected action/argument/target, and generation syntax.
+Unknown records and trailing fields are not extension space in these separate
+preflight protocols. Parsed choices and preview fields are provisional until
+`finish` verifies completion, a final newline, and normal exit 0; a typed error
+instead requires normal exit 1. A valid empty catalog is distinct from failure.
+The full readable locale detail and current value are preserved, without
+confusing readable aliases with the stricter service mutation grammar. The
+parser itself owns no Process, authorization, operation, or visible control.
+Nested-X11 parser fixtures exercise byte splits, malformed and replaced streams,
+limits, request mismatches, and typed errors without host service calls.
+
+`SystemRegionalPreflightModel.qml` is a separate optional Process owner, now
+wired to internal root preparation but not visible controls. It admits only fixed catalog
+kinds and validated regional preview arguments while active, and rejects overlap
+before publishing any state. Each request gets a fresh parser and an identity
+guard for queued launches and late callbacks. Results are published only after
+process exit; closing clears retained data and suppresses retired completion.
+The 25-second read deadline allows sequential bounded service/catalog reads.
+Timeout and closure request TERM, retain ownership through a
+three-second grace, then request KILL if needed. No replacement starts before
+the old process exits. Failed-to-start handling does not consume retained output.
+Malformed output requests KILL immediately. Byte-cap checks remain active during
+retired or failed cleanup, so a TERM-resistant output flood cannot retain the
+three-second grace period while growing cumulative collectors.
+An empty normal exit 127 reports a missing helper, separately from Qt launch
+failure; a stream emitted before exit 127 still fails protocol validation.
+This component owns no authorization, journal, mutation, or idle polling. Eighteen
+private nested-X11 scenarios exercise exact requests, provisional output, typed
+errors, bounds, deadlines, close/reopen, reentrant callbacks, and missing helpers.
+
+`SystemRegionalSettingsModel.qml` coordinates this owner with the root snapshot
+and operation models. It accepts only timezone/locale catalog requests and the
+three fixed regional previews. Catalog reads remain possible when an action is
+unavailable, but every request requires quiet, monitored owning-domain status and
+idle journal admission. Timezone and locale previews require exact membership in
+a current catalog; NTP accepts only `enabled` or `disabled`. Snapshot generation,
+request identity, and owning provider epoch bind the preparation. The separate
+backend preview generation is the only generation passed to a confirmed origin.
+
+The coordinator retains its request through catalog or prompt publication and
+waits for the preflight Process owner to release before publishing. Reentrant
+callbacks cannot prepare or confirm a competing origin. Confirmation claims
+dispatch before clearing the prompt and rechecks the source context afterward.
+Update and delegated preparations reject regional read/prompt ownership, and
+regional preparation rejects those other workflows. No new Process, IPC entry,
+polling timer, authorization path, or arbitrary command is added here.
+
+An owning event, shared snapshot replacement, or closure retires preparation and
+clears affected catalogs. Required recovery cancels the optional reader and waits
+for actual reaping before launching the shared snapshot. A read's error or stale
+completion cannot become a confirmation. Sent operations remain owned by the
+existing noncancelable native operation lifecycle across Settings closure.
+Forty-two private nested-X11 cases cover all three actions, typed failures,
+uncertainty, stale identity, exact selections, closure during claim/read/catalog/
+preview/dispatch publication, and recovery during read/publication.
+
+`SystemRegionalControls` now exposes this coordinator through fixed Settings
+controls. Timezone and locale catalogs load only on explicit request, filter
+reported identities without accepting free-form mutations, and use virtualized
+viewports capped to 144 pixels or the actual content height, whichever is smaller.
+Selection does not dispatch: Review change first requests a
+new preview. NTP exposes only enabled/disabled selections. All three confirmations
+show the complete plaintext current value, target, and backend detail, plus the
+warning that a sent change cannot be canceled. Cancel dismisses preparation and
+restores keyboard focus; it never rolls back or retries a mutation. Closing the
+pane clears catalogs while the root retains any sent operation. Locale guidance
+explains new-session activation without triggering logout. NTP synchronization is
+explicitly labeled as last-read evidence, not a live sample.
+Read-error explanations receive focus and are revealed after layout unless the
+user has moved focus elsewhere in Settings. Apply retains its origin until the
+operation releases the workflow, then restores focus if the user has not moved
+elsewhere or closed Settings. Read button activation handles mouse and keyboard.
+If a confirmation is larger than the content viewport, keyboard reveal targets
+its focused button rather than oscillating between the card edges. The complete
+preview remains scrollable; neither current values nor override detail is elided.
+
+Sixty-six private UI cases cover three actions at three window sizes with
+success, denial, unsupported results, uncertain output/replay, maximum catalogs,
+denied reads, and malformed reads, plus the NTP disable choice at all sizes.
+`docs/P6-REGIONAL-UI-EVIDENCE.md` records real
+X11 keyboard and screenshot checks. NTP synchronization sampling is qualified
+in `P6-REGIONAL-UI-EVIDENCE.md`; graphical authorization-only and combined
+installed evidence is recorded in `P6-QUALIFICATION.md`.
+
+The panel and System Settings share one `ClockModel` with one native minute-level
+`SystemClock`. Its only timezone input is the provider's published available
+timezone identity, never a selected choice or provisional action target. A new
+identity calls Qt's `Date.timeZoneUpdated()` and explicitly refreshes both display
+strings. A numeric timestamp is captured at native clock ticks: rereading the
+source's cached local wall-clock fields after a timezone change can reinterpret
+them in the new zone and shift the instant. Ordinary ticks refresh the displays;
+unavailable, partial, unknown, or unchanged identities do not trigger timezone
+refresh. No helper, IPC entry, extra timer, or closed-pane discovery is added.
+Private Fedora X11 evidence is recorded in `P6-CLOCK-EVIDENCE.md`; combined
+installed qualification is recorded in `P6-QUALIFICATION.md`.
+
 Each preview makes fresh fixed reads: timezone state and timezone choices, NTP
 state, or locale state and installed locale choices. Service reads retain their
 ten-second aggregate bounds; the locale collector retains its three-second
 collection and bounded cleanup. No PackageKit read, journal access, arbitrary
 command, or user-selected service is involved.
 
-The generation is SHA-256 over the ASCII prefix `dwm-titus-regional-preview-v1`
+The generation is SHA-256 over the ASCII prefix `dwm-jangir-regional-preview-v1`
 followed by action, selected argument, and source fields, each encoded as an
 eight-byte big-endian UTF-8 byte length followed by its bytes. Timezone uses the
 current timezone as its source field. NTP uses `yes|no` for `CanNTP` followed by
@@ -585,7 +728,14 @@ A mismatch requires new confirmation and sends no mutation. Visible confirmation
 and monitored invalidation remain mandatory; the token is a freshness guard,
 not an atomic service transaction or proof of human approval. The three fixed
 regional CLI forms now enforce this preflight and their durable lifecycle.
-Visible Settings origins remain disabled until confirmation integration lands.
+Visible Settings origins use the confirmed coordinator and shared clock described
+above. NTP sampling is recorded in `P6-REGIONAL-UI-EVIDENCE.md`; combined installed
+qualification is recorded in `P6-QUALIFICATION.md`.
+
+Required `snapshot-core` failures, including malformed output, invalidate
+mutation offers and configuration generations while preserving prior optional
+information, filesystem rows and read-only Health navigation. A successful core
+retry keeps that projection until a monitored information read replaces it.
 
 `health-open` is the sole action with no provider command: the root-scoped QML
 model invokes the fixed in-process `SystemHealthModel.openOnScreen` method with
@@ -734,8 +884,9 @@ filesystem/exec operations do not claim a hard kernel-I/O deadline.
 Unit and real private-child fixtures cover fixed argv, trust failures, bounded
 selection, launch errors, lost output, descriptor/session isolation, handoff
 replay, and a tool exiting unsuccessfully after its launch was accepted.
-Originating Settings controls and cumulative minor 1 discovery remain
-outstanding; the cumulative snapshot remains minor zero.
+Originating Settings controls now require the delegated confirmation described
+below. The cumulative snapshot implements minor 1; discovery alone does not
+dispatch those actions. Combined installed qualification is recorded in `P6-QUALIFICATION.md`.
 
 The internal repository reader now bounds connection setup, optional activation
 of an absent PackageKit daemon, transaction setup, signals, and decoding under
@@ -754,6 +905,16 @@ Private-bus fixtures exercise the real 30-second timeout and late completion.
 This reader adds no command, mutation, Settings control, or protocol minor.
 
 ### System Information and Filesystems
+
+The internal record assembler combines the fixed readers into the complete
+information, storage, security, and diagnostics record set. It preserves exact
+decimal counters, emits missing observations explicitly, isolates source
+failures, and discards an entire filesystem list if its encoded reservation is
+exceeded. Health navigation requires no journal admission. This formatter is
+called only for cumulative minor 2 information reads. Startup and mandatory
+recovery use the fixed `snapshot-core` command, which emits minor 1 without
+constructing information readers. Visible-pane monitor readiness gates storage
+reads as described below.
 
 The information snapshot uses only these fixed sources:
 
@@ -797,7 +958,61 @@ Each failed or malformed source degrades only the states or filesystem records
 it owns. A missing hostname1 property does not invalidate OS, kernel, processor,
 memory, or filesystem state.
 
+The internal local-reader boundary implements the eleven OS, kernel, CPU,
+memory, swap, and uptime states without activating cumulative minor 2. It reads
+each fixed file once with its byte limit plus one overflow-detection byte, closes
+the source before parsing, and retains valid peer fields when an allowlisted
+field is missing, duplicated, or malformed. Display fields must be printable
+UTF-8 within 512 bytes; counters use exact unsigned 64-bit decimal values, and
+the first CPU model field is authoritative. Read denial is scoped `restricted`
+state, absent files are `unsupported`, other I/O failures are `unavailable`, and
+malformed data is `partial`; failed values are always `unknown`. It starts no
+service, subprocess, journal access, or polling loop.
+
+The internal hostname1 reader separately implements the two fixed hardware
+properties through the shared asynchronous service-reader lifetime. It accepts
+only bounded `(v)` replies containing printable UTF-8 strings of at most 512
+bytes, isolates missing, denied, or malformed properties, and preserves a
+validated peer when the aggregate deadline expires. Cancellation discards late
+replies without closing the shared bus. Private-bus tests exercise both property
+timeouts before and after the peer can be validated, including four real
+ten-second deadlines and successful reuse of the shared connection. These
+readers add no CLI command, protocol minor, Settings control, journal operation,
+or polling loop.
+
+The internal filesystem reader implements the fixed `findmnt` inventory without
+activating cumulative minor 2. Its independent timeout supervisor and collector
+use a three-second monotonic deadline; stdout and discarded stderr share one
+2 MiB budget. Cleanup retains the process-group identity until TERM/KILL and
+bounded reaping complete. Failed cleanup or nonzero exit cannot publish rows,
+and interruption remains terminal after cleanup and signal-handler restoration.
+Strict JSON rejects duplicate object keys and non-finite numbers. Missing or
+malformed rows leave a partial usable subset; duplicate mount IDs are removed,
+including duplicates encountered beyond the 256-record limit. Display paths
+are sanitized and bounded without merging distinct mount identities. Missing
+or invalid byte counts remain `unknown`, never zero. Private-process fixtures
+cover overflow, EOF without exit, TERM-resistant descendants, simulated wall
+clock reversal, and cleanup failure. Security, protocol, and Settings integration
+remain separate boundaries.
+
 ### Security Status
+
+The internal screen-lock reader invokes only its sibling
+`dwm-quickshell-controlcenter power-lock-snapshot`. That fixed no-argument
+command reuses the existing power status collection and `power-lock` formatter;
+it does not query UPower, profiles, suspend, or lid state. The Python reader
+adds no independent locker or GSettings probe. Lock-only nested timeouts use
+foreground mode so every probe remains in the encompassing owned process group
+on interruption. Its owned process group has a ten-second monotonic deadline, independent timeout supervisor, and 8 KiB
+combined stdout/stderr budget. It preserves the session environment for X11 and
+user settings while fixing the command search path and locale. Missing,
+duplicate, malformed, incomplete, or unsuccessful output cannot claim enabled
+or disabled state. Unknown records and appended fields remain forward-compatible.
+The reader now contributes to cumulative minor 2. Visible information and
+security cards are a separate presentation boundary.
+The shared power probe now rejects malformed successful live values as partial,
+and locker readiness requires the same UID and exact current DISPLAY. A locker
+on another X display cannot certify automatic locking for this session.
 
 Each probe has a fixed source and emits its own state instead of making the
 combined security summary fail. Status describes whether the probe can produce
@@ -860,6 +1075,41 @@ The individual mappings are:
 - Update state reuses the PackageKit snapshot from this provider. It never
   starts a refresh merely to populate the security summary.
 
+The internal security-reader boundary implements SELinux, Secure Boot, and
+firewalld status without activating cumulative minor 2. File reads use their
+fixed byte limit plus one detection byte, close before parsing, and never
+enumerate EFI variables. SELinux fallback accepts only the allowlisted key and
+never treats denied or malformed runtime evidence as disabled. The fixed
+systemd `ListUnitsByNames(["firewalld.service"])` query supplies its `ActiveState`
+field under one ten-second connection-to-decoding deadline, with no service
+activation or interactive authorization. Call failures remain unavailable,
+malformed replies remain partial, and late replies cannot publish state or
+close the shared bus. Fifteen focused tests include a private-bus deadline and
+connection reuse; real read-only Fedora 44 probes reported all three sources
+available. Shared screen-lock reader integration is described below.
+No new command, protocol record, Settings control, mutation, or polling loop is
+activated by this boundary.
+
+The internal root-encryption reader now uses the fixed lsblk columns above and
+shares the filesystem reader's closed command selector, three-second monotonic
+deadline, two-second cleanup bound, and combined stdout/stderr byte cap. Both
+parsers reject duplicate JSON keys and invalid JSON numbers before accepting
+evidence. Topology validation retains at most 1024 unique names, checks repeated
+device metadata, and walks parent relationships without recursive graph calls or
+exponential path enumeration. The nested tree establishes parent edges because
+lsblk reports mapper aliases in `NAME` but kernel names in `PKNAME`; observed
+kernel aliases must remain consistent and unambiguous, including kpartx mapper
+partitions. Every resolved root backing path must agree about encryption.
+Missing root filesystem metadata, unresolved backing dependencies, cycles,
+conflicting identities, and mixed paths remain `partial`/`unknown`. An unrelated
+unmounted loop device does not invalidate otherwise resolved root evidence.
+This reports block-device ancestry only, not file-level or hardware encryption.
+Twenty focused tests cover topology, byte/record caps, process failures,
+monotonic timeouts, interruption, and cleanup; seventeen filesystem regressions
+also passed. A read-only Fedora 44 probe returned available evidence within the
+deadline. No command, cumulative minor, UI, journal, mutation, or poller is
+activated by this preparation.
+
 No status probe accepts a path, unit, property, command, device, or service name
 from QML.
 
@@ -913,6 +1163,95 @@ never emits a later planned ID as `unsupported`. Within that minor, every
 active provider, state, and action is mandatory even when its platform source
 is absent. A consumer that supports a later minor accepts earlier cumulative
 sets; a producer bumps the minor only when the entire next row is implemented.
+
+The managed `snapshot` command now emits the complete minor 2 set. The fixed
+no-argument `snapshot-core` command retains the complete minor 1 set for required
+recovery without optional information probes. The fixed no-argument
+`snapshot-without-storage` command emits minor 2 with `filesystem-summary` as
+`partial`/`unknown` and no filesystem rows or filesystem subprocess; all other
+information sources remain independently readable. Settings selects that mode
+when the mount monitor fails, and selects ordinary `snapshot` only after mount
+readiness. Neither mode accepts a caller-selected source or command.
+
+Time and locale are read independently, with every cumulative state and action
+row present even when its source is absent. Missing administration tools
+disable only their own actions, without hiding readable account rows, CUPS
+status, or repository records. Partial account enumeration retains the validated
+subset and uses an unknown count; an available count exactly equals its emitted
+rows. Every repository result is complete or discarded. The producer enforces
+the complete stream and separate non-list byte reservations before publication.
+
+Native offers require a validated empty recovery state and a separate Fedora
+identity and bounded, locked journal-admission check. The check verifies current
+ownership, handoff, commit headroom, and a reusable terminal slot; it neither
+commits an operation nor retains a lease. It has no PackageKit security-floor or
+logind dependency. Failure to read update/session restart evidence therefore
+does not hide independently admissible native actions, while missing journal
+state, an active owner, or an unacknowledged result still blocks them. All offers
+are advisory: originating commands repeat their own admission and fresh-state
+checks. Delegated discovery resolves fixed trusted arguments but never launches
+the tool. Unsupported preserved locale overrides disable the language action
+without discarding readable locale state; choices and complete previews remain
+separate fresh reads.
+
+The Settings parser accepts complete minor 0, 1, and 2 snapshots, isolates
+known-owner failures, checks mandatory records and list identity/count/byte
+limits, and removes every action from an invalid owner. Information and
+filesystem uint64 counters stay exact canonical strings; security values use
+fixed per-state enums, and every non-available security state remains unknown.
+Ordinary older-minor snapshots clear newer projections. Explicit core recovery
+reads preserve the prior optional observations and health navigation without
+certifying their freshness. When storage monitoring is unavailable, a prior
+filesystem list can be retained only with an explicit stale-data marker and
+refresh guidance; the newly parsed summary remains unknown.
+
+The `health-open` offer never contributes to native journal admission and is
+available independently of blocked recovery. It invokes the existing fixed
+health model on the current screen; that model owns its read-only scan and
+separately confirmed repairs. It creates no system-management operation stream.
+Reload status invalidates pending confirmations before waiting for replacement
+subscriptions. The root operation owner now
+accepts three fixed regional and four fixed delegated origins internally, with
+strict action, value, and generation validation before command construction.
+Timezone and NTP values match the CLI identity grammar. Originating locale
+selections additionally require the service's conservative 1-127 character
+`[A-Za-z0-9_.@-]+` grammar, excluding `.` and `..`; broader readable locale
+state remains unchanged. Actual catalog membership and fresh confirmation
+generations are rechecked by the backend. Shared admission
+rejects every occupied or uncertain owner state, including before first output.
+Origin, adopted active identity, completion (including uncertain exit), and
+successful acknowledgment invalidate only the action's fixed discovery domain.
+Native streams and active snapshots cannot advertise cancellation or a
+`cancel-requested` state; a valid pre-dispatch canceled terminal remains readable.
+Native action rows are published only after journal admission is established;
+rejected recovery still preserves read-only native state. These entry points are
+not exposed by IPC. Visible native controls now require fresh confirmation as
+described above; NTP sampling is recorded in `P6-REGIONAL-UI-EVIDENCE.md`; combined installed
+qualification is recorded in `P6-QUALIFICATION.md`.
+The update-only compatibility formatter and operation streams retain minor 0;
+the snapshot minor selects capability advertisement, not a new operation format.
+Provider tests and 334 native Quickshell assertions qualify cumulative sets,
+failure isolation, missing tools, partial inventories, encoded bounds, and
+backward compatibility without changing host settings or launching tools.
+The private native-origin fixture covers 42 action/scenario combinations:
+all seven fixed actions with success, denial, rejection, unsupported capability,
+uncertain output, and mismatched originating exit status. Exact counters require
+one origin and acknowledgment, with one replay only for uncertain results and
+no cancellation. Reentrant invalidation and pre-output ownership reject overlaps.
+These fixtures do not qualify real graphical authorization or tool workflows.
+An explicit empty `LANG=` remains readable and does not hide timezone or NTP
+state; replacing it still requires a fresh locale choice and confirmation.
+Duplicate list identities remain stream-fatal even after that provider's count
+or byte limit is exceeded. The overall 9216-list-record reservation separately
+bounds duplicate tracking; exceeding it rejects the whole snapshot.
+A read-only Fedora 44 managed snapshot completed in 2.70 seconds with one
+account, 28 repositories, 31 updates, and 37 package-change rows. Missing account
+and source tools disabled only their own launch offers; password and printer
+tool resolution remained available. This agent's missing logind session kept
+update recovery partial while regional status and native admission remained
+independently available. Its journal was isolated in the managed test workspace
+and removed afterward. No system setting, package, or service configuration was
+changed, and no administration tool was opened.
 
 Required fields are single-line UTF-8 with tabs and line breaks replaced by
 spaces. Unknown records and trailing fields are ignored. Consumers reject a
@@ -1084,7 +1423,7 @@ validated `terminal-handoff` row, then one
 `complete<TAB>snapshot`. An unavailable, restricted, or unsupported capability
 therefore retains an explicit status-bearing state row instead of omitting its
 value. The generation is 64 lowercase hexadecimal characters. It is the SHA-256
-digest of the ASCII prefix `dwm-titus-update-plan-v1`, followed first by the
+digest of the ASCII prefix `dwm-jangir-update-plan-v1`, followed first by the
 exact installable update IDs sorted by unsigned UTF-8 bytes and then by the
 complete `package-change` rows sorted by the unsigned UTF-8 tuple
 `(action, package-id, name, version, summary)`. Each update ID is encoded as the
@@ -1161,13 +1500,16 @@ and `succeeded` are terminal and appear exactly once.
 Snapshot record failures are provider-scoped only when a valid known provider,
 state, action, or list-record ID still identifies the owner; the consumer marks
 that provider invalid and continues parsing unrelated providers. A malformed
-header or completion, a missing or unknown owner ID, duplicate ID, illegal enum,
+header or completion, a missing or unknown owner ID, duplicate ID,
 duplicate `active-operation`, duplicate `terminal-handoff`, both snapshot-only
 operation records in one snapshot, operation-ID, action-ID, or action-kind mismatch,
 a terminal `active-operation`, transition outside the table,
 an operation record after a terminal state, any record after the required
 completion, or missing completion rejects the entire stream. Operation and
-audit record failures always reject the operation stream. Text fields are
+audit record failures always reject the operation stream. An illegal enum in a
+snapshot record with a known fixed owner invalidates that owner, just like its
+other malformed fields; illegal header or operation enums remain stream-fatal.
+Text fields are
 capped at 512 bytes. Fixed per-type count and encoded-byte budgets are 4096 and
 3 MiB for `update`, 4096 and 3 MiB for `package-change`, 512 and 384 KiB for
 `repository`, 256 and 256 KiB for `account`, and 256 and 384 KiB for
@@ -1252,7 +1594,7 @@ path, or elevation mechanism.
   not an atomic frozen plan. Actual PackageKit `Package` signals update bounded
   in-memory action counts, a SHA-256 digest, and at most 128 distinct mismatch
   samples against the preview; they are never emitted one-for-one. The digest
-  begins with the ASCII prefix `dwm-titus-update-observed-v1` and then encodes
+  begins with the ASCII prefix `dwm-jangir-update-observed-v1` and then encodes
   each accepted signal in arrival order as the normalized action and package
   ID, each with an eight-byte big-endian byte length followed by its raw bytes.
   `DOWNLOADING` is phase-only and does not enter the observed set or digest.
@@ -1352,7 +1694,7 @@ path, or elevation mechanism.
   Once cancellation becomes unsafe, Settings explains that the RPM transaction
   must finish.
 - The journal lives under
-  `${XDG_STATE_HOME:-$HOME/.local/state}/dwm-titus/system-management/`, is mode
+  `${XDG_STATE_HOME:-$HOME/.local/state}/dwm-jangir/system-management/`, is mode
   0700, and defines exactly 36 provider-owned paths: fixed `active`, `cursor`,
   `restart`, and `handoff` paths plus 32 fixed terminal paths named
   `terminal-00` through `terminal-31`. It never enumerates the directory and
@@ -1860,7 +2202,96 @@ not a snapshot, action, journal record, or operation stream; its two exact recor
 forms are independent of the cumulative snapshot minor.
 
 The pane-scoped `SystemUpdateDiscovery` subscriber now consumes this stream.
-It starts a discovery cycle only after readiness, with a 12-second frontend
+Its process and bounded-cycle lifetime is shared through
+`SystemProviderDiscovery`, with a closed mapping for updates, time, locale,
+accounts, and printers. Each mapping fixes the command, arguments, and accepted
+event prefix; callers cannot provide another executable or arbitrary arguments.
+The update component remains a thin compatibility wrapper. The root snapshot
+coordinator now starts all five fixed subscriptions while System Settings is
+open; software sources share the update subscription. No new idle polling or
+operation origins are introduced by this subscriber. Native controls use the
+confirmed coordinator described above; NTP sampling is qualified in `P6-REGIONAL-UI-EVIDENCE.md`.
+Private nested-X11 tests exercise every fixed stream, event bursts, a dirty
+settling read, explicit retry, wrong-prefix fallback, close cleanup, and unknown
+domain rejection. Replacing a domain retires the old read token and readiness
+before any callback, then waits for the new handshake, including when shutdown
+already has a replacement queued. A regression first reproduced a reentrant
+read during that invalidation and now verifies that it is excluded.
+The fixture also changes domains from an unexpected-exit invalidation and
+verifies the replacement command, fresh baseline, and complete cleanup. All 91
+assertions passed in five repeated Fedora 44 runs. The supported
+[Fedora snapshot](https://github.com/quickshell-mirror/quickshell/blob/dacfa9de829ac7cb173825f593236bf2c21f637e/src/io/process.cpp)
+and [Quickshell 0.3.0](https://github.com/quickshell-mirror/quickshell/blob/v0.3.0/src/io/process.cpp)
+define `running` from the current process object, allocated synchronously when
+starting. An old exit notification therefore reads the replacement's current
+running state, not a captured false value; the existing `!running` guard does
+not finalize that replacement. This resolves the local review concern without
+changing correct process behavior.
+The test harness also includes the shared fixture helper in bounded failure
+cleanup. A live-pipe regression reproduced a leaked monitor before that fix;
+cleanup now removes it while preserving both successful and failing exit status.
+
+Opening or refreshing the section batches all five cycles before an optional
+snapshot can start. Every subscription must acknowledge readiness or reach its
+finite failed-monitor fallback. Required startup or operation recovery can bypass
+that barrier, but captures no optional tokens until every domain is ready. Thus
+neither a closed startup read nor opening during an existing read substitutes
+for a monitored baseline. The single snapshot process captures each participating
+domain's token, enters all completion handoffs before publication, and retains
+ownership through parsing, recovery callbacks, and per-domain completion.
+Uncaptured domains keep their pending or blocked cycle even when a cumulative
+read incidentally updates their displayed values. Available state is projected
+as partial when its own monitor fails or remains dirty; raw validated values
+are not overwritten, and locale-only monitoring failure does not degrade time
+state. Provider summaries retain explicit reload guidance. Closing the section
+retires all optional cycles and subscriptions, but required recovery and root
+operation observers survive. Reentrant close/reopen during token admission or
+loading publication cannot launch the canceled read or consume replacement
+tokens. Private nested-X11 tests cover these boundaries with 53 assertions,
+including required recovery while setup is held and a separate reopen baseline.
+Separate lock-contention cases prove each duplicate fixture monitor records an
+overlap before failing, without removing the existing owner's marker or pipe.
+
+The snapshot's checked-command wrapper installs cleanup and termination handlers
+before allocating either temporary capture. A signal during allocation exits
+with cancellation status after removing the known captures, and does not launch
+the requested helper. Allocation failure also cleans any earlier capture.
+Successful output remains withheld until helper success; helper errors and
+started-child termination retain the existing diagnostic and wait behavior.
+Seven private QML scenarios inject allocation failure or TERM at both setup
+points and verify output, child shutdown, and absence of capture files.
+Abrupt process KILL or host failure cannot run shell cleanup handlers and is not
+covered by the graceful-termination guarantee.
+
+The root's internal delegated confirmation entry admits only `accounts-open`,
+`password-open`, `printers-open`, and `sources-open`. It requires a visible
+Settings section, a quiet snapshot owner, fresh owning-provider cycle, validated
+available action, and empty operation/recovery ownership. Native admission does
+not require update-only recovery evidence. A pending confirmation captures the
+action, snapshot generation, request identity, and provider epoch; provider or
+global invalidation, replacement reads, and closure retire it. Update and native
+prompts cannot overlap. Dispatch is claimed before clearing the prompt and state
+is rechecked after reentrant callbacks, then the existing owner independently
+validates fixed empty arguments. Discarding or closing a prompt never starts an
+operation; closing after dispatch preserves observation. Sixteen private nested
+X11 cases cover all four tools, typed denial and unsupported results, and closure
+during dispatch callbacks. Accepted launch still does not verify administration
+inside the tool. These entry points are not exposed by IPC.
+
+`SystemDelegateControls.qml` now exposes the four fixed tool entries and an
+explicit launch-only confirmation. Scoped provider and action failures remain
+readable, including when a tool is missing or its monitor cannot establish fresh
+state. Account and repository lists are read-only, virtualized, and bounded to a
+180-pixel viewport. Confirmation focuses Cancel; Cancel returns to the originating
+card, and geometry notifications keep the whole focused card visible after layout
+or viewport changes. Native operations use neutral shared owner/recovery wording
+and never show update cancellation controls. The private UI matrix covers all
+four actions at three window sizes with success, denial, unsupported, and maximum
+256-account/512-source inventories. Keyboard and screenshot evidence is recorded
+in [P6-DELEGATE-UI-EVIDENCE.md](P6-DELEGATE-UI-EVIDENCE.md). Regional confirmation,
+regional controls, and combined installed acceptance remain separate boundaries.
+
+The shared subscription owner starts a discovery cycle only after readiness, with a 12-second frontend
 startup deadline covering the helper's ten-second setup and process startup.
 Failure falls back to a finite read with visible monitoring-unavailable guidance;
 there is no automatic reconnect. Explicit reload or section reopen retries the
@@ -1972,9 +2403,122 @@ The internal `NtpRead` client separately issues exactly two fixed
 `Properties.Get` requests for `CanNTP` and `NTPSynchronized`, accepts only
 bounded boolean replies, and publishes a pair only after both succeed under
 one ten-second deadline. Partial, late, denied, and malformed replies do not
-publish a sample. This PR adds no sampling CLI or timer. Neither event commands
-nor this internal reader changes the cumulative snapshot minor. Settings
-activation and the following initialization/sampling contract remain pending.
+publish a sample. The finite `dwm-system-management ntp-sample` command now
+exposes that reader without arguments, PackageKit discovery, journal access,
+authorization, mutation, or a timer. It uses a separate version 1.0 stream and
+does not change the cumulative snapshot minor. Successful output is exactly:
+
+```text
+ntp-sample-protocol<TAB>1<TAB>0
+sample<TAB>CAN_NTP<TAB>SYNCHRONIZED
+complete<TAB>ntp-sample
+```
+
+Both values are exactly `yes` or `no`. A failure replaces the sample line with
+`error<TAB>ntp-sample<TAB>CODE<TAB>DETAIL`; codes are `missing-provider`,
+`permission-denied`, `unsupported`, `timeout`, `malformed`, or `internal`.
+Detail is printable UTF-8 capped at 512 bytes. The complete stream is at most
+1024 bytes. Success exits 0, a typed read failure exits 1, and invalid arguments
+exit 2 without a sample. Consumers must require the exact header, one sample or
+error, matching completion, and corresponding normal exit before publication.
+
+The command buffers the entire result before a single bounded stdout write.
+It does not initialize an unused stderr writer; closed, absent, or read-only
+stderr does not prevent a valid sample. Child-process regressions cover these
+descriptor states independently of the private-bus checks.
+Absent stdout, a closed descriptor or Python stream, and read-only, full, or
+short stdout fail with exit 1, without traceback, retry, or a partial-value
+success claim. Invalid output setup does not start a service read.
+Output setup and TERM/INT/HUP interruption release private
+descriptors and restore signal handlers. The inherited output file-status flags
+are never changed. Regular-file output preserves its original offset/append
+semantics; this does not impose a deadline on storage I/O. The existing private
+bus fixture also exercises the CLI through typed success, denial, malformed
+data, a real ten-second timeout, and discarded late replies.
+Actual child-process TERM, INT, and HUP checks interrupt stalled private-bus
+calls and require exit 1 with empty output and no traceback. The signal handler
+queues one high-priority main-context cancellation and quit; it does not raise
+inside a GLib callback, where the exception can be swallowed. A deterministic
+loop-start fixture also signals after the reader's done check but before
+`MainLoop.run()`, proving that an early quit cannot be lost. Pending cancellation
+sources are removed on return, repeated signals coalesce, and the command
+rejects publication explicitly even if the read has just completed.
+A read-only Fedora 44 command check returned `sample<TAB>yes<TAB>yes` with
+matching completion and exit 0, without changing NTP or the system clock.
+
+Settings activation uses the shared root subscriptions and the qualified
+30-second visible NTP sampler. Spaced read-only Fedora samples can reactivate
+idle timedated and therefore emit owner-arrival notifications. Time-only
+reconciliation avoids turning these arrivals into repeated cumulative PackageKit
+reads without dropping genuine concurrent time changes. Sampling evidence is
+recorded in `P6-REGIONAL-UI-EVIDENCE.md`.
+
+Two fixed time discovery commands support scoped Settings reconciliation.
+Settings uses `watch-time`, while `watch-regional time` keeps its existing
+protocol. The fixed no-argument `time-status` command makes
+one `Properties.GetAll` call to timedate1 through the existing strict regional
+reader, under its ten-second aggregate connection/reply/decoding deadline:
+
+```text
+time-status-protocol<TAB>1<TAB>0
+time<TAB>TIMEZONE<TAB>CAN_NTP<TAB>NTP_ENABLED<TAB>SYNCHRONIZED
+complete<TAB>time-status
+```
+
+The timezone uses the existing validated identity grammar; each boolean is
+exactly `yes` or `no`. A failure replaces the complete `time` row with
+`error<TAB>time-status<TAB>CODE<TAB>DETAIL`, using the same six fixed error codes
+and printable 512-byte detail limit as `ntp-sample`. The whole stream is at most
+1024 bytes. Success returns 0, a typed failure returns 1, and extra arguments
+return 2. It shares the finite nonblocking output and cooperative signal
+boundary: missing stdout, a short/full/closed write, or an explicit stop cannot
+report success. Unused stderr need not be writable. No journal, PackageKit,
+mutation, clock change, or timer-driven discovery is added. This full-state
+command is for event-driven reconciliation, not the 30-second sampler; that
+sampler must still read only `CanNTP` and `NTPSynchronized`.
+
+The fixed no-argument `watch-time` command uses the same passive, authenticated
+two-match setup, initial/final owner barriers, bounded output, and shutdown as
+`watch-regional time`. Its records are `time-event<TAB>ready`,
+`time-event<TAB>changed`, and `time-event<TAB>owner-arrived`. Before readiness,
+matching properties and owner arrivals coalesce into the existing single
+`changed` after `ready`, preserving initialization reconciliation. Once ready,
+an authenticated nonempty owner arrival or replacement emits `owner-arrived`;
+relevant properties still emit `changed`. Departure stays quiet and clears the
+pinned sender. Untrusted, stale-owner, and unrelated signals cannot produce
+either notification. The monitor makes no platform read or activation call.
+
+An owner-arrival record is uncertainty, not certification that configuration
+is unchanged. Settings temporarily gates time admission and uses a separate
+bounded time-only owner to reconcile timezone, CanNTP, and NTP enablement.
+Unchanged configuration retains catalog and matching preview identities;
+synchronization-only changes update readable state. Genuine configuration
+changes use normal discovery invalidation. Initial and settling reads retain
+the existing two-read limit, and a baseline mismatch permits only one automatic
+cumulative recovery before explicit retry is required. Required recovery
+preempts and reaps optional readers. Arrivals during regional preview reads
+are retained until the finite reader releases and reconciliation finishes.
+With readable time state, the helper's timezone and NTP offers share admission;
+only NTP adds a capability check. Initial reconciliation therefore detects both
+capability loss and gain when those offers establish the prior capability.
+When shared admission blocks both actions, capability remains unknown rather
+than inferred absent, and time-only reads never enable the blocked offer.
+Private-bus
+fixtures exercise the new passive monitor lifecycle, fixed time-status reads,
+malformed/denied/timeout results, late replies, and all three handled signals.
+
+The shared `SystemRegionalPreflightModel` now also accepts these fixed
+no-argument `time-status` and `ntp-sample` reads. Its existing strict cumulative
+byte parser enforces the exact headers, one appropriate observation row or
+one command-owned error, the six closed error codes, and the 1024-byte stream
+limit. An observation is usable only after completion and a matching normal
+process exit; errors withhold all provisional values. The scoped commands use
+a 12-second outer deadline around the helper's ten-second budget, with the
+existing three-second TERM-to-KILL reaping grace. Catalogs and previews retain
+their 25-second outer deadline. Ownership remains claimed through publication
+callbacks, and close, overflow, timeout, or replacement cannot publish retired
+data. Time-only observations never supply journal recovery evidence. The visible
+30-second NTP sampler remains separate integration work.
 
 The fixed `dwm-system-management watch-accounts` command is also implemented.
 It accepts no arguments and emits only `accounts-event<TAB>ready` and
@@ -1992,6 +2536,41 @@ An absent owner can be dormant, departure quietly clears its identity, and
 arrival/replacement invalidates. Finite reads separately report availability.
 The same bounded output, explicit failure guidance, and TERM/INT/HUP cleanup
 apply. This command does not activate Settings or change the snapshot minor.
+
+The fixed `dwm-system-management watch-units printers|security` command is
+implemented separately. It emits only `units-event<TAB>ready` and
+`units-event<TAB>changed`. Printers selects `cups.service` and `cups.socket`;
+security selects only `firewalld.service`. A private asynchronous bus connection
+owns its systemd `Subscribe`, avoiding interference with another subscriber on
+a shared connection. Six acknowledged matches cover owner changes, manager
+`UnitNew`, `UnitRemoved`, `UnitFilesChanged`, `Reloading`, and interface-wide
+unit property changes. Owner authentication, subscription acceptance, fixed
+`GetUnit` lookups, and a final owner barrier all precede readiness within one
+ten-second aggregate setup budget. Every notification requires the pinned
+unique sender before decoding, including directly addressed setup signals.
+
+The monitor never loads, references, starts, or enumerates units. `GetUnit`
+resolves already-loaded fixed names and accepts no-such-unit as dormant state.
+Manager arrivals can name canonical aliases, so they coalesce into one fixed
+lookup pass and at most one settling pass under a shared ten-second burst
+deadline. An unrelated arrival with unchanged fixed mappings does not invalidate
+the UI. Matching removals, configuration reloads, unit-file changes, changed
+fixed mappings, and relevant properties invalidate state. Properties received
+while a mapping is unresolved conservatively invalidate without retaining other
+unit identities. A further manager event during the settling pass fails the
+monitor explicitly; there is no idle polling or reconnect loop. Stale resolution
+or owner-barrier callbacks cannot publish readiness. Systemd owner loss or
+replacement fails monitoring because its replacement does not inherit the old
+sender's subscription. Finite snapshots remain independently readable.
+
+Shutdown cancels outstanding local lookups and closes only the private
+connection, waiting at most one second for close completion. Unconfirmed cleanup
+is failure, not success; process disconnection also removes the sender's matches
+and subscription. Full or closed output retains bounded failure and never
+changes inherited file-status flags. This command adds no Settings activation
+or cumulative protocol minor. The finite CUPS reader still separately uses
+`ListUnitsByNames`, which may load fixed unit configuration but does not start
+the service; that method is not used by the monitor.
 
 - systemd D-Bus property changes drive time and locale refresh while the System
   section is open. On pane open, the root model installs the timedate1 and
@@ -2011,6 +2590,14 @@ apply. This command does not activate Settings or change the snapshot minor.
   fallback and subscriptions stop on section close. If subscription setup is
   unavailable, the finite bounded snapshot remains readable but live regional
   monitoring is explicitly unavailable.
+  Settings shares one finite reader between time reconciliation and the
+  two-property sample. Recovery has priority and reaps an optional sample before
+  taking its snapshot. Routine synchronization results do not invalidate
+  catalogs or previews; capability changes do require fresh discovery. Sample
+  failures retain the last synchronization value with `partial` status and
+  retry guidance, without turning otherwise fresh time configuration into a
+  failure. A service arrival during sampling reserves full time reconciliation
+  after the sample is reaped. The sample is never journal or mutation evidence.
 - AccountsService manager `UserAdded` and `UserDeleted` signals and the `Changed`
   signal on every valid de-duplicated candidate object selected within the
   256-object bound trigger one bounded, coalesced account-summary refresh while
@@ -2031,9 +2618,11 @@ apply. This command does not activate Settings or change the snapshot minor.
   enumeration remains explicitly `partial`.
 - The systemd manager's `UnitNew` and `UnitRemoved` signals for the fixed
   `cups.service`, `cups.socket`, and `firewalld.service` names, plus
-  `PropertiesChanged` for each loaded unit's `ActiveState` and the CUPS
-  socket's `SubState`, trigger one bounded, coalesced refresh of the owning
+  `PropertiesChanged` for each loaded unit's `LoadState`, `ActiveState`, and
+  `SubState`, trigger one bounded, coalesced refresh of the owning
   state while the section is open. Those subscriptions stop on section close.
+  Fixed alias mappings are also reconciled after unit-file changes and completed
+  manager reloads, which can retarget an alias without creating a new object.
   Delegated-tool availability remains a bounded snapshot; Phase 6 adds no CUPS
   or firewalld polling loop.
 - A single pane-scoped `dwm-system-management watch-mounts` process monitors
@@ -2041,18 +2630,44 @@ apply. This command does not activate Settings or change the snapshot minor.
   minor-2 command accepts no arguments and is not an action or operation
   stream. Its supervisor starts exactly
   `findmnt --poll --raw --noheadings --output ACTION` in a dedicated process
-  group. The child marks every inherited nonstandard descriptor close-on-exec
-  before executing the fixed program. Before emitting anything, the supervisor
+  group. The child closes every inherited nonstandard descriptor before its
+  isolated Python startup, arms Linux parent-death SIGKILL, rechecks the original
+  parent identity, and replaces itself with the fixed program. Before emitting
+  anything, the supervisor
   waits under a one-second monotonic deadline until the live child's descriptor
   table contains the open `/proc/CHILD_PID/mountinfo` baseline. The readiness
   probe walks every numeric entry beneath that exact `/proc/CHILD_PID/fd`
   directory until it finds a symlink target equal to
-  `/proc/CHILD_PID/mountinfo`, the child exits, its proc identity changes, or
+  `/proc/CHILD_PID/mountinfo` with the persistent polling descriptor flags, the
+  child exits, its proc identity changes, or
   the deadline expires. It then emits the exact line
   `mount-monitor-ready`; subsequent bounded nonempty findmnt lines are emitted
   as `mount-change<TAB>ACTION`. Any other standard-output line, a line over 256
   bytes, a missed readiness deadline, or an unexpected supervisor or child exit
   marks storage `partial` with explicit-refresh guidance.
+
+  Fedora util-linux opens its initial parsing descriptor with `O_CLOEXEC` and
+  its persistent `poll_table` descriptor without that flag. The readiness probe
+  checks the exact descriptor's bounded `fdinfo` flags and rejects the initial
+  parsing open, which otherwise precedes the actual subscription. Unrecognized
+  descriptor behavior cannot certify readiness. A real Fedora findmnt regression
+  delays the initial parsing open and verifies that no acknowledgment escapes
+  before the persistent descriptor exists.
+
+  The fixed CLI helper and pane subscription are implemented. The helper uses a pidfd
+  and signal-wakeup pipe alongside child output, so no idle timer remains after
+  readiness. The helper requires write-only pipe output, as supplied by
+  Quickshell. Its read-interest watch catches consumer loss even with no mount
+  events, without a writable idle spin. Other output types are rejected before
+  starting a child: sockets can half-close without an event, and read/write
+  FIFOs retain their own reader. For command-line inspection, use
+  `dwm-system-management watch-mounts | cat`. Shared operation writers retain
+  their separate output-type support. Lost output or failed cleanup exits unsuccessfully. The bounded
+  readiness probe retains early child output until the baseline is acknowledged.
+  The root model now owns this subscription alongside firewalld notifications.
+  Captured monitor generations and read-cycle tokens reject retired callbacks,
+  including callbacks queued across closure and reopening. The helper itself
+  does not read a journal.
 
   The root model starts the initial bounded JSON filesystem snapshot only after
   receiving `mount-monitor-ready`. The first snapshot is authoritative for the
@@ -2071,9 +2686,14 @@ apply. This command does not activate Settings or change the snapshot minor.
   completion handoff sets unresolved-dirty, publishes storage `partial` with
   explicit-refresh guidance, and suppresses more automatic filesystem
   snapshots until explicit refresh or section close/reopen starts a new bounded
-  cycle. Continuous mount churn therefore cannot create an unbounded process
+  cycle. Other provider events use `snapshot-without-storage` while the
+  storage cycle is blocked, preserving its retained rows. Continuous mount churn therefore cannot create an unbounded process
   loop or be falsely published as clean.
 
+  Each monitor launch creates a separate Process and deadline owner. Its frozen
+  callback bundle captures both pane generation and a unique launch serial, so
+  queued parser, deadline, and exit callbacks cannot acquire a replacement
+  monitor's identity, including retries within the same pane generation.
   Each open allocates a monotonically increasing monitor generation; ready,
   line, exit, and queued-rerun callbacks verify both that the section is still
   open and that their captured generation is current before changing state or
@@ -2275,10 +2895,51 @@ together without changing existing health or session-action contracts.
 
 ## Authoritative Interface References
 
+- util-linux lsblk name, parent-name, and device-type implementation: <https://github.com/util-linux/util-linux/blob/v2.42.2/misc-utils/lsblk.c>
 - PackageKit D-Bus API: <https://packagekit.freedesktop.org/gtk-doc/api-reference.html>
 - PackageKit transaction API: <https://packagekit.freedesktop.org/gtk-doc/Transaction.html>
 - systemd timedate1 API: <https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.timedate1.html>
 - systemd locale1 API: <https://www.freedesktop.org/software/systemd/man/latest/org.freedesktop.locale1.html>
+- systemd manager implementation (GetUnit, ListUnitsByNames, Subscribe): <https://github.com/systemd/systemd/blob/v259/src/core/dbus-manager.c>
+- Gio private connection lifecycle: <https://docs.gtk.org/gio/method.DBusConnection.close.html>
 - AccountsService manager D-Bus XML: <https://gitlab.freedesktop.org/accountsservice/accountsservice/-/raw/main/data/org.freedesktop.Accounts.xml>
 - AccountsService user D-Bus XML: <https://gitlab.freedesktop.org/accountsservice/accountsservice/-/raw/main/data/org.freedesktop.Accounts.User.xml>
 - CUPS administration guidance: <https://openprinting.github.io/cups/doc/admin.html>
+
+
+### Information and recovery view qualification
+
+System Settings displays the thirteen system-information values, bounded mounted
+filesystem usage, and five security indicators supplied by minor 2. Byte
+counters retain their original decimal strings alongside approximate human
+units. The filesystem list uses a virtualized 240-pixel viewport; retained rows
+are explicitly labeled as last known and potentially stale after mount-monitor
+failure, with Reload status as the retry path. Missing probes remain Unknown.
+
+The fixed System Health button navigates to the existing read-only scan and
+closes Settings through the root owner. Health retains ownership of its named,
+separately confirmed repairs and diagnostic export. The view explains that
+exported paths or device names may identify the system. Reset guidance directs
+users to the relevant preference's scoped reset/revert or a backed-up recovery
+procedure; no factory reset, disk, firewall, encryption, or general service
+mutation is introduced.
+
+The isolated information-view fixture passes at 640x480, 780x580, and 1000x740:
+exact uint64 display, the 256-row virtualized inventory, unavailable security
+state with readable peers, explicit stale data, keyboard-focus reveal, one
+fixed health callback, and disabled navigation when its capability is absent.
+These are synthetic UI checks, not host security measurements or repairs.
+Visually inspected 780x580 captures show [information](evidence/p6-information-view.png),
+[storage](evidence/p6-storage-view.png), [security](evidence/p6-security-view.png),
+and [recovery guidance](evidence/p6-recovery-view.png).
+
+The combined implementation passed the complete managed repository gate with
+679 backend tests, all QML/nested-X11 workflows, build, shell/format, staged and
+repeated installation, preservation and release archive checks. The subsequent
+write-only pipe-output contract fix passed 60 affected backend/monitor checks.
+The later subscription/recovery fixes pass the full affected QML gate, including
+119 retired-callback assertions and 66/69/66 time/storage/security lifecycle
+assertions. Blocked storage and failed core recovery retain readable information.
+Source comparison confirmed every other tested source file was unchanged. Closed
+Settings used 0.200% CPU in the nested-X11 sample; the large-surface closed
+sample was 0.50%. Final installed-session qualification remains separate.

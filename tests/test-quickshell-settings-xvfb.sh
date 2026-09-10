@@ -330,8 +330,8 @@ glib-compile-schemas "$schema_dir"
 export GSETTINGS_SCHEMA_DIR="$schema_dir"
 export GSETTINGS_BACKEND=keyfile
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
-cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-titus/scripts/dwm-system-management"
-chmod +x "$data_home/dwm-titus/scripts/dwm-system-management"
+cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-jangir/scripts/dwm-system-management"
+chmod +x "$data_home/dwm-jangir/scripts/dwm-system-management"
 cp "$repo/config/quickshell/assets/ctt_logo.png" "$home/Pictures/backgrounds/test-wallpaper.png"
 # Keep this nested-X11 fixture independent from the host system UPower service
 # so versioned helper battery records exercise the fallback parser.
@@ -385,13 +385,13 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/theme-apply.sh" \
 	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-jangir/scripts/"
 
-input_discovery_fixture=$config_home/dwm-titus/input-discovery-fixture
-mv "$data_home/dwm-titus/scripts/dwm-settings-input" \
-	"$data_home/dwm-titus/scripts/dwm-settings-input.real"
-cat >"$data_home/dwm-titus/scripts/dwm-settings-input" <<'SH'
+input_discovery_fixture=$config_home/dwm-jangir/input-discovery-fixture
+mv "$data_home/dwm-jangir/scripts/dwm-settings-input" \
+	"$data_home/dwm-jangir/scripts/dwm-settings-input.real"
+cat >"$data_home/dwm-jangir/scripts/dwm-settings-input" <<'SH'
 #!/bin/sh
 set -eu
-fixture=$XDG_CONFIG_HOME/dwm-titus/input-discovery-fixture
+fixture=$XDG_CONFIG_HOME/dwm-jangir/input-discovery-fixture
 if [ "${1:-}" = discover ] && [ -f "$fixture.hold" ]; then
 	rm -f "$fixture.hold"
 	"$(dirname -- "$0")/dwm-settings-input.real" "$@" >"$fixture.snapshot"
@@ -407,7 +407,7 @@ if [ "${1:-}" = discover ] && [ -f "$fixture.hold" ]; then
 fi
 exec "$(dirname -- "$0")/dwm-settings-input.real" "$@"
 SH
-chmod +x "$data_home/dwm-titus/scripts/dwm-settings-input"
+chmod +x "$data_home/dwm-jangir/scripts/dwm-settings-input"
 
 appearance_failure_fixture=$work/appearance-snapshot-failure
 mv "$data_home/dwm-jangir/scripts/dwm-settings-appearance" \
@@ -658,6 +658,12 @@ if [ "${1:-}" = power-snapshot ] && [ -r "$fixture" ]; then
 		printf 'provider\tpower\tavailable\tuser-session\tMalformed record fixture\n'
 		printf 'power-dpms\tavailable\tyes\t1e2\tuser-session\tExponent timeout\n'
 		printf 'power-lock\tavailable\tyes\t0x10\tno\tuser-session\tHex timeout\n'
+		;;
+	available | partial | restricted | unavailable | unsupported)
+		printf 'power-protocol\t1\t0\n'
+		printf 'provider\tpower\tavailable\tuser-session\tLock state fixture\n'
+		printf 'power-dpms\tavailable\tyes\t600\tuser-session\tReadable peer\n'
+		printf 'power-lock\t%s\tyes\t600\tyes\tuser-session\tUnverified fallback must not be displayed\n' "$(cat "$fixture")"
 		;;
 	battery)
 		printf 'power-protocol\t1\t0\n'
@@ -1079,12 +1085,12 @@ settings_ipc_retry inputPreviewAction keep >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
 	grep -Fqx "$sticky_record" \
-		"$config_home/dwm-titus/input-settings.conf" 2>/dev/null && break
+		"$config_home/dwm-jangir/input-settings.conf" 2>/dev/null && break
 	i=$((i + 1))
 	sleep 0.05
 done
 grep -Fqx "$sticky_record" \
-	"$config_home/dwm-titus/input-settings.conf"
+	"$config_home/dwm-jangir/input-settings.conf"
 i=0
 while [ "$i" -lt 100 ]; do
 	preview_state=$(settings_ipc_retry inputPreviewState)
@@ -1106,7 +1112,7 @@ done
 [ "$sticky_value" = "$sticky_expected" ]
 if [ "$sticky_baseline" = 1 ]; then DISPLAY=$display xkbset st; else DISPLAY=$display xkbset -st; fi
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_RUNTIME_DIR=$runtime \
-	"$data_home/dwm-titus/scripts/dwm-settings-input" apply-saved
+	"$data_home/dwm-jangir/scripts/dwm-settings-input" apply-saved
 sticky_live=$(xkb_sticky_value)
 [ "$sticky_live" = "$sticky_expected" ]
 settings_ipc_retry inputAccessibilityReset sticky-keys >/dev/null
@@ -1120,9 +1126,9 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$sticky_value" = "$sticky_baseline" ]
 [ "$sticky_live" = "$sticky_baseline" ]
-if [ -f "$config_home/dwm-titus/input-settings.conf" ] &&
+if [ -f "$config_home/dwm-jangir/input-settings.conf" ] &&
 	grep -Fq "$(printf 'accessx\tsticky-keys\t')" \
-		"$config_home/dwm-titus/input-settings.conf"; then
+		"$config_home/dwm-jangir/input-settings.conf"; then
 	printf 'XKB accessibility reset retained a persisted override\n' >&2
 	exit 1
 fi
@@ -1305,6 +1311,35 @@ power_timeout=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DAT
 	XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerDpmsTimeout)
 [ "$power_enabled" = false ]
 [ "$power_timeout" -eq 0 ]
+
+for lock_record_status in available partial unavailable restricted unsupported; do
+	printf '%s\n' "$lock_record_status" >"$malformed_power_snapshot"
+	expected_lock_status=$lock_record_status
+	# Unsupported is not a Power protocol state and must fail to unavailable.
+	[ "$lock_record_status" != unsupported ] || expected_lock_status=unavailable
+	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select audio >/dev/null
+	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings select power >/dev/null
+	i=0
+	while [ "$i" -lt 100 ]; do
+		power_lock_status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+			XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerLockStatus 2>/dev/null || true)
+		[ "$power_lock_status" = "$expected_lock_status" ] && break
+		i=$((i + 1))
+		sleep 0.02
+	done
+	[ "$power_lock_status" = "$expected_lock_status" ]
+	power_lock_enabled=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerLockEnabled)
+	power_lock_timeout=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
+		XDG_RUNTIME_DIR=$runtime quickshell ipc --path "$config" call settings powerLockTimeout)
+	if [ "$expected_lock_status" = available ]; then
+		[ "$power_lock_enabled" = true ] && [ "$power_lock_timeout" -eq 600 ]
+	else
+		[ "$power_lock_enabled" = false ] && [ "$power_lock_timeout" -eq 0 ]
+	fi
+done
 
 printf 'battery\n' >"$malformed_power_snapshot"
 DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1808,7 +1843,7 @@ done
 [ "$(settings_ipc_retry accessibilityReducedMotion)" = true ]
 wait_for_accessibility_idle
 printf 'accessibility-settings-protocol	1	0\ncontrast	high\nmotion	reduced\n' |
-	cmp - "$config_home/dwm-titus/accessibility.conf"
+	cmp - "$config_home/dwm-jangir/accessibility.conf"
 test_stage='validating managed-shell accessibility persistence after restart'
 restart_quickshell
 wait_for_accessibility_values true true
@@ -1825,7 +1860,7 @@ done
 [ "$accessibility_motion" = false ]
 wait_for_accessibility_idle
 printf 'accessibility-settings-protocol	1	0\ncontrast	standard\nmotion	full\n' |
-	cmp - "$config_home/dwm-titus/accessibility.conf"
+	cmp - "$config_home/dwm-jangir/accessibility.conf"
 restart_quickshell
 wait_for_accessibility_values false false
 
@@ -1882,7 +1917,7 @@ notification_wait_available
 [ "$(notification_ipc_retry doNotDisturb)" = false ]
 [ "$(notification_ipc_retry popupTimeout)" = 6000 ]
 printf '%s\n' '{"version":2,"doNotDisturb":true,"popupTimeoutMs":1}' \
-	>"$config_home/dwm-titus/notification-settings.json"
+	>"$config_home/dwm-jangir/notification-settings.json"
 i=0
 while [ "$i" -lt 100 ]; do
 	notification_policy_state=$(notification_ipc_retry policyState)
@@ -1896,7 +1931,7 @@ done
 notification_ipc_retry resetPolicy >/dev/null
 notification_wait_available
 printf '%s\n' '{not-json' \
-	>"$config_home/dwm-titus/notification-settings.json"
+	>"$config_home/dwm-jangir/notification-settings.json"
 i=0
 while [ "$i" -lt 100 ]; do
 	notification_policy_state=$(notification_ipc_retry policyState)
@@ -2242,7 +2277,7 @@ if [ "$wallpaper_preview" != active ]; then
 		"$(settings_ipc_retry appearanceInventoryWatchDetail)" >&2
 	DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 		XDG_RUNTIME_DIR=$runtime DWM_APPEARANCE_WALLPAPER_DIR=$home/Pictures/backgrounds \
-		"$data_home/dwm-titus/scripts/dwm-settings-wallpaper" status --read-only >&2 || true
+		"$data_home/dwm-jangir/scripts/dwm-settings-wallpaper" status --read-only >&2 || true
 	exit 1
 fi
 wallpaper_remaining_before=$(settings_ipc_retry appearanceWallpaperPreviewRemaining)
@@ -3554,14 +3589,14 @@ fi
 i=0
 while [ "$i" -lt 100 ]; do
 	if ! pgrep -af '[d]wm-settings-provider discover$' |
-		grep -F "$data_home/dwm-titus/scripts/dwm-settings-provider" >/dev/null; then
+		grep -F "$data_home/dwm-jangir/scripts/dwm-settings-provider" >/dev/null; then
 		break
 	fi
 	i=$((i + 1))
 	sleep 0.05
 done
 if pgrep -af '[d]wm-settings-provider discover$' |
-	grep -F "$data_home/dwm-titus/scripts/dwm-settings-provider" >/dev/null; then
+	grep -F "$data_home/dwm-jangir/scripts/dwm-settings-provider" >/dev/null; then
 	printf 'Settings capability provider remained active after close\n' >&2
 	exit 1
 fi

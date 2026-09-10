@@ -343,14 +343,14 @@ grep -Fqx '0 0 0 1 0' "$work/xkbset.state"
 env "${env_common[@]}" "$helper" preview sticky-keep 5 accessx sticky-keys 1 >/dev/null
 env "${env_common[@]}" "$helper" keep sticky-keep >/dev/null
 grep -Fqx $'accessx\tsticky-keys\t1\t0' \
-	"$work/home/.config/dwm-titus/input-settings.conf"
+	"$work/home/.config/dwm-jangir/input-settings.conf"
 printf '0 0 0 1 0\n' >"$work/xkbset.state"
 env "${env_common[@]}" "$helper" apply-saved
 grep -Fqx '0 1 0 1 0' "$work/xkbset.state"
 env "${env_common[@]}" "$helper" reset accessx sticky-keys >/dev/null
 grep -Fqx '0 0 0 1 0' "$work/xkbset.state"
-if [[ -f $work/home/.config/dwm-titus/input-settings.conf ]] &&
-	grep -Fq $'accessx\tsticky-keys\t' "$work/home/.config/dwm-titus/input-settings.conf"; then
+if [[ -f $work/home/.config/dwm-jangir/input-settings.conf ]] &&
+	grep -Fq $'accessx\tsticky-keys\t' "$work/home/.config/dwm-jangir/input-settings.conf"; then
 	printf 'sticky-keys reset left a persisted override\n' >&2
 	exit 1
 fi

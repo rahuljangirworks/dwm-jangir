@@ -343,9 +343,9 @@ if [ "$popup_timeout" != 4000 ]; then
 	exit 1
 fi
 if ! grep -Eq '"popupTimeoutMs"[[:space:]]*:[[:space:]]*4000' \
-	"$config_home/dwm-titus/notification-settings.json"; then
+	"$config_home/dwm-jangir/notification-settings.json"; then
 	printf 'Notification popup timeout was not persisted:\n' >&2
-	sed -n '1,20p' "$config_home/dwm-titus/notification-settings.json" >&2
+	sed -n '1,20p' "$config_home/dwm-jangir/notification-settings.json" >&2
 	exit 1
 fi
 # FileView does not define whether saved or fileChanged arrives first. Sample a
@@ -385,7 +385,7 @@ while [ "$i" -lt 100 ]; do
 	sleep 0.05
 done
 [ "$(ipc notifications doNotDisturb)" = true ]
-chmod 500 "$config_home/dwm-titus"
+chmod 500 "$config_home/dwm-jangir"
 ipc notifications setDoNotDisturb false >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
@@ -396,7 +396,7 @@ done
 [ "$(ipc notifications policyState)" = unavailable ]
 [ "$(ipc notifications doNotDisturb)" = true ]
 [ "$(ipc notifications popupTimeout)" = 4000 ]
-chmod 700 "$config_home/dwm-titus"
+chmod 700 "$config_home/dwm-jangir"
 ipc notifications resetPolicy >/dev/null
 i=0
 while [ "$i" -lt 100 ]; do
@@ -425,8 +425,8 @@ done
 [ "$(ipc notifications policyState)" = available ]
 [ "$(ipc notifications doNotDisturb)" = true ]
 [ "$(ipc notifications popupTimeout)" = 4000 ]
-chmod 000 "$config_home/dwm-titus/notification-settings.json"
-touch "$config_home/dwm-titus/notification-settings.json"
+chmod 000 "$config_home/dwm-jangir/notification-settings.json"
+touch "$config_home/dwm-jangir/notification-settings.json"
 i=0
 while [ "$i" -lt 100 ]; do
 	[ "$(ipc notifications policyState)" = unavailable ] && break
@@ -440,8 +440,8 @@ send_test_notification normal 'Suppressed during policy read failure'
 sleep 0.1
 [ "$(ipc notifications count)" = 0 ]
 [ "$(ipc notifications historyLatestSummary)" = 'Suppressed during policy read failure' ]
-chmod 600 "$config_home/dwm-titus/notification-settings.json"
-touch "$config_home/dwm-titus/notification-settings.json"
+chmod 600 "$config_home/dwm-jangir/notification-settings.json"
+touch "$config_home/dwm-jangir/notification-settings.json"
 i=0
 while [ "$i" -lt 100 ]; do
 	[ "$(ipc notifications policyState)" = available ] && break
@@ -459,7 +459,7 @@ done
 [ "$(ipc notifications doNotDisturb)" = false ]
 [ "$(ipc notifications popupTimeout)" = 6000 ]
 printf '%s\n' '{"version":1,"doNotDisturb":true,"popupTimeoutMs":6000}' \
-	>"$config_home/dwm-titus/notification-settings.json"
+	>"$config_home/dwm-jangir/notification-settings.json"
 i=0
 while [ "$i" -lt 100 ]; do
 	policy_dnd=$(ipc notifications doNotDisturb)
@@ -470,7 +470,7 @@ done
 [ "$policy_dnd" = true ]
 [ "$(ipc notifications count)" = 0 ]
 [ "$(ipc notifications historyCount)" -gt 0 ]
-printf '%s\n' '{malformed' >"$config_home/dwm-titus/notification-settings.json"
+printf '%s\n' '{malformed' >"$config_home/dwm-jangir/notification-settings.json"
 i=0
 while [ "$i" -lt 100 ]; do
 	[ "$(ipc notifications policyState)" = partial ] && break

@@ -1,6 +1,6 @@
 ---
 title: Configuration
-description: Customize dwm-titus defaults, live-reloading hotkeys, window rules, and XDG autostart behavior.
+description: Customize dwm-jangir defaults, live-reloading hotkeys, window rules, and XDG autostart behavior.
 navLabel: Configuration
 eyebrow: Make it yours
 ---
@@ -12,7 +12,7 @@ dwm-jangir keeps user configuration under
 **live-reload on save** — no recompile needed for most changes.
 
 When upgrading from the former runtime name, run `./install.sh` once from this
-checkout. It migrates an unambiguous `~/.config/dwm-titus` directory to this
+checkout. It migrates an unambiguous `~/.config/dwm-jangir` directory to this
 path and preserves both directories when any files differ, so no custom file is
 silently replaced.
 
@@ -155,7 +155,7 @@ are reapplied through `xkbset` at session startup and do not depend on a device
 identity or hotplug event.
 
 Managed notification policy is stored in
-`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-titus/notification-settings.json`.
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/notification-settings.json`.
 Settings offers only fixed Do Not Disturb and ordinary-popup duration values.
 Do Not Disturb keeps every notification in history, suppresses only low and
 normal urgency popups, and never suppresses critical urgency. Reset restores

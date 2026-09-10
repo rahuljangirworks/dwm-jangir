@@ -40,6 +40,21 @@ cleanup() {
 	cleanup_status=$?
 	set +e
 	stop_process "${quickshell_pid:-}"
+	if [ -n "${regional_settings_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$regional_settings_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
+	if [ -n "${delegate_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$delegate_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
+	if [ -n "${checked_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$checked_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	if [ -n "${helper:-}" ]; then
 		for helper_pid in $(pgrep -f "$helper " 2>/dev/null || true); do
 			stop_process "$helper_pid"
@@ -50,8 +65,28 @@ cleanup() {
 			stop_process "$helper_pid"
 		done
 	fi
+	if [ -n "${provider_discovery_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$provider_discovery_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
+	if [ -n "${native_discovery_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$native_discovery_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
 	if [ -n "${update_action_helper:-}" ]; then
 		for helper_pid in $(pgrep -f "$update_action_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
+	if [ -n "${native_action_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$native_action_helper " 2>/dev/null || true); do
+			stop_process "$helper_pid"
+		done
+	fi
+	if [ -n "${preflight_helper:-}" ]; then
+		for helper_pid in $(pgrep -f "$preflight_helper" 2>/dev/null || true); do
 			stop_process "$helper_pid"
 		done
 	fi
@@ -82,17 +117,17 @@ runtime=$work/runtime
 config_home=$home/.config
 data_home=$home/.local/share
 fixture=$work/fixture
-mkdir -p "$config_home/quickshell" "$config_home/dwm-titus" \
-	"$data_home/dwm-titus/scripts" "$runtime" "$fixture"
+mkdir -p "$config_home/quickshell" "$config_home/dwm-jangir" \
+	"$data_home/dwm-jangir/scripts" "$runtime" "$fixture"
 chmod 700 "$runtime"
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
-cp "$repo/config/"*.toml "$config_home/dwm-titus/"
+cp "$repo/config/"*.toml "$config_home/dwm-jangir/"
 cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-quickshell-controlcenter" \
 	"$repo/scripts/dwm-quickshell-controls" "$repo/scripts/dwm-quickshell-launcher" \
 	"$repo/scripts/dwm-quickshell-network" "$repo/scripts/dwm-quickshell-pointer" \
-	"$data_home/dwm-titus/scripts/"
+	"$data_home/dwm-jangir/scripts/"
 
-helper=$data_home/dwm-titus/scripts/dwm-system-management
+helper=$data_home/dwm-jangir/scripts/dwm-system-management
 cat >"$helper" <<'HELPER'
 #!/bin/sh
 set -eu
@@ -100,6 +135,19 @@ set -eu
 fixture=${DWM_SYSTEM_MANAGEMENT_TEST_FIXTURE:?}
 mode=$(sed -n '1p' "$fixture/mode")
 case ${1:-} in
+watch-time | watch-regional | watch-accounts | watch-units)
+	case "$*" in
+	'watch-time') prefix=time-event ;;
+	'watch-regional locale') prefix=regional-event ;;
+	watch-accounts) prefix=accounts-event ;;
+	'watch-units printers' | 'watch-units security') prefix=units-event ;;
+	*) exit 2 ;;
+	esac
+	exec /usr/bin/python3 -c 'import signal, sys; print(sys.argv[1] + "\tready", flush=True); signal.pause()' "$prefix" "$0" "$@"
+	;;
+watch-mounts)
+	exec /usr/bin/python3 -c 'import signal; print("mount-monitor-ready", flush=True); signal.pause()' "$0" watch-mounts
+	;;
 watch-updates)
 	[ "$mode" != monitor-failure ] || exit 1
 	printf '%s\n' "$$" >"$fixture/monitor-pid"
@@ -127,7 +175,7 @@ watch-operation | ack-operation)
 	printf 'complete\toperation\n'
 	exit 0
 	;;
-snapshot) ;;
+snapshot | snapshot-core | snapshot-without-storage) ;;
 *) exit 2 ;;
 esac
 
@@ -311,11 +359,65 @@ while [ "$i" -lt 100 ]; do
 done
 DISPLAY=$display xprop -root >/dev/null
 
+# Pure information view: bounded inventories, unknown values, and keyboard navigation.
+mkdir -p "$work/information-ui"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" "$work/information-ui/"
+cp "$repo/tests/qml/SystemInformationUi.qml" "$work/information-ui/shell.qml"
+for size in 640x480 780x580 1000x740; do
+	width=${size%x*}
+	height=${size#*x}
+	timeout --foreground --kill-after=2s 15s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+		DWM_INFORMATION_UI_WIDTH="$width" DWM_INFORMATION_UI_HEIGHT="$height" \
+		quickshell --no-duplicate --path "$work/information-ui/shell.qml" >"$work/information-ui-$size.log" 2>&1 &
+	quickshell_pid=$!
+	status=0
+	wait "$quickshell_pid" || status=$?
+	quickshell_pid=
+	if [ "$status" -ne 0 ] || ! grep -F 'Information UI tests: PASS' "$work/information-ui-$size.log" ||
+		grep -Eq 'Information UI FAILED:|ReferenceError:|TypeError:|Binding loop' "$work/information-ui-$size.log"; then
+		cat "$work/information-ui-$size.log" >&2
+		exit 1
+	fi
+done
+
+# Signals during either capture allocation must not leak files or start work.
+mkdir -p "$work/checked-command" "$work/checked-bin"
+cp -a "$repo/config/quickshell/core" "$work/checked-command/"
+cp "$repo/tests/qml/SystemCheckedCommand.qml" "$work/checked-command/shell.qml"
+checked_helper=$work/checked-bin/capture-helper
+cp "$repo/tests/fixtures/checked-command-provider.py" "$checked_helper"
+chmod +x "$checked_helper"
+ln -s "$checked_helper" "$work/checked-bin/mktemp"
+for checked_scenario in success helper-fail first-fail second-fail first-term second-term stop-child; do
+	checked_directory=$work/checked-$checked_scenario
+	mkdir -m 700 "$checked_directory"
+	checked_status=0
+	timeout --foreground --kill-after=2s 8s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_RUNTIME_DIR="$checked_directory" QT_QPA_PLATFORMTHEME= PATH="$work/checked-bin:$PATH" \
+		DWM_CAPTURE_DIRECTORY="$checked_directory" DWM_CAPTURE_SCENARIO="$checked_scenario" DWM_CAPTURE_HELPER="$checked_helper" \
+		quickshell --no-duplicate --path "$work/checked-command/shell.qml" >"$checked_directory/output.log" 2>&1 &
+	quickshell_pid=$!
+	wait "$quickshell_pid" || checked_status=$?
+	quickshell_pid=
+	if [ "$checked_status" -ne 0 ] || ! grep -F 'Checked command tests: PASS' "$checked_directory/output.log" ||
+		grep -Fq 'Checked command FAILED:' "$checked_directory/output.log" ||
+		[ -n "$(find "$checked_directory" -maxdepth 1 -name 'dwm-checked-command*' -print -quit)" ]; then
+		cat "$checked_directory/output.log" >&2
+		exit 1
+	fi
+	case "$checked_scenario" in
+	first-* | second-*) [ ! -e "$checked_directory/helper-started" ] ;;
+	stop-child) [ -e "$checked_directory/helper-stopped" ] ;;
+	*) [ -e "$checked_directory/helper-started" ] ;;
+	esac
+done
+
 # Exercise pane-scoped events and atomic dirty-cycle handoffs on a private bus.
-mkdir -p "$work/discovery" "$work/discovery-data/dwm-titus/scripts" "$work/discovery-state"
+mkdir -p "$work/discovery" "$work/discovery-data/dwm-jangir/scripts" "$work/discovery-state"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/discovery/"
 cp "$repo/tests/qml/SystemDiscovery.qml" "$work/discovery/shell.qml"
-discovery_helper=$work/discovery-data/dwm-titus/scripts/dwm-system-management
+discovery_helper=$work/discovery-data/dwm-jangir/scripts/dwm-system-management
 cp "$repo/tests/fixtures/system-discovery-provider.py" "$discovery_helper"
 chmod +x "$discovery_helper"
 for pipe_case in absent regular no-reader; do
@@ -352,13 +454,147 @@ if [ "$discovery_status" -ne 0 ] || ! grep -F 'Discovery native tests: PASS' "$w
 	exit 1
 fi
 
+# Exercise each fixed subscription stream without activating Settings origins.
+mkdir -p "$work/provider-discovery" "$work/provider-discovery-data/dwm-jangir/scripts" "$work/provider-discovery-state"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/provider-discovery/"
+cp "$repo/tests/qml/SystemProviderDiscovery.qml" "$work/provider-discovery/shell.qml"
+provider_discovery_helper=$work/provider-discovery-data/dwm-jangir/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-provider-discovery.py" "$provider_discovery_helper"
+chmod +x "$provider_discovery_helper"
+for pipe_case in absent regular no-reader; do
+	pipe_fixture=$work/provider-discovery-pipe-$pipe_case
+	mkdir -p "$pipe_fixture"
+	case $pipe_case in
+	absent) expected_pipe_error=missing-pipe ;;
+	regular)
+		: >"$pipe_fixture/time.events"
+		expected_pipe_error=not-pipe
+		;;
+	no-reader)
+		mkfifo "$pipe_fixture/time.events"
+		expected_pipe_error=missing-reader
+		;;
+	esac
+	pipe_status=0
+	timeout --kill-after=1s 2s env DWM_PROVIDER_DISCOVERY_FIXTURE="$pipe_fixture" \
+		"$provider_discovery_helper" fixture-control time emit >"$pipe_fixture/log" 2>&1 || pipe_status=$?
+	if [ "$pipe_status" -eq 0 ] || [ "$pipe_status" -eq 124 ] || [ "$pipe_status" -eq 137 ]; then
+		printf 'Provider fixture event writer did not fail promptly for %s\n' "$pipe_case" >&2
+		exit 1
+	fi
+	if [ "$pipe_status" -ne 3 ] ||
+		! grep -Fxq "$(printf 'fixture-event-error\t%s' "$expected_pipe_error")" "$pipe_fixture/log"; then
+		printf 'Provider fixture event writer returned an unexpected failure for %s\n' "$pipe_case" >&2
+		cat "$pipe_fixture/log" >&2
+		exit 1
+	fi
+	[ ! -s "$pipe_fixture/time.events" ]
+	[ "$pipe_case" != absent ] || [ ! -e "$pipe_fixture/time.events" ]
+done
+timeout --foreground --kill-after=2s 35s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/provider-discovery-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_PROVIDER_DISCOVERY_FIXTURE="$work/provider-discovery-state" \
+	quickshell --no-duplicate --path "$work/provider-discovery/shell.qml" >"$work/provider-discovery.log" 2>&1 &
+quickshell_pid=$!
+provider_discovery_status=0
+wait "$quickshell_pid" || provider_discovery_status=$?
+quickshell_pid=
+if [ "$provider_discovery_status" -ne 0 ] || ! grep -F 'Provider discovery tests: PASS' "$work/provider-discovery.log" ||
+	grep -Fq 'Provider discovery FAILED:' "$work/provider-discovery.log" ||
+	[ -e "$work/provider-discovery-state/overlap" ] || [ -e "$work/provider-discovery-state/unexpected-command" ] ||
+	[ -n "$(find "$work/provider-discovery-state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+	cat "$work/provider-discovery.log" >&2
+	exit 1
+fi
+
+# Replay actual retained callback bundles after both pane and same-pane replacements.
+mkdir -p "$work/provider-generation"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/provider-generation/"
+cp "$repo/tests/qml/SystemProviderGeneration.qml" "$work/provider-generation/shell.qml"
+printf 'hold' >"$work/provider-discovery-state/mode"
+timeout --foreground --kill-after=2s 35s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$work/provider-discovery-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_PROVIDER_DISCOVERY_FIXTURE="$work/provider-discovery-state" \
+	quickshell --no-duplicate --path "$work/provider-generation/shell.qml" >"$work/provider-generation.log" 2>&1 &
+quickshell_pid=$!
+provider_generation_status=0
+wait "$quickshell_pid" || provider_generation_status=$?
+quickshell_pid=
+if [ "$provider_generation_status" -ne 0 ] || ! grep -F 'Provider generation tests: PASS' "$work/provider-generation.log" ||
+	grep -Fq 'Provider generation FAILED:' "$work/provider-generation.log" ||
+	[ -e "$work/provider-discovery-state/overlap" ] || [ -e "$work/provider-discovery-state/unexpected-command" ] ||
+	[ -n "$(find "$work/provider-discovery-state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+	cat "$work/provider-generation.log" >&2
+	exit 1
+fi
+
+# Qualify all subscriptions sharing one cumulative snapshot owner.
+mkdir -p "$work/native-discovery" "$work/native-discovery-data/dwm-jangir/scripts" "$work/native-discovery-state"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/native-discovery/"
+cp "$repo/tests/qml/SystemNativeDiscovery.qml" "$work/native-discovery/shell.qml"
+native_discovery_helper=$work/native-discovery-data/dwm-jangir/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-native-discovery-provider.py" "$native_discovery_helper"
+chmod +x "$native_discovery_helper"
+for lock_domain in updates time locale accounts printers; do
+	lock_fixture=$work/native-discovery-lock-$lock_domain
+	mkdir -p "$lock_fixture"
+	printf 'existing-owner\n' >"$lock_fixture/$lock_domain.active"
+	mkfifo "$lock_fixture/$lock_domain.events"
+	case $lock_domain in
+	updates) set -- watch-updates ;;
+	time) set -- watch-time ;;
+	locale) set -- watch-regional "$lock_domain" ;;
+	accounts) set -- watch-accounts ;;
+	printers) set -- watch-units printers ;;
+	esac
+	lock_status=0
+	timeout --kill-after=1s 3s flock -n "$lock_fixture/$lock_domain.lock" \
+		env DWM_NATIVE_DISCOVERY_FIXTURE="$lock_fixture" "$native_discovery_helper" "$@" \
+		>"$lock_fixture/output" 2>"$lock_fixture/error" || lock_status=$?
+	if [ "$lock_status" -ne 1 ] || [ -s "$lock_fixture/output" ] ||
+		! grep -Fq 'BlockingIOError' "$lock_fixture/error" || [ ! -e "$lock_fixture/overlap" ] ||
+		! grep -Fxq 'existing-owner' "$lock_fixture/$lock_domain.active" ||
+		[ ! -p "$lock_fixture/$lock_domain.events" ]; then
+		printf 'Duplicate native fixture monitor was not recorded safely: %s\n' "$lock_domain" >&2
+		cat "$lock_fixture/error" >&2
+		exit 1
+	fi
+done
+printf 'Native discovery fixture duplicate-monitor cases: PASS\n'
+for discovery_domain in time storage security; do
+	# Every run owns a fresh private fixture journal and event namespace.
+	native_fixture="$work/native-discovery-$discovery_domain"
+	mkdir -p "$native_fixture"
+	timeout --foreground --kill-after=2s 35s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$work/native-discovery-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+		DWM_NATIVE_DISCOVERY_FIXTURE="$native_fixture" DWM_DISCOVERY_DOMAIN="$discovery_domain" \
+		quickshell --no-duplicate --path "$work/native-discovery/shell.qml" >"$work/native-discovery.log" 2>&1 &
+	quickshell_pid=$!
+	native_discovery_status=0
+	wait "$quickshell_pid" || native_discovery_status=$?
+	quickshell_pid=
+	if [ "$native_discovery_status" -ne 0 ] || ! grep -F 'Native discovery tests: PASS' "$work/native-discovery.log" ||
+		grep -Fq 'Native discovery FAILED:' "$work/native-discovery.log" ||
+		[ -e "$native_fixture/overlap" ] || [ -e "$native_fixture/unexpected-command" ] ||
+		[ -n "$(find "$native_fixture" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+		cat "$work/native-discovery.log" >&2
+		exit 1
+	fi
+	if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .; then
+		printf 'Native discovery fixture leaked a checked-command capture\n' >&2
+		find "$runtime" -type f -name 'dwm-checked-command*' -printf '%f (%s bytes)\n' >&2
+		exit 1
+	fi
+
+done
+
 # Run the isolated operation parser on the same nested display before loading
 # the managed shell. This fixture never connects to host PackageKit.
-mkdir -p "$work/update-ui" "$work/update-ui-data/dwm-titus/scripts" "$work/update-ui-state"
+mkdir -p "$work/update-ui" "$work/update-ui-data/dwm-jangir/scripts" "$work/update-ui-state"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" \
 	"$repo/config/quickshell/systemmanagement" "$repo/config/quickshell/network" "$work/update-ui/"
 cp "$repo/tests/qml/SystemUpdateUi.qml" "$work/update-ui/shell.qml"
-update_ui_helper=$work/update-ui-data/dwm-titus/scripts/dwm-system-management
+update_ui_helper=$work/update-ui-data/dwm-jangir/scripts/dwm-system-management
 cp "$repo/tests/fixtures/system-update-ui-provider.py" "$update_ui_helper"
 chmod +x "$update_ui_helper"
 timeout --foreground --kill-after=2s 35s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
@@ -376,6 +612,88 @@ if [ "$ui_status" -ne 0 ] || ! grep -F 'Update UI native tests: PASS' "$work/upd
 	cat "$work/update-ui.log" >&2
 	exit 1
 fi
+
+mkdir -p "$work/shared-clock"
+cp -a "$repo/config/quickshell/core" "$work/shared-clock/"
+cp "$repo/tests/qml/SharedClock.qml" "$work/shared-clock/shell.qml"
+timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	quickshell --no-duplicate --path "$work/shared-clock/shell.qml" >"$work/shared-clock.log" 2>&1 &
+quickshell_pid=$!
+clock_status=0
+wait "$quickshell_pid" || clock_status=$?
+quickshell_pid=
+if [ "$clock_status" -ne 0 ] || ! grep -F 'Shared clock tests: PASS' "$work/shared-clock.log" ||
+	grep -Fq 'Shared clock FAILED:' "$work/shared-clock.log"; then
+	cat "$work/shared-clock.log" >&2
+	exit 1
+fi
+
+mkdir -p "$work/regional-preflight-parser"
+cp "$repo/tests/qml/SystemRegionalPreflightParser.qml" "$work/regional-preflight-parser/shell.qml"
+cp "$repo/config/quickshell/systemmanagement/SystemRegionalPreflightProtocol.js" "$work/regional-preflight-parser/"
+timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	quickshell --no-duplicate --path "$work/regional-preflight-parser/shell.qml" \
+	>"$work/regional-preflight-parser.log" 2>&1 &
+quickshell_pid=$!
+parser_status=0
+wait "$quickshell_pid" || parser_status=$?
+quickshell_pid=
+if [ "$parser_status" -ne 0 ] || ! grep -F 'Regional preflight parser tests: PASS' "$work/regional-preflight-parser.log"; then
+	cat "$work/regional-preflight-parser.log" >&2
+	exit 1
+fi
+
+mkdir -p "$work/regional-preflight-owner" "$work/preflight-data/dwm-jangir/scripts" "$work/preflight-empty-path"
+mkdir -p "$work/preflight-shell-path" "$work/preflight-missing-data"
+ln -s "$(command -v sh)" "$work/preflight-shell-path/sh"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/regional-preflight-owner/"
+cp "$repo/tests/qml/SystemRegionalPreflightOwner.qml" "$work/regional-preflight-owner/shell.qml"
+preflight_helper="$work/preflight-data/dwm-jangir/scripts/dwm-system-management"
+cp "$repo/tests/fixtures/system-regional-preflight-provider.py" "$preflight_helper"
+chmod +x "$preflight_helper"
+preflight_quickshell=$(command -v quickshell)
+for preflight_mode in regional time-status ntp-sample; do
+	for preflight_scenario in success typed-error unsupported-error wrong-exit protocol-exit-127 malformed truncated stdout-overflow stderr-overflow \
+		close kill-close close-stdout-overflow close-stderr-overflow timeout cancel-queued cancel-claim close-result failed-start missing-helper; do
+		preflight_directory="$work/preflight-$preflight_mode-$preflight_scenario"
+		mkdir -p "$preflight_directory"
+		preflight_path=$PATH
+		preflight_data="$work/preflight-data"
+		[ "$preflight_scenario" != failed-start ] || preflight_path="$work/preflight-empty-path"
+		if [ "$preflight_scenario" = missing-helper ]; then
+			preflight_path="$work/preflight-shell-path"
+			preflight_data="$work/preflight-missing-data"
+		fi
+		timeout --foreground --kill-after=2s 45s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+			XDG_DATA_HOME="$preflight_data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= PATH="$preflight_path" \
+			DWM_PREFLIGHT_DIRECTORY="$preflight_directory" DWM_PREFLIGHT_SCENARIO="$preflight_scenario" DWM_PREFLIGHT_MODE="$preflight_mode" \
+			"$preflight_quickshell" --no-duplicate --path "$work/regional-preflight-owner/shell.qml" \
+			>"$preflight_directory/output.log" 2>&1 &
+		quickshell_pid=$!
+		preflight_status=0
+		wait "$quickshell_pid" || preflight_status=$?
+		quickshell_pid=
+		case "$preflight_scenario" in
+		success)
+			preflight_calls=8
+			[ "$preflight_mode" = regional ] || preflight_calls=2
+			;;
+		close | kill-close | close-stdout-overflow | close-stderr-overflow | timeout | close-result) preflight_calls=2 ;;
+		failed-start | missing-helper) preflight_calls=0 ;;
+		*) preflight_calls=1 ;;
+		esac
+		preflight_actual=$(sed -n '1p' "$preflight_directory/calls" 2>/dev/null || true)
+		if [ "$preflight_status" -ne 0 ] || ! grep -F 'Regional preflight owner tests: PASS' "$preflight_directory/output.log" ||
+			grep -Fq 'Regional preflight owner FAILED:' "$preflight_directory/output.log" ||
+			[ "${preflight_actual:-0}" != "$preflight_calls" ] || [ -e "$preflight_directory/invalid-arguments" ] ||
+			[ -e "$preflight_directory/overlap" ] || pgrep -f "$preflight_helper" >/dev/null 2>&1; then
+			cat "$preflight_directory/output.log" >&2
+			exit 1
+		fi
+	done
+done
 
 mkdir -p "$work/operation-parser"
 cp "$repo/tests/qml/SystemOperationParser.qml" "$work/operation-parser/shell.qml"
@@ -398,10 +716,319 @@ if ! grep -F 'Operation parser native tests: PASS' "$work/operation-parser.log";
 fi
 
 # Exercise the real root-owned Process lifecycle with a private fixed helper.
-mkdir -p "$work/update-action" "$work/update-action-data/dwm-titus/scripts"
+mkdir -p "$work/native-snapshot"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/native-snapshot/"
+cp "$repo/tests/qml/SystemNativeSnapshot.qml" "$work/native-snapshot/shell.qml"
+timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_SYSTEM_MANAGEMENT_TEST_FIXTURE="$fixture" \
+	quickshell --no-duplicate --path "$work/native-snapshot/shell.qml" >"$work/native-snapshot.log" 2>&1 &
+quickshell_pid=$!
+native_status=0
+wait "$quickshell_pid" || native_status=$?
+quickshell_pid=
+if [ "$native_status" -ne 0 ] || ! grep -F 'Native snapshot tests: PASS' "$work/native-snapshot.log" ||
+	grep -Fq 'Native snapshot FAILED:' "$work/native-snapshot.log"; then
+	cat "$work/native-snapshot.log" >&2
+	exit 1
+fi
+if find "$runtime" -type f -name 'dwm-checked-command*' -print -quit | grep -q .; then
+	printf 'Parser-only fixture started a capture that outlived its process\n' >&2
+	exit 1
+fi
+
+# Exercise the actual shell screen binding, including a window moved from its requested screen.
+mkdir -p "$work/health-navigation"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/health-navigation/"
+cp "$repo/tests/qml/SystemHealthNavigation.qml" "$work/health-navigation/shell.qml"
+python3 - "$repo/config/quickshell/shell.qml" "$work/health-navigation/shell.qml" <<'PY'
+from pathlib import Path
+import re
+import sys
+source = Path(sys.argv[1]).read_text()
+block = source.split("    SystemManagementModel {", 1)[1].split("\n    }", 1)[0]
+match = re.search(r"^        targetScreen: (.+)$", block, re.MULTILINE)
+assert match is not None, "Missing production Health screen binding"
+fixture = Path(sys.argv[2])
+marker = "targetScreen: null // Inject the production shell binding before loading."
+assert fixture.read_text().count(marker) == 1
+fixture.write_text(fixture.read_text().replace(marker, "targetScreen: " + match.group(1)))
+PY
+timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+	DWM_SYSTEM_MANAGEMENT_TEST_FIXTURE="$fixture" \
+	quickshell --no-duplicate --path "$work/health-navigation/shell.qml" >"$work/health-navigation.log" 2>&1 &
+quickshell_pid=$!
+health_navigation_status=0
+wait "$quickshell_pid" || health_navigation_status=$?
+quickshell_pid=
+if [ "$health_navigation_status" -ne 0 ] || ! grep -F 'Health navigation tests: PASS' "$work/health-navigation.log" ||
+	grep -Eq 'Health navigation FAILED:|ReferenceError:|TypeError:|Binding loop' "$work/health-navigation.log"; then
+	cat "$work/health-navigation.log" >&2
+	exit 1
+fi
+
+mkdir -p "$work/regional-settings" "$work/regional-settings-data/dwm-jangir/scripts"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/regional-settings/"
+cp "$repo/tests/qml/SystemRegionalSettings.qml" "$work/regional-settings/shell.qml"
+regional_settings_helper=$work/regional-settings-data/dwm-jangir/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-regional-settings-provider.py" "$regional_settings_helper"
+cp "$repo/tests/fixtures/system-native-discovery-provider.py" "$repo/tests/fixtures/system-native-action-provider.py" "$(dirname "$regional_settings_helper")/"
+chmod +x "$regional_settings_helper"
+regional_empty=$work/regional-settings-empty-command
+mkdir -p "$regional_empty"
+regional_empty_status=0
+env DWM_NATIVE_DISCOVERY_FIXTURE="$regional_empty" DWM_NATIVE_ACTION_FIXTURE="$regional_empty" \
+	DWM_NATIVE_ACTION=timezone-set DWM_NATIVE_ACTION_SCENARIO=success \
+	"$regional_settings_helper" >"$regional_empty/log" 2>&1 || regional_empty_status=$?
+if [ "$regional_empty_status" -eq 0 ] || [ ! -e "$regional_empty/unexpected-command" ] ||
+	grep -Fq 'IndexError' "$regional_empty/log"; then
+	cat "$regional_empty/log" >&2
+	exit 1
+fi
+for regional_action in timezone-set ntp-set locale-set; do
+	for regional_scenario in success denied unsupported uncertain close-dispatch close-read required-read stale-read \
+		error-read malformed-read close-claim close-publish close-preview required-publish; do
+		regional_state=$work/regional-settings-$regional_action-$regional_scenario
+		mkdir -p "$regional_state"
+		regional_status=0
+		timeout --foreground --kill-after=2s 25s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+			XDG_DATA_HOME="$work/regional-settings-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+			DWM_NATIVE_DISCOVERY_FIXTURE="$regional_state" DWM_NATIVE_ACTION_FIXTURE="$regional_state" \
+			DWM_NATIVE_ACTION="$regional_action" DWM_NATIVE_ACTION_SCENARIO="$regional_scenario" \
+			quickshell --no-duplicate --path "$work/regional-settings/shell.qml" >"$regional_state/log" 2>&1 &
+		quickshell_pid=$!
+		wait "$quickshell_pid" || regional_status=$?
+		quickshell_pid=
+		if [ "$regional_status" -ne 0 ] || ! grep -F 'Regional settings tests: PASS' "$regional_state/log" ||
+			grep -Fq 'Regional settings FAILED:' "$regional_state/log" ||
+			[ -e "$regional_state/invalid-arguments" ] || [ -e "$regional_state/overlap" ] ||
+			[ -e "$regional_state/unexpected-command" ] ||
+			[ -n "$(find "$regional_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+			cat "$regional_state/log" >&2
+			exit 1
+		fi
+		case $regional_scenario in
+		success | denied | unsupported | uncertain)
+			[ "$(sed -n '1p' "$regional_state/$regional_action")" = 1 ]
+			[ "$(sed -n '1p' "$regional_state/ack-operation")" = 1 ]
+			;;
+		*)
+			[ ! -e "$regional_state/$regional_action" ]
+			[ ! -e "$regional_state/ack-operation" ]
+			;;
+		esac
+		[ "$regional_scenario" != close-claim ] || [ ! -e "$regional_state/preflight-count" ]
+	done
+done
+
+mkdir -p "$work/time-reconciliation"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/time-reconciliation/"
+cp "$repo/tests/qml/SystemTimeReconciliation.qml" "$work/time-reconciliation/shell.qml"
+for time_scenario in owner owner-change owner-capability owner-fail owner-sync owner-preview owner-pending owner-required owner-gain owner-blocked; do
+	time_state=$work/time-reconciliation-$time_scenario
+	mkdir -p "$time_state"
+	time_status=0
+	timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$work/regional-settings-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+		DWM_NATIVE_DISCOVERY_FIXTURE="$time_state" DWM_NATIVE_ACTION_FIXTURE="$time_state" \
+		DWM_NATIVE_ACTION=timezone-set DWM_NATIVE_ACTION_SCENARIO="$time_scenario" \
+		quickshell --no-duplicate --path "$work/time-reconciliation/shell.qml" >"$time_state/log" 2>&1 &
+	quickshell_pid=$!
+	wait "$quickshell_pid" || time_status=$?
+	quickshell_pid=
+	if [ "$time_status" -ne 0 ] || ! grep -F 'Time reconciliation tests: PASS' "$time_state/log" ||
+		grep -Fq 'Time reconciliation FAILED:' "$time_state/log" ||
+		[ -e "$time_state/overlap" ] || [ -e "$time_state/unexpected-command" ] ||
+		[ -e "$time_state/timezone-set" ] ||
+		[ -n "$(find "$time_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+		cat "$time_state/log" >&2
+		exit 1
+	fi
+done
+
+mkdir -p "$work/ntp-sampling"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/ntp-sampling/"
+cp "$repo/tests/qml/SystemNtpSampling.qml" "$work/ntp-sampling/shell.qml"
+for sample_scenario in sample-success sample-error sample-capability sample-arrival sample-close sample-required sample-close-claim sample-close-publish sample-action sample-periodic; do
+	sample_state=$work/ntp-$sample_scenario
+	mkdir -p "$sample_state"
+	sample_status=0
+	timeout --foreground --kill-after=2s 45s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+		XDG_DATA_HOME="$work/regional-settings-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+		DWM_NATIVE_DISCOVERY_FIXTURE="$sample_state" DWM_NATIVE_ACTION_FIXTURE="$sample_state" \
+		DWM_NATIVE_ACTION=ntp-set DWM_NATIVE_ACTION_SCENARIO="$sample_scenario" \
+		quickshell --no-duplicate --path "$work/ntp-sampling/shell.qml" >"$sample_state/log" 2>&1 &
+	quickshell_pid=$!
+	wait "$quickshell_pid" || sample_status=$?
+	quickshell_pid=
+	if [ "$sample_status" -ne 0 ] || ! grep -F 'NTP sampling tests: PASS' "$sample_state/log" ||
+		grep -Fq 'NTP sampling FAILED:' "$sample_state/log" ||
+		[ -e "$sample_state/overlap" ] || [ -e "$sample_state/unexpected-command" ] ||
+		[ -e "$sample_state/invalid-arguments" ] ||
+		[ -n "$(find "$sample_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+		cat "$sample_state/log" >&2
+		exit 1
+	fi
+	if [ "$sample_scenario" = sample-action ]; then
+		[ "$(sed -n '1p' "$sample_state/ntp-set")" = 1 ]
+		[ "$(sed -n '1p' "$sample_state/ack-operation")" = 1 ]
+	else
+		[ ! -e "$sample_state/ntp-set" ]
+		[ ! -e "$sample_state/ack-operation" ]
+	fi
+done
+
+mkdir -p "$work/delegate-confirmation" "$work/delegate-data/dwm-jangir/scripts"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/delegate-confirmation/"
+cp "$repo/tests/qml/SystemDelegateConfirmation.qml" "$work/delegate-confirmation/shell.qml"
+delegate_helper=$work/delegate-data/dwm-jangir/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-delegate-confirmation-provider.py" "$delegate_helper"
+cp "$repo/tests/fixtures/system-native-discovery-provider.py" "$repo/tests/fixtures/system-native-action-provider.py" "$(dirname "$delegate_helper")/"
+chmod +x "$delegate_helper"
+for delegate_action in accounts-open password-open printers-open sources-open; do
+	for delegate_scenario in success denied unsupported close-dispatch; do
+		delegate_state=$work/delegate-$delegate_action-$delegate_scenario
+		mkdir -p "$delegate_state"
+		delegate_status=0
+		timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+			XDG_DATA_HOME="$work/delegate-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+			DWM_NATIVE_DISCOVERY_FIXTURE="$delegate_state" DWM_NATIVE_ACTION_FIXTURE="$delegate_state" \
+			DWM_NATIVE_ACTION="$delegate_action" DWM_NATIVE_ACTION_SCENARIO="$delegate_scenario" \
+			quickshell --no-duplicate --path "$work/delegate-confirmation/shell.qml" >"$delegate_state/log" 2>&1 &
+		quickshell_pid=$!
+		wait "$quickshell_pid" || delegate_status=$?
+		quickshell_pid=
+		if [ "$delegate_status" -ne 0 ] || ! grep -F 'Delegate confirmation tests: PASS' "$delegate_state/log" ||
+			grep -Fq 'Delegate confirmation FAILED:' "$delegate_state/log" ||
+			[ -e "$delegate_state/invalid-arguments" ] || [ -e "$delegate_state/overlap" ] ||
+			[ -e "$delegate_state/unexpected-command" ] ||
+			[ -n "$(find "$delegate_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+			cat "$delegate_state/log" >&2
+			exit 1
+		fi
+		if [ "$delegate_scenario" = close-dispatch ]; then
+			[ ! -e "$delegate_state/$delegate_action" ]
+			[ ! -e "$delegate_state/ack-operation" ]
+		else
+			[ "$(sed -n '1p' "$delegate_state/$delegate_action")" = 1 ]
+			[ "$(sed -n '1p' "$delegate_state/ack-operation")" = 1 ]
+		fi
+	done
+done
+
+mkdir -p "$work/regional-ui"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" \
+	"$repo/config/quickshell/systemmanagement" "$repo/config/quickshell/network" "$work/regional-ui/"
+cp "$repo/tests/qml/SystemRegionalUi.qml" "$work/regional-ui/shell.qml"
+for regional_size in 640x480 780x580 1000x740; do
+	for regional_action in timezone-set ntp-set locale-set; do
+		for regional_scenario in success denied unsupported uncertain large error-read malformed-read disable owner sample-ui; do
+			[ "$regional_scenario" != disable ] || [ "$regional_action" = ntp-set ] || continue
+			regional_state=$work/regional-ui-$regional_size-$regional_action-$regional_scenario
+			mkdir -p "$regional_state"
+			regional_status=0
+			timeout --foreground --kill-after=2s 25s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+				XDG_DATA_HOME="$work/regional-settings-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+				DWM_NATIVE_DISCOVERY_FIXTURE="$regional_state" DWM_NATIVE_ACTION_FIXTURE="$regional_state" \
+				DWM_NATIVE_ACTION="$regional_action" DWM_NATIVE_ACTION_SCENARIO="$regional_scenario" \
+				DWM_DELEGATE_UI_WIDTH="${regional_size%x*}" DWM_DELEGATE_UI_HEIGHT="${regional_size#*x}" \
+				quickshell --no-duplicate --path "$work/regional-ui/shell.qml" >"$regional_state/log" 2>&1 &
+			quickshell_pid=$!
+			wait "$quickshell_pid" || regional_status=$?
+			quickshell_pid=
+			if [ "$regional_status" -ne 0 ] || ! grep -F 'Regional UI tests: PASS' "$regional_state/log" ||
+				grep -Fq 'Regional UI FAILED:' "$regional_state/log" ||
+				[ -e "$regional_state/invalid-arguments" ] || [ -e "$regional_state/overlap" ] ||
+				[ -e "$regional_state/unexpected-command" ] ||
+				[ -n "$(find "$regional_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+				cat "$regional_state/log" >&2
+				exit 1
+			fi
+			case $regional_scenario in
+			error-read | malformed-read | owner | sample-ui)
+				[ ! -e "$regional_state/$regional_action" ]
+				[ ! -e "$regional_state/ack-operation" ]
+				;;
+			*)
+				[ "$(sed -n '1p' "$regional_state/$regional_action")" = 1 ]
+				[ "$(sed -n '1p' "$regional_state/ack-operation")" = 1 ]
+				;;
+			esac
+		done
+	done
+done
+
+mkdir -p "$work/delegate-ui"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/settings" \
+	"$repo/config/quickshell/systemmanagement" "$repo/config/quickshell/network" "$work/delegate-ui/"
+cp "$repo/tests/qml/SystemDelegateUi.qml" "$work/delegate-ui/shell.qml"
+for delegate_size in 640x480 780x580 1000x740; do
+	for delegate_action in accounts-open password-open printers-open sources-open; do
+		for delegate_scenario in success denied unsupported large; do
+			delegate_state=$work/delegate-ui-$delegate_size-$delegate_action-$delegate_scenario
+			mkdir -p "$delegate_state"
+			delegate_status=0
+			timeout --foreground --kill-after=2s 20s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+				XDG_DATA_HOME="$work/delegate-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+				DWM_NATIVE_DISCOVERY_FIXTURE="$delegate_state" DWM_NATIVE_ACTION_FIXTURE="$delegate_state" \
+				DWM_NATIVE_ACTION="$delegate_action" DWM_NATIVE_ACTION_SCENARIO="$delegate_scenario" \
+				DWM_DELEGATE_UI_WIDTH="${delegate_size%x*}" DWM_DELEGATE_UI_HEIGHT="${delegate_size#*x}" \
+				quickshell --no-duplicate --path "$work/delegate-ui/shell.qml" >"$delegate_state/log" 2>&1 &
+			quickshell_pid=$!
+			wait "$quickshell_pid" || delegate_status=$?
+			quickshell_pid=
+			if [ "$delegate_status" -ne 0 ] || ! grep -F 'Delegate UI tests: PASS' "$delegate_state/log" ||
+				grep -Fq 'Delegate UI FAILED:' "$delegate_state/log" ||
+				[ -e "$delegate_state/invalid-arguments" ] || [ -e "$delegate_state/overlap" ] ||
+				[ -e "$delegate_state/unexpected-command" ] ||
+				[ -n "$(find "$delegate_state" -maxdepth 1 -name '*.active' -print -quit)" ]; then
+				cat "$delegate_state/log" >&2
+				exit 1
+			fi
+			[ "$(sed -n '1p' "$delegate_state/$delegate_action")" = 1 ]
+			[ "$(sed -n '1p' "$delegate_state/ack-operation")" = 1 ]
+		done
+	done
+done
+
+mkdir -p "$work/native-action" "$work/native-action-data/dwm-jangir/scripts"
+cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/native-action/"
+cp "$repo/tests/qml/SystemNativeActionOwner.qml" "$work/native-action/shell.qml"
+native_action_helper=$work/native-action-data/dwm-jangir/scripts/dwm-system-management
+cp "$repo/tests/fixtures/system-native-action-provider.py" "$native_action_helper"
+chmod +x "$native_action_helper"
+for native_action in timezone-set ntp-set locale-set accounts-open password-open printers-open sources-open; do
+	for native_scenario in success denied rejected unsupported uncertain wrong-exit; do
+		native_state=$work/native-action-$native_action-$native_scenario
+		mkdir -p "$native_state"
+		timeout --foreground --kill-after=2s 15s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
+			XDG_DATA_HOME="$work/native-action-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
+			DWM_NATIVE_ACTION_FIXTURE="$native_state" DWM_NATIVE_ACTION="$native_action" DWM_NATIVE_ACTION_SCENARIO="$native_scenario" \
+			quickshell --no-duplicate --path "$work/native-action/shell.qml" >"$native_state/log" 2>&1 &
+		quickshell_pid=$!
+		native_status=0
+		wait "$quickshell_pid" || native_status=$?
+		quickshell_pid=
+		if [ "$native_status" -ne 0 ] || ! grep -F 'Native action owner tests: PASS' "$native_state/log" ||
+			grep -Fq 'Native action owner FAILED:' "$native_state/log" || [ -e "$native_state/invalid-arguments" ] || [ -e "$native_state/overlap" ]; then
+			cat "$native_state/log" >&2
+			exit 1
+		fi
+		[ "$(sed -n '1p' "$native_state/$native_action")" = 1 ]
+		[ "$(sed -n '1p' "$native_state/ack-operation")" = 1 ]
+		[ ! -e "$native_state/updates-cancel" ]
+		case $native_scenario in
+		uncertain | wrong-exit) [ "$(sed -n '1p' "$native_state/watch-operation")" = 1 ] ;;
+		*) [ ! -e "$native_state/watch-operation" ] ;;
+		esac
+	done
+done
+
+mkdir -p "$work/update-action" "$work/update-action-data/dwm-jangir/scripts"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/update-action/"
 cp "$repo/tests/qml/SystemUpdateActionOwner.qml" "$work/update-action/shell.qml"
-update_action_helper=$work/update-action-data/dwm-titus/scripts/dwm-system-management
+update_action_helper=$work/update-action-data/dwm-jangir/scripts/dwm-system-management
 cp "$repo/tests/fixtures/system-update-action-provider.py" "$update_action_helper"
 chmod +x "$update_action_helper"
 quickshell_binary=$(command -v quickshell)
@@ -474,11 +1101,11 @@ for action_scenario in refresh install rejected denied uncertain wrong-exit revo
 	esac
 done
 
-mkdir -p "$work/operation-owner" "$work/owner-data/dwm-titus/scripts" "$work/owner-state"
+mkdir -p "$work/operation-owner" "$work/owner-data/dwm-jangir/scripts" "$work/owner-state"
 cp -a "$repo/config/quickshell/core" "$repo/config/quickshell/systemmanagement" "$work/operation-owner/"
 cp "$repo/tests/qml/SystemOperationOwner.qml" "$work/operation-owner/shell.qml"
-cp "$repo/tests/fixtures/system-operation-provider.py" "$work/owner-data/dwm-titus/scripts/dwm-system-management"
-chmod +x "$work/owner-data/dwm-titus/scripts/dwm-system-management"
+cp "$repo/tests/fixtures/system-operation-provider.py" "$work/owner-data/dwm-jangir/scripts/dwm-system-management"
+chmod +x "$work/owner-data/dwm-jangir/scripts/dwm-system-management"
 timeout --foreground --kill-after=2s 60s env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	XDG_DATA_HOME="$work/owner-data" XDG_RUNTIME_DIR="$runtime" QT_QPA_PLATFORMTHEME= \
 	DWM_OPERATION_FIXTURE="$work/owner-state" \
@@ -599,7 +1226,7 @@ dwm_pid=$!
 env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
 	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
 	DWM_SYSTEM_MANAGEMENT_TEST_FIXTURE="$fixture" QT_QPA_PLATFORMTHEME= \
-	PATH="$data_home/dwm-titus/scripts:$PATH" \
+	PATH="$data_home/dwm-jangir/scripts:$PATH" \
 	quickshell --no-duplicate >"$work/quickshell.log" 2>&1 &
 quickshell_pid=$!
 config=$config_home/quickshell/shell.qml

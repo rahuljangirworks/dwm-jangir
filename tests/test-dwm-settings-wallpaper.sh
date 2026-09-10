@@ -166,8 +166,8 @@ grep -Fqx $'selection\tpartial\t\tfill\tNo managed wallpaper selection; session 
 	<<<"$missing_feh_status"
 grep -Fqx $'mutation\trestricted\tWallpaper changes are unavailable in this session' \
 	<<<"$missing_feh_status"
-test ! -e "$config_home/dwm-titus"
-test ! -e "$state_home/dwm-titus"
+test ! -e "$config_home/dwm-jangir"
+test ! -e "$state_home/dwm-jangir"
 test ! -e "$runtime/dwm-settings-wallpaper"
 
 mv -- "$wallpaper_dir" "$work/backgrounds.saved"

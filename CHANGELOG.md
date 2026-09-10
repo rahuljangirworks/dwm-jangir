@@ -8,6 +8,142 @@ versions from `config.mk`.
 
 ### Changed
 
+- Brand the Fedora Anaconda installer with a dark theme and centered CTT logo.
+  ISO builds accept `--version X.Y.Z` to generate a sidebar badge in staging
+  without modifying the checkout; build dependencies include Pillow and Noto.
+
+- Add explicit Docked and Undocked automatic display layouts to Settings,
+  including saved previews, detected/applied status, draft editing, confirmed
+  saves and backups. Use optional autorandr login/hotplug integration without
+  persisting session-specific display controller assignments.
+
+- Replace display X/Y inputs with Left of, Right of, Above, and Below
+  placement controls and a numbered layout preview. Preserve timed rollback
+  and existing saved profiles; ignore dock RandR timing rows during discovery.
+
+- Complete Phase 6 system-management qualification with Fedora 44, nested-X11,
+  signed-package guest, graphical authorization and installed-runtime evidence.
+  Record recovery and hardware limitations and queue Phase 7 image/release work.
+
+- Show system information, mounted filesystem usage, security status, and
+  diagnostics in System Settings. Preserve unknown and stale states, navigate
+  to the existing Health scan, and explain scoped recovery and reset ownership.
+
+- Activate cumulative information, storage, security, and diagnostics records
+  with strict provider-scoped validation. Pane-scoped mount and firewalld
+  subscriptions use bounded reconciliation, while required recovery skips
+  optional probes and diagnostics remain available independently of admission.
+
+- Assemble internal system information, filesystem, security, and diagnostics
+  records with isolated failures and complete filesystem-list bounds.
+
+- Show unknown automatic-lock status in Power Settings and Control Center when
+  live evidence is partial or unavailable, instead of displaying saved fallback
+  values as enabled or disabled.
+
+- Add a fixed read-only mount-event helper with acknowledged baseline readiness,
+  bounded event records, and owned-child cleanup for Settings storage monitoring.
+
+- Reuse the power helper's automatic screen-lock evidence through a bounded
+  internal information reader. Preserve unknown and unavailable states without
+  adding a locking policy change or a second locker probe.
+
+- Add internal root block-encryption reporting with capped topology validation,
+  conservative unknown states, and bounded read-only process cleanup.
+
+- Add internal bounded SELinux, Secure Boot, and firewalld status readers with
+  source-specific unknown and denied states. These read-only preparations do
+  not add system configuration actions, public protocol records, or controls.
+
+- Add an internal fixed-command filesystem inventory with capped JSON, stable
+  mount identities, exact byte counts, partial-result handling, and bounded
+  owned-process cleanup.
+
+- Add internal hostname1 hardware vendor/model reads with one bounded deadline,
+  independent property failures, and late-reply suppression. This preparation
+  does not activate a new protocol minor or Settings control.
+
+- Add internal bounded OS, kernel, CPU, memory, swap, and uptime readers with
+  per-field failure isolation and checked byte counters. This preparatory
+  boundary does not activate a new protocol minor, Settings UI, or polling loop.
+
+- Sample network-time synchronization every 30 seconds while System Settings
+  is open and after a verified NTP result. Serialize reads with recovery,
+  preserve matching prompts and keyboard focus, and retain the last reported
+  value with scoped retry guidance when a sample fails.
+
+- Reconcile time-service arrivals through bounded time-only reads. Preserve
+  unchanged regional selections and matching previews, pause time actions until
+  reconciliation finishes, and retain explicit retry guidance after churn or
+  read failure without repeatedly rediscovering package state.
+
+- Extend the finite QML regional reader to validate scoped time observations,
+  with bounded output, deadlines, and cancellation cleanup. Settings scheduling
+  and confirmation behavior are unchanged at this preparatory boundary.
+
+- Add read-only time discovery interfaces for scoped reconciliation: a bounded
+  time-status result and a passive monitor that distinguishes service arrivals
+  from property changes. Existing Settings activation is unchanged.
+
+- Stop native regional observation cooperatively on TERM, INT, or HUP. Retain
+  durable interrupted recovery for sent changes without claiming cancellation
+  or waiting on another service read after an explicit local stop.
+
+- Add a finite, read-only `ntp-sample` helper command with versioned bounded
+  output, scoped failures, and no journal, package discovery, or polling loop.
+
+- Share the panel's minute-level clock with System Settings and refresh both
+  displays after verified timezone discovery, retaining the same instant across
+  timezone changes without an extra poller or shell restart.
+
+- Expose searchable timezone and system-locale choices plus fixed network-time
+  controls in System Settings. Require fresh full previews and explicit
+  confirmation, explain the sent-action cancellation limit, and preserve
+  keyboard access, read errors, and verified operation recovery.
+
+- Coordinate internal regional choices, previews, and confirmations with root
+  snapshot recovery. Reject stale or competing preparations, reap optional reads
+  before recovery, and retain sent operations across closure.
+
+- Expose confirmed account, password, printer, and software-source tool entries
+  with scoped availability, readable inventories, and keyboard-accessible
+  confirmations. Native launches no longer show update-only cancellation text.
+
+- Add internal confirmation guards for the four fixed administration tools,
+  with fresh provider evidence, update-workflow exclusion, and reentrant
+  dispatch checks. Visible delegated controls remain pending.
+
+- Install snapshot capture cleanup handlers before temporary-file allocation,
+  and prevent helper launch when cancellation arrives during setup.
+
+- Add a standalone read-only regional preflight helper owner with fixed requests,
+  bounded deadlines, close cleanup, and stale-callback rejection.
+
+- Validate bounded regional choice and confirmation-preview streams in a
+  standalone parser, preserving complete locale details and typed read errors.
+  Visible confirmation remains pending.
+
+- Route fixed regional and delegated origins through the root operation owner
+  with strict arguments, independent native journal admission, and scoped
+  discovery invalidation. Visible native action controls remain pending.
+
+- Coordinate update, time, locale, account, and printer subscriptions through
+  one cumulative snapshot reader. Preserve per-provider freshness and readable
+  partial state, and stop optional monitoring when System Settings closes.
+
+- Share the bounded update-monitor lifecycle with fixed time, locale, account,
+  and printer stream adapters. Preserve update behavior and reject stale
+  replacement readiness; native Settings activation remains pending.
+
+- Add complete cumulative regional, account, printer, and software-source
+  discovery with a backward-compatible Settings parser. Preserve readable
+  state when a service or tool is missing, independently gate native admission,
+  and enforce complete bounded lists. New Settings action controls remain pending.
+
+- Add fixed read-only printer and firewall unit event monitors with private
+  subscription ownership, canonical-alias discovery, bounded reconciliation,
+  and no idle polling or service activation. Settings integration remains pending.
+
 - Add a fixed read-only account event monitor that covers candidate changes
   before enumeration and filtering. Preserve bounded account inventories,
   authenticated senders, and a monitor without idle polling; Settings activation
@@ -113,11 +249,6 @@ versions from `config.mk`.
   Clipboard history and reminders are deferred pending explicit privacy,
   lifecycle, and recovery contracts; emoji/symbol and generic image pickers are
   rejected because no current product workflow requires them.
-- Make LightDM select the installed `dwm-jangir` session by default instead
-  of the removed legacy `dwm` session. The generated Fedora configuration and
-  its regression test now use the same runtime identity; a Fedora 44 VM full
-  installation and graphical LightDM login were verified successfully.
-
 - Use the fork-owned `rahuljangirworks/background` wallpaper repository and
   `rahuljangirworks/copr-fedora` Gamescope COPR in the existing-system
   installer and Fedora image profiles.
@@ -206,6 +337,7 @@ versions from `config.mk`.
   notification policy, and keyboard or pointer access. Text scaling consumes
   only a complete versioned personalization response, and unavailable or
   malformed providers degrade independently without adding polling or mutation.
+
 - Add a version-pinned Slick Greeter overlay for LightDM: a compact branded
   login flow, accessible session selection, local random backgrounds, and a
   minimal hostname/power header. The DWM session selector now uses a compact
@@ -428,6 +560,12 @@ versions from `config.mk`.
   unsupported installer cannot perform package or system mutations.
 
 ### Fixed
+
+- Avoid a false dwm restart requirement after reinstalling an identical binary.
+  Live parity compares the running executable bytes even when its old inode
+  has been unlinked; changed or unreadable executables still require a restart.
+  Package-profile validation also drains matched output to avoid false SIGPIPE
+  failures under pipefail.
 
 - Keep visible floating windows above the tiled stack when focus changes while
   retaining focus-based ordering within the floating layer and the existing

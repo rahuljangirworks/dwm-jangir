@@ -9,11 +9,20 @@ Flickable {
 
     required property var systemManagementModel
     required property var capabilities
+    property string clockText: ""
     contentWidth: width
     contentHeight: content.implicitHeight
     clip: true
     boundsBehavior: Flickable.StopAtBounds
     activeFocusOnTab: true
+    onHeightChanged: Qt.callLater(root.revealFocusedControl)
+    onContentHeightChanged: Qt.callLater(root.revealFocusedControl)
+
+    function revealFocusedControl() {
+        delegateControls.revealFocusedControl();
+        regionalControls.revealFocusedControl();
+        informationControls.revealFocusedControl();
+    }
 
     function scrollTo(position) {
         root.contentY = Math.max(0, Math.min(position, Math.max(0, root.contentHeight - root.height)));
@@ -241,11 +250,11 @@ Flickable {
 
         StatusCard {
             visible: root.systemManagementModel.terminalHandoff !== null
-            label: "Update result awaiting recovery"
+            label: "Operation result awaiting recovery"
             status: "partial"
             value: root.systemManagementModel.terminalHandoff === null ? ""
                 : root.systemManagementModel.terminalHandoff.kind
-            detail: "The durable operation result is being reconciled before another update action can start."
+            detail: "The durable operation result is being reconciled before another system action can start."
         }
 
         SectionLabel {
@@ -394,6 +403,33 @@ Flickable {
             }
         }
 
+        PlainText {
+            objectName: "systemLocalTime"
+            Layout.fillWidth: true
+            text: root.clockText.length > 0 ? "Local date and time: " + root.clockText
+                : "Local date and time unavailable"
+            wrapMode: Text.WordWrap
+        }
+
+        SystemRegionalControls {
+            id: regionalControls
+            model: root.systemManagementModel
+            viewportHeight: root.height
+            onRevealRequested: target => root.reveal(target)
+        }
+
+        SystemDelegateControls {
+            id: delegateControls
+            model: root.systemManagementModel
+            onRevealRequested: target => root.reveal(target)
+        }
+
+        SystemInformationControls {
+            id: informationControls
+            model: root.systemManagementModel
+            onRevealRequested: target => root.reveal(target)
+        }
+
         SectionLabel { label: "Administration boundaries" }
 
         Repeater {
@@ -417,7 +453,7 @@ Flickable {
 
         PlainText {
             Layout.fillWidth: true
-            text: "Reload status reads PackageKit and recovery state. Metadata refresh and update installation require visible confirmation. PackageKit owns authorization and safe cancellation."
+            text: "Reload status reads system providers and recovery state. Metadata refresh and update installation require visible confirmation. Delegated launches also require confirmation; those tools own their internal changes. PackageKit owns update authorization and safe cancellation."
             color: Theme.menuMutedText
             font.pixelSize: Theme.fontCaptionSize
             wrapMode: Text.WordWrap

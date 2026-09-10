@@ -11,6 +11,14 @@ Flickable {
     required property var settingsModel
     property string profileName: ""
     property string confirmation: ""
+    property var placementAnchors: ({})
+    property string saveAutomaticRole: ""
+
+    function selectPlacementAnchor(output, anchor) {
+        const anchors = Object.assign({}, root.placementAnchors);
+        anchors[output] = anchor;
+        root.placementAnchors = anchors;
+    }
 
 	component DisplayComboBox: Controls.ComboBox {
 		id: comboBox
@@ -46,6 +54,7 @@ Flickable {
 
 		onVisibleChanged: {
 			if (!visible) root.confirmation = "";
+            if (!visible) root.saveAutomaticRole = "";
 		}
 
     contentWidth: width
@@ -56,6 +65,166 @@ Flickable {
         id: contentColumn
         width: root.width
         spacing: Theme.spacingLg
+
+        Text {
+            Layout.fillWidth: true
+            text: "Automatic layouts - login and dock connection"
+            color: Theme.textStrong
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.bodyFontSize
+            font.bold: true
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: root.settingsModel.automaticDisplayState.error || ("Matching hardware: "
+                + (root.settingsModel.automaticDisplayState.detected.join(", ") || "no saved match")
+                + " | Currently applied: " + (root.settingsModel.automaticDisplayState.current.join(", ") || "custom / differs from saved")
+                + " | Default fallback: " + (root.settingsModel.automaticDisplayState.default || "not set"))
+            color: Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallFontSize
+            wrapMode: Text.WordWrap
+        }
+
+        RowLayout {
+            Layout.fillWidth: true
+            spacing: Theme.spacingLg
+            Repeater {
+                model: ["undocked", "docked"]
+                delegate: Rectangle {
+                    id: automaticCard
+                    required property string modelData
+                    readonly property var profile: root.settingsModel.automaticDisplayProfile(modelData)
+                    readonly property var savedLayout: root.settingsModel.automaticDisplayArrangement(modelData)
+                    Layout.fillWidth: true
+                    Layout.preferredWidth: 1
+                    Layout.preferredHeight: automaticContent.implicitHeight + 16
+                    color: Theme.controlNormalFill
+                    border.color: root.settingsModel.displayEditingRole === modelData ? Theme.accent : Theme.controlNormalBorder
+                    radius: Theme.largeSurfaceCardRadius
+                    ColumnLayout {
+                        id: automaticContent
+                        anchors.left: parent.left
+                        anchors.right: parent.right
+                        anchors.top: parent.top
+                        anchors.margins: 8
+                        spacing: Theme.tightSpacing
+                        Text {
+                            Layout.fillWidth: true
+                            text: automaticCard.modelData === "undocked" ? "Undocked - built-in only" : "Docked - saved monitors"
+                            color: Theme.textStrong
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.bodyFontSize
+                            font.bold: true
+                        }
+                        Item {
+                            id: savedMap
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: automaticCard.profile.saved ? 80 : 0
+                            readonly property real factor: Math.min(width / automaticCard.savedLayout.width, height / automaticCard.savedLayout.height)
+                            Repeater {
+                                model: automaticCard.savedLayout.tiles
+                                delegate: Rectangle {
+                                    id: savedTile
+                                    required property var modelData
+                                    x: (savedMap.width - automaticCard.savedLayout.width * savedMap.factor) / 2
+                                        + (modelData.x - automaticCard.savedLayout.x) * savedMap.factor
+                                    y: (modelData.y - automaticCard.savedLayout.y) * savedMap.factor
+                                    width: modelData.width * savedMap.factor
+                                    height: modelData.height * savedMap.factor
+                                    color: modelData.primary ? Theme.controlSelectedFill : Theme.controlHoverFill
+                                    border.color: Theme.accent
+                                    radius: Theme.controlRadius
+                                    Text {
+                                        anchors.centerIn: parent
+                                        text: savedTile.modelData.number
+                                        color: Theme.textStrong
+                                        font.family: Theme.fontFamily
+                                        font.pixelSize: Theme.bodyFontSize
+                                    }
+                                }
+                            }
+                        }
+                        Text {
+                            Layout.fillWidth: true
+                            text: root.settingsModel.automaticDisplaySummary(automaticCard.modelData)
+                            color: automaticCard.profile.error ? Theme.warning : Theme.textMuted
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Theme.smallFontSize
+                            wrapMode: Text.WordWrap
+                        }
+                        Flow {
+                            Layout.fillWidth: true
+                            Layout.preferredHeight: implicitHeight
+                            spacing: Theme.tightSpacing
+                            enabled: root.settingsModel.automaticDisplayState.available
+                                && !root.settingsModel.previewOperationLocked && !root.settingsModel.automaticDisplayBusy
+                            ShellButton {
+                                label: automaticCard.profile.saved ? "Edit saved" : "Create draft"
+                                enabled: !automaticCard.profile.error
+                                onActivated: root.settingsModel.editAutomaticDisplay(automaticCard.modelData)
+                            }
+                            ShellButton {
+                                label: "Save draft as " + automaticCard.modelData
+                                onActivated: root.saveAutomaticRole = automaticCard.modelData
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: root.settingsModel.automaticDisplayMessage || "Edit a saved layout below, or save the current draft. Docked matches monitor identities; Undocked enables only the built-in screen. No administrator approval is needed."
+            color: Theme.textMuted
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.smallFontSize
+            wrapMode: Text.WordWrap
+        }
+
+        Rectangle {
+            Layout.fillWidth: true
+            Layout.preferredHeight: automaticConfirmation.implicitHeight + 16
+            visible: root.saveAutomaticRole !== ""
+            color: Theme.controlHoverFill
+            border.color: Theme.warning
+            radius: Theme.largeSurfaceCardRadius
+            ColumnLayout {
+                id: automaticConfirmation
+                anchors.left: parent.left
+                anchors.right: parent.right
+                anchors.top: parent.top
+                anchors.margins: 8
+                Text {
+                    Layout.fillWidth: true
+                    text: "Save the draft below as " + root.saveAutomaticRole
+                        + " for autorandr at login and connection changes? This replaces that saved layout with a backup, without applying it now. Autorandr will ignore session-specific CRTC assignments and output properties. Test with Apply changes first."
+                        + (root.saveAutomaticRole === "undocked" ? " It also becomes the default fallback." : " Save with this dock connected so its monitors can be identified.")
+                    color: Theme.textStrong
+                    font.family: Theme.fontFamily
+                    font.pixelSize: Theme.bodyFontSize
+                    wrapMode: Text.WordWrap
+                }
+                RowLayout {
+                    ShellButton {
+                        label: "Confirm save"
+                        enabled: !root.settingsModel.previewOperationLocked && !root.settingsModel.automaticDisplayBusy
+                        onActivated: { root.settingsModel.saveAutomaticDisplay(root.saveAutomaticRole); root.saveAutomaticRole = ""; }
+                    }
+                    ShellButton { label: "Cancel"; onActivated: root.saveAutomaticRole = "" }
+                }
+            }
+        }
+
+        Text {
+            Layout.fillWidth: true
+            text: "Editing: " + root.settingsModel.displayEditingRole + " draft - not applied until you choose Apply changes"
+            color: Theme.textStrong
+            font.family: Theme.fontFamily
+            font.pixelSize: Theme.bodyFontSize
+        }
 
         RowLayout {
             Layout.fillWidth: true
@@ -110,6 +279,57 @@ Flickable {
             }
         }
 
+        Rectangle {
+            id: arrangement
+            Layout.fillWidth: true
+            Layout.preferredHeight: 200
+            color: Theme.controlNormalFill
+            border.color: Theme.controlNormalBorder
+            radius: Theme.largeSurfaceCardRadius
+            readonly property var layout: root.settingsModel.displayArrangement
+            readonly property real scaleFactor: Math.max(0.001, Math.min((width - 32) / layout.width, (height - 48) / layout.height))
+
+            Text {
+                anchors.top: parent.top
+                anchors.left: parent.left
+                anchors.margins: 8
+                text: arrangement.layout.tiles.length ? "Layout preview - numbers match the monitor cards below" : "Enable a monitor to preview its position"
+                color: Theme.textMuted
+                font.family: Theme.fontFamily
+                font.pixelSize: Theme.smallFontSize
+            }
+            Item {
+                anchors.horizontalCenter: parent.horizontalCenter
+                y: 32 + (arrangement.height - 40 - height) / 2
+                width: arrangement.layout.width * arrangement.scaleFactor
+                height: arrangement.layout.height * arrangement.scaleFactor
+                Repeater {
+                    model: arrangement.layout.tiles
+                    delegate: Rectangle {
+                        id: monitorTile
+                        required property var modelData
+                        x: (modelData.x - arrangement.layout.x) * arrangement.scaleFactor
+                        y: (modelData.y - arrangement.layout.y) * arrangement.scaleFactor
+                        width: modelData.width * arrangement.scaleFactor
+                        height: modelData.height * arrangement.scaleFactor
+                        color: modelData.primary ? Theme.controlSelectedFill : Theme.controlHoverFill
+                        border.color: modelData.primary ? Theme.accent : Theme.controlNormalBorder
+                        border.width: 2
+                        radius: Theme.controlRadius
+                        Accessible.name: "Monitor " + modelData.number + " - " + modelData.name + (modelData.primary ? " - primary" : "")
+                        Text {
+                            anchors.centerIn: parent
+                            text: monitorTile.modelData.number
+                            color: Theme.textStrong
+                            font.family: Theme.fontFamily
+                            font.pixelSize: Math.max(10, Math.min(32, monitorTile.height / 3))
+                            font.bold: true
+                        }
+                    }
+                }
+            }
+        }
+
         Repeater {
             model: root.settingsModel.displayOutputs
 
@@ -117,6 +337,12 @@ Flickable {
                 id: outputCard
                 required property int index
                 required property var modelData
+                readonly property string anchorName: root.placementAnchors[modelData.name] || ""
+                readonly property var placementTargets: root.settingsModel.displayPlacementTargets(index)
+                readonly property int anchorIndex: {
+                    const selected = placementTargets.find(function(target) { return target.name === outputCard.anchorName; });
+                    return selected ? selected.index : placementTargets.length ? placementTargets[0].index : -1;
+                }
 
                 Layout.fillWidth: true
                 Layout.preferredHeight: Math.max(88, outputContent.implicitHeight + 12)
@@ -146,7 +372,7 @@ Flickable {
 
                     RowLayout {
                         Layout.fillWidth: true
-                        Text { Layout.fillWidth: true; text: outputCard.modelData.name; color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize; font.bold: true }
+                        Text { Layout.fillWidth: true; text: "Monitor " + (outputCard.index + 1) + " - " + outputCard.modelData.name; color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize; font.bold: true }
                         Text {
                             text: outputCard.modelData.fullCompositionPipeline === "available"
                                 ? "NVIDIA anti-tearing available at next login"
@@ -226,62 +452,48 @@ Flickable {
                         ShellButton { label: "Rotation: " + outputCard.modelData.rotation; enabled: outputCard.modelData.enabled; onActivated: root.settingsModel.cycleRotation(outputCard.index) }
                     }
 
-                    RowLayout {
+                    Flow {
                         Layout.fillWidth: true
-                        Text { text: "X"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
-                        Rectangle {
-                            Layout.preferredWidth: 60
-                            Layout.preferredHeight: Math.max(Theme.controlHeight,
-                                xPositionInput.implicitHeight + 10)
-                            color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
-                            TextInput {
-                                id: xPositionInput
-                                anchors.fill: parent
-                                anchors.margins: 5
-                                color: Theme.textStrong
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.inputFontSize
-                                validator: IntValidator {}
-                                onTextEdited: if (acceptableInput)
-                                    root.settingsModel.updateDisplay(outputCard.index, "x", Number(text))
-                                onEditingFinished: if (acceptableInput)
-                                    root.settingsModel.updateDisplay(outputCard.index, "x", Number(text))
-                            }
-                            Binding {
-                                target: xPositionInput
-                                property: "text"
-                                value: String(outputCard.modelData.x)
-                                when: !xPositionInput.activeFocus
-                                restoreMode: Binding.RestoreNone
+                        Layout.preferredHeight: implicitHeight
+                        spacing: Theme.tightSpacing
+                        enabled: outputCard.modelData.enabled && !root.settingsModel.previewOperationLocked
+
+                        DisplayComboBox {
+                            width: 260
+                            enabled: outputCard.placementTargets.length > 0
+                            accessibleLabel: "Position monitor " + (outputCard.index + 1) + " relative to"
+                            model: outputCard.placementTargets.map(function(target) { return target.label; })
+                            currentIndex: Math.max(0, outputCard.placementTargets.findIndex(function(target) {
+                                return target.name === outputCard.anchorName;
+                            }))
+                            onActivated: function(index) {
+                                root.selectPlacementAnchor(outputCard.modelData.name, outputCard.placementTargets[index].name);
                             }
                         }
-                        Text { text: "Y"; color: Theme.textMuted; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize }
-                        Rectangle {
-                            Layout.preferredWidth: 60
-                            Layout.preferredHeight: Math.max(Theme.controlHeight,
-                                yPositionInput.implicitHeight + 10)
-                            color: Theme.controlNormalFill; border.color: Theme.controlNormalBorder; radius: Theme.controlRadius
-                            TextInput {
-                                id: yPositionInput
-                                anchors.fill: parent
-                                anchors.margins: 5
-                                color: Theme.textStrong
-                                font.family: Theme.fontFamily
-                                font.pixelSize: Theme.inputFontSize
-                                validator: IntValidator {}
-                                onTextEdited: if (acceptableInput)
-                                    root.settingsModel.updateDisplay(outputCard.index, "y", Number(text))
-                                onEditingFinished: if (acceptableInput)
-                                    root.settingsModel.updateDisplay(outputCard.index, "y", Number(text))
-                            }
-                            Binding {
-                                target: yPositionInput
-                                property: "text"
-                                value: String(outputCard.modelData.y)
-                                when: !yPositionInput.activeFocus
-                                restoreMode: Binding.RestoreNone
+
+                        Repeater {
+                            model: [
+                                { direction: "left", label: "Left of" },
+                                { direction: "right", label: "Right of" },
+                                { direction: "above", label: "Above" },
+                                { direction: "below", label: "Below" }
+                            ]
+                            delegate: ShellButton {
+                                required property var modelData
+                                label: modelData.label
+                                enabled: outputCard.anchorIndex >= 0
+                                primary: root.settingsModel.displayRelation(outputCard.index, outputCard.anchorIndex) === modelData.direction
+                                accessibleDescription: "Place monitor " + (outputCard.index + 1) + " " + modelData.label.toLowerCase() + " the selected monitor"
+                                onActivated: root.settingsModel.placeDisplay(outputCard.index, outputCard.anchorIndex, modelData.direction)
                             }
                         }
+                    }
+                    Text {
+                        visible: outputCard.modelData.enabled && outputCard.placementTargets.length === 0
+                        text: "Enable another monitor to arrange it beside this one."
+                        color: Theme.textMuted
+                        font.family: Theme.fontFamily
+                        font.pixelSize: Theme.smallFontSize
                     }
                 }
             }
@@ -329,8 +541,8 @@ Flickable {
                 Text {
                     Layout.fillWidth: true
                     text: root.confirmation === "install"
-                        ? "Use saved layout '" + root.profileName + "' automatically at the next login? Administrator approval is required; the previous dwm-titus next-login layout will be backed up."
-                        : "Restore the previous dwm-titus next-login layout? Administrator approval is required. This changes the next login only."
+                        ? "Use saved layout '" + root.profileName + "' automatically at the next login? Administrator approval is required; the previous dwm-jangir next-login layout will be backed up."
+                        : "Restore the previous dwm-jangir next-login layout? Administrator approval is required. This changes the next login only."
                     color: Theme.textStrong; font.family: Theme.fontFamily; font.pixelSize: Theme.bodyFontSize; wrapMode: Text.WordWrap
                 }
                 ShellButton {
