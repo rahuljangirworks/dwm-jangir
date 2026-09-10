@@ -581,6 +581,9 @@ check-install-manifest: all
 check-install-preservation:
 	tests/test-install-preservation.sh
 
+check-install-sudo-tty:
+	tests/test-install-sudo-tty.sh
+
 check-test-runner:
 	@$(call run_managed_test,tests/test-run-tests.sh)
 
@@ -664,6 +667,7 @@ check:
 	$(MAKE) check-fedora-packages
 	$(MAKE) check-install
 	$(MAKE) check-install-preservation
+	$(MAKE) check-install-sudo-tty
 	$(MAKE) check-test-runner
 	$(MAKE) check-lightdm-config
 	$(MAKE) release-check
@@ -671,7 +675,7 @@ check:
 .PHONY: clean all check check-accessibility check-appearance check-phase5-optional-components check-build-config check-build-deps check-default-apps check-xdg-autostart check-dev-sync-install \
 	check-test-runner \
 	check-display-profile check-display-setup check-fedora-iso-builder check-fedora-packages check-fedora-platform check-format check-install \
-	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-kickstart check-lock \
+	check-gearlever-install check-herdr-install check-install-manifest check-install-preservation check-install-sudo-tty check-kickstart check-lock \
 	check-session-guards check-session-migration check-screenshot check-release-helper check-shell check-webapp-launch check-diagnostics check-status check-system-health check-system-management check-quickshell-system-management check-settings \
 	check-quickshell-launcher check-quickshell-controls check-quickshell-audio check-quickshell-controlcenter check-quickshell-power check-quickshell-power-backend check-quickshell-power-model check-quickshell-session-actions check-quickshell-defaults-model check-quickshell-appearance-model check-quickshell-design-system check-quickshell-large-surfaces check-quickshell-large-surfaces-xvfb check-quickshell-panel-menus check-quickshell-panel-settings check-quickshell-command-menu check-quickshell-notifications check-quickshell-tray check-quickshell-health-xvfb check-quickshell-settings-xvfb check-quickshell-network check-quickshell-connectivity check-quickshell-qml check-lightdm-config check-terminal check-xvfb-runtime install install-system install-user \
 	install-cursors native release release-check uninstall

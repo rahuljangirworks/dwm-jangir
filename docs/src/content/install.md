@@ -85,6 +85,17 @@ units are disabled from early startup but otherwise preserved.
 System files are installed with `sudo`, while configuration and data under the
 user's XDG directories are installed as that user.
 
+The installer validates sudo access before it creates a build configuration or
+installs packages. A real install needs an interactive terminal for the sudo
+prompt. When installing over SSH, allocate one explicitly:
+
+```bash
+ssh -tt user@host 'cd /path/to/dwm-jangir && ./install.sh --non-interactive --profile full'
+```
+
+`--dry-run` does not require sudo and remains safe for CI or non-interactive
+preflight checks.
+
 ### Runtime identity migration
 
 The active installed identity is `dwm-jangir`. A normal installer run first

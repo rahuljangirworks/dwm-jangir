@@ -444,6 +444,27 @@ confirm_install_summary() {
 	esac
 }
 
+ensure_sudo_access() {
+	if ! command -v sudo >/dev/null 2>&1; then
+		err "sudo is required for system package and session installation."
+		exit 1
+	fi
+	if sudo -n -v >/dev/null 2>&1; then
+		return
+	fi
+	if [[ ! -t 0 || ! -t 1 ]]; then
+		err "The installer needs sudo access, but no interactive terminal is available."
+		err "Run it in a local terminal, or allocate one with: ssh -tt user@host"
+		err "'cd /path/to/dwm-jangir && ./install.sh --non-interactive --profile full'"
+		exit 1
+	fi
+	info "Verifying sudo access..."
+	if ! sudo -v; then
+		err "sudo authentication failed; no installation changes were made."
+		exit 1
+	fi
+}
+
 meslo_nerd_font_installed() {
 	local resolved_family
 	command -v fc-match >/dev/null 2>&1 || return 1
@@ -898,6 +919,7 @@ info "Package manager: $PKG_CMD"
 info "Install profile: $INSTALL_PROFILE"
 print_install_preflight
 confirm_install_summary
+ensure_sudo_access
 confirm_fedora_gaming_repositories
 
 if [[ $NON_INTERACTIVE != true ]]; then

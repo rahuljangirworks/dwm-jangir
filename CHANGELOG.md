@@ -8,6 +8,10 @@ versions from `config.mk`.
 
 ### Changed
 
+- Validate sudo access before installation mutates the checkout or system. A
+  non-TTY run now exits with an actionable `ssh -tt`/local-terminal message
+  instead of failing during package installation after creating `config.h`.
+
 - Brand the Fedora Anaconda installer with a dark theme and centered CTT logo.
   ISO builds accept `--version X.Y.Z` to generate a sidebar badge in staging
   without modifying the checkout; build dependencies include Pillow and Noto.
