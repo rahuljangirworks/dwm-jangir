@@ -72,7 +72,6 @@ INSTALL_COMMANDS = \
 	scripts/oneorganize-clockin \
 	scripts/oneorganize-clockout \
 	scripts/oneorganize-status \
-	scripts/oneorganize-tray \
 	scripts/pkg-scan.py \
 	scripts/power-management.sh \
 	scripts/protonrestart \

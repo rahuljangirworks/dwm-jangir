@@ -17,11 +17,9 @@ Rectangle {
         }
     }
 
-    readonly property bool isMenuOnlyItem: root.trayItem && (root.trayItem.onlyMenu || root.trayItem.id === "oneorganize")
-
     function handleClick(button) {
         if (button === Qt.LeftButton) {
-            if (!root.isMenuOnlyItem) {
+            if (!root.trayItem.onlyMenu) {
                 root.trayItem.activate();
             } else if (root.trayItem.hasMenu) {
                 root.openContextMenu();
