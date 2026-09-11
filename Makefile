@@ -72,6 +72,7 @@ INSTALL_COMMANDS = \
 	scripts/pkg-scan.py \
 	scripts/power-management.sh \
 	scripts/protonrestart \
+	scripts/tailscale-tray \
 	scripts/theme-apply.sh \
 	scripts/webapp-create \
 	scripts/webapp-launch \

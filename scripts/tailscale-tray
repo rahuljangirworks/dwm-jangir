@@ -1,0 +1,537 @@
+#!/usr/bin/env python3
+"""
+Tailscale Native System Tray Widget for DWM / Quickshell
+-------------------------------------------------------
+Integrates with Quickshell SystemTray (StatusNotifierItem) via AppIndicator3:
+- Displays crisp vector SVG icon (Connected / Disconnected).
+- Displays live device status, Tailscale IPv4 address, and account email.
+- One-click copy for device IP and MagicDNS hostname to clipboard with desktop notifications.
+- Lists online and offline mesh peers with individual IP copying and quick actions.
+- Provides connect / disconnect toggle without requiring sudo (via tailscale operator).
+- Displays exit node status and direct quick-link to Tailscale Admin Console.
+"""
+
+import os
+import sys
+import json
+import time
+import threading
+import subprocess
+from pathlib import Path
+
+import gi
+gi.require_version('Gtk', '3.0')
+gi.require_version('Gdk', '3.0')
+gi.require_version('AppIndicator3', '0.1')
+from gi.repository import Gtk, Gdk, AppIndicator3, GLib
+
+# ── Asset Resolution ─────────────────────────────────────────────────────────
+
+ASSET_SEARCH_PATHS = [
+    Path.home() / ".config/quickshell/assets",
+    Path.home() / ".local/share/dwm-jangir/config/quickshell/assets",
+    Path.home() / ".local/share/icons/hicolor/scalable/apps",
+    Path("/home/rahul/work/personal-projacts/dwm-jangir/config/quickshell/assets"),
+    Path("/usr/local/share/dwm-jangir/config/quickshell/assets"),
+    Path("/usr/share/icons/hicolor/scalable/apps"),
+]
+
+def find_asset(filename: str) -> str:
+    for path in ASSET_SEARCH_PATHS:
+        candidate = path / filename
+        if candidate.exists():
+            return str(candidate.resolve())
+    return ""
+
+ICON_CONNECTED = find_asset("tailscale-connected.svg") or "network-vpn"
+ICON_DISCONNECTED = find_asset("tailscale-disconnected.svg") or "network-vpn-disconnected"
+
+
+# ── Helpers ──────────────────────────────────────────────────────────────────
+
+def copy_to_clipboard(text: str, label: str = "Address"):
+    """Copies text to the X11 clipboard and sends a desktop notification."""
+    try:
+        clipboard = Gtk.Clipboard.get(Gdk.SELECTION_CLIPBOARD)
+        clipboard.set_text(text, -1)
+        clipboard.store()
+    except Exception:
+        # Fallback to xclip if GTK clipboard encounters an issue
+        try:
+            p = subprocess.Popen(["xclip", "-selection", "clipboard"], stdin=subprocess.PIPE)
+            p.communicate(input=text.encode("utf-8"))
+        except Exception:
+            pass
+
+    # Send desktop notification
+    icon = ICON_CONNECTED if os.path.exists(ICON_CONNECTED) else "network-vpn"
+    try:
+        subprocess.run(
+            ["notify-send", "-a", "Tailscale", "-i", icon, "Tailscale Copied", f"Copied {label}: {text}"],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+    except Exception:
+        pass
+
+
+def open_admin_console():
+    """Opens Tailscale admin console in the default web browser."""
+    try:
+        subprocess.Popen(["xdg-open", "https://login.tailscale.com/admin"],
+                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
+def open_terminal_ssh(target_ip: str):
+    """Opens dwm-terminal running SSH to the specified Tailscale IP."""
+    try:
+        cmd = ["dwm-terminal", "-e", "ssh", target_ip]
+        subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+    except Exception:
+        pass
+
+
+def run_ping_notification(target_ip: str, host_name: str):
+    """Pings a Tailscale peer and displays the round-trip latency in a notification."""
+    def worker():
+        try:
+            res = subprocess.run(
+                ["ping", "-c", "3", "-W", "2", target_ip],
+                stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=8
+            )
+            if res.returncode == 0:
+                lines = res.stdout.strip().splitlines()
+                summary = lines[-1] if lines else "Ping successful"
+                msg = f"{host_name} ({target_ip})\n{summary}"
+                icon = ICON_CONNECTED
+            else:
+                msg = f"{host_name} ({target_ip}) is unreachable."
+                icon = ICON_DISCONNECTED
+        except Exception as e:
+            msg = f"Ping failed: {e}"
+            icon = ICON_DISCONNECTED
+
+        subprocess.run(
+            ["notify-send", "-a", "Tailscale Ping", "-i", icon, "Tailscale Ping Result", msg],
+            check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+        )
+
+    threading.Thread(target=worker, daemon=True).start()
+
+
+# ── Tailscale Tray Controller ────────────────────────────────────────────────
+
+class TailscaleTray:
+    def __init__(self):
+        self.backend_state = "Unknown"
+        self.is_connected = False
+        self.device_name = ""
+        self.device_dns = ""
+        self.device_ip = ""
+        self.account_email = ""
+        self.peers = []
+        self.is_busy = False
+
+        # Initialize AppIndicator3
+        initial_icon = ICON_CONNECTED if os.path.exists(ICON_CONNECTED) else "network-vpn"
+        self.indicator = AppIndicator3.Indicator.new(
+            "tailscale",
+            initial_icon,
+            AppIndicator3.IndicatorCategory.APPLICATION_STATUS
+        )
+        self.indicator.set_status(AppIndicator3.IndicatorStatus.ACTIVE)
+        self.indicator.set_title("Tailscale VPN")
+
+        # Create menu
+        self.menu = Gtk.Menu()
+        self.indicator.set_menu(self.menu)
+
+        # Initial build
+        self.build_loading_menu()
+
+        # Start periodic background watcher
+        self.poll_thread = threading.Thread(target=self._poll_loop, daemon=True)
+        self.poll_thread.start()
+
+    def build_loading_menu(self):
+        """Initial placeholder menu while loading status."""
+        for child in self.menu.get_children():
+            self.menu.remove(child)
+
+        item = Gtk.MenuItem(label="Tailscale: Loading status...")
+        item.set_sensitive(False)
+        self.menu.append(item)
+        self.menu.show_all()
+
+    def _poll_loop(self):
+        """Polls tailscale status in the background every 10 seconds."""
+        while True:
+            self.refresh_status_async()
+            time.sleep(10)
+
+    def refresh_status_async(self):
+        """Asynchronously fetches tailscale status --json."""
+        if self.is_busy:
+            return
+
+        def task():
+            self.is_busy = True
+            try:
+                proc = subprocess.run(
+                    ["tailscale", "status", "--json"],
+                    stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True, timeout=5
+                )
+                if proc.returncode == 0:
+                    data = json.loads(proc.stdout)
+                    GLib.idle_add(self.update_state, data)
+                else:
+                    GLib.idle_add(self.update_state_error, proc.stderr.strip() or "tailscaled not responding")
+            except subprocess.TimeoutExpired:
+                GLib.idle_add(self.update_state_error, "tailscale query timed out")
+            except FileNotFoundError:
+                GLib.idle_add(self.update_state_error, "tailscale command not found")
+            except Exception as e:
+                GLib.idle_add(self.update_state_error, str(e))
+            finally:
+                self.is_busy = False
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def update_state_error(self, err_msg: str):
+        """Updates UI when tailscale is offline or errored."""
+        self.backend_state = "Stopped"
+        self.is_connected = False
+        self.device_ip = ""
+        self.peers = []
+
+        if os.path.exists(ICON_DISCONNECTED):
+            self.indicator.set_icon_full(ICON_DISCONNECTED, "Tailscale Disconnected")
+        else:
+            self.indicator.set_icon("network-vpn-disconnected")
+
+        for child in self.menu.get_children():
+            self.menu.remove(child)
+
+        header = Gtk.MenuItem(label="○ Tailscale Disconnected")
+        header.set_sensitive(False)
+        self.menu.append(header)
+
+        if err_msg and "tailscale down" not in err_msg.lower():
+            err_item = Gtk.MenuItem(label=f"Note: {err_msg[:40]}")
+            err_item.set_sensitive(False)
+            self.menu.append(err_item)
+
+        self.menu.append(Gtk.SeparatorMenuItem())
+
+        # Connect action
+        item_connect = Gtk.MenuItem(label="▶ Connect to Tailscale")
+        item_connect.connect("activate", lambda _: self.toggle_connection(True))
+        self.menu.append(item_connect)
+
+        self.menu.append(Gtk.SeparatorMenuItem())
+
+        # Refresh & Quit
+        item_refresh = Gtk.MenuItem(label="🔄 Refresh Status")
+        item_refresh.connect("activate", lambda _: self.refresh_status_async())
+        self.menu.append(item_refresh)
+
+        item_quit = Gtk.MenuItem(label="✕ Quit Tray")
+        item_quit.connect("activate", lambda _: Gtk.main_quit())
+        self.menu.append(item_quit)
+
+        self.menu.show_all()
+
+    def update_state(self, data: dict):
+        """Parses tailscale json output and renders rich menu."""
+        backend_state = data.get("BackendState", "Unknown")
+        self.backend_state = backend_state
+        self.is_connected = (backend_state == "Running")
+
+        self_node = data.get("Self", {})
+        self.device_name = self_node.get("HostName", "")
+        self.device_dns = self_node.get("DNSName", "").rstrip(".")
+        ips = self_node.get("TailscaleIPs", [])
+        self.device_ip = ips[0] if ips else ""
+
+        # User / Account info
+        users = data.get("User", {})
+        user_id = str(self_node.get("UserID", ""))
+        self.account_email = users.get(user_id, {}).get("LoginName", "")
+
+        # Peers
+        peers_dict = data.get("Peer", {})
+        parsed_peers = []
+        for pid, p in peers_dict.items():
+            p_ips = p.get("TailscaleIPs", [])
+            p_ip = p_ips[0] if p_ips else ""
+            parsed_peers.append({
+                "id": pid,
+                "name": p.get("HostName", "peer"),
+                "dns": p.get("DNSName", "").rstrip("."),
+                "ip": p_ip,
+                "online": bool(p.get("Online", False)),
+                "active": bool(p.get("Active", False)),
+                "os": p.get("OS", ""),
+                "exit_node": bool(p.get("ExitNode", False)),
+                "exit_node_option": bool(p.get("ExitNodeOption", False)),
+            })
+
+        # Sort: online first, then by name
+        parsed_peers.sort(key=lambda x: (not x["online"], x["name"].lower()))
+        self.peers = parsed_peers
+
+        # Update Icon
+        if self.is_connected:
+            if os.path.exists(ICON_CONNECTED):
+                self.indicator.set_icon_full(ICON_CONNECTED, f"Connected: {self.device_ip}")
+            else:
+                self.indicator.set_icon("network-vpn")
+        else:
+            if os.path.exists(ICON_DISCONNECTED):
+                self.indicator.set_icon_full(ICON_DISCONNECTED, "Disconnected")
+            else:
+                self.indicator.set_icon("network-vpn-disconnected")
+
+        # Rebuild Menu
+        for child in self.menu.get_children():
+            self.menu.remove(child)
+
+        # 1. Header / Status
+        status_symbol = "●" if self.is_connected else "○"
+        status_text = f"{status_symbol} Tailscale {self.backend_state}"
+        header = Gtk.MenuItem(label=status_text)
+        header.set_sensitive(False)
+        self.menu.append(header)
+
+        # Device info
+        if self.device_name:
+            item_dev = Gtk.MenuItem(label=f"Device: {self.device_name}")
+            item_dev.set_sensitive(False)
+            self.menu.append(item_dev)
+
+        if self.device_ip:
+            item_ip = Gtk.MenuItem(label=f"📋 IP: {self.device_ip} (Click to Copy)")
+            item_ip.connect("activate", lambda _: copy_to_clipboard(self.device_ip, "Tailscale IPv4"))
+            self.menu.append(item_ip)
+
+        if self.account_email:
+            item_acc = Gtk.MenuItem(label=f"Account: {self.account_email}")
+            item_acc.set_sensitive(False)
+            self.menu.append(item_acc)
+
+        self.menu.append(Gtk.SeparatorMenuItem())
+
+        # 2. Mesh Devices / Peers Submenu
+        online_count = sum(1 for p in self.peers if p["online"])
+        total_peers = len(self.peers)
+        peers_menu_item = Gtk.MenuItem(label=f"Mesh Devices ({online_count} online / {total_peers})")
+        peers_submenu = Gtk.Menu()
+        peers_menu_item.set_submenu(peers_submenu)
+
+        if self.peers:
+            # Online peers section
+            has_online = False
+            for p in self.peers:
+                if p["online"]:
+                    has_online = True
+                    p_item = Gtk.MenuItem(label=f"● {p['name']} ({p['ip']})")
+                    # Submenu for peer actions
+                    p_sub = Gtk.Menu()
+                    p_item.set_submenu(p_sub)
+
+                    act_copy_ip = Gtk.MenuItem(label=f"📋 Copy IP ({p['ip']})")
+                    act_copy_ip.connect("activate", lambda _, ip=p["ip"], name=p["name"]: copy_to_clipboard(ip, f"{name} IP"))
+                    p_sub.append(act_copy_ip)
+
+                    if p["dns"]:
+                        act_copy_dns = Gtk.MenuItem(label=f"📋 Copy DNS ({p['dns']})")
+                        act_copy_dns.connect("activate", lambda _, d=p["dns"]: copy_to_clipboard(d, "MagicDNS Name"))
+                        p_sub.append(act_copy_dns)
+
+                    act_ping = Gtk.MenuItem(label=f"⚡ Ping {p['name']}")
+                    act_ping.connect("activate", lambda _, ip=p["ip"], name=p["name"]: run_ping_notification(ip, name))
+                    p_sub.append(act_ping)
+
+                    if p.get("os") in ("linux", "darwin"):
+                        act_ssh = Gtk.MenuItem(label=f"💻 SSH to {p['name']}")
+                        act_ssh.connect("activate", lambda _, ip=p["ip"]: open_terminal_ssh(ip))
+                        p_sub.append(act_ssh)
+
+                    peers_submenu.append(p_item)
+
+            # Offline peers section
+            offline_peers = [p for p in self.peers if not p["online"]]
+            if offline_peers:
+                if has_online:
+                    peers_submenu.append(Gtk.SeparatorMenuItem())
+
+                off_header = Gtk.MenuItem(label=f"Offline Devices ({len(offline_peers)}):")
+                off_header.set_sensitive(False)
+                peers_submenu.append(off_header)
+
+                for p in offline_peers:
+                    off_item = Gtk.MenuItem(label=f"○ {p['name']} ({p['ip']})")
+                    off_sub = Gtk.Menu()
+                    off_item.set_submenu(off_sub)
+
+                    act_copy = Gtk.MenuItem(label=f"📋 Copy IP ({p['ip']})")
+                    act_copy.connect("activate", lambda _, ip=p["ip"], name=p["name"]: copy_to_clipboard(ip, f"{name} IP"))
+                    off_sub.append(act_copy)
+
+                    if p["dns"]:
+                        act_dns = Gtk.MenuItem(label=f"📋 Copy DNS ({p['dns']})")
+                        act_dns.connect("activate", lambda _, d=p["dns"]: copy_to_clipboard(d, "MagicDNS Name"))
+                        off_sub.append(act_dns)
+
+                    peers_submenu.append(off_item)
+        else:
+            empty_item = Gtk.MenuItem(label="No mesh peers found")
+            empty_item.set_sensitive(False)
+            peers_submenu.append(empty_item)
+
+        self.menu.append(peers_menu_item)
+
+        # 3. Exit Nodes Submenu
+        exit_candidates = [p for p in self.peers if p.get("exit_node_option")]
+        active_exit = next((p for p in self.peers if p.get("exit_node")), None)
+
+        exit_item = Gtk.MenuItem(label="Exit Nodes")
+        exit_submenu = Gtk.Menu()
+        exit_item.set_submenu(exit_submenu)
+
+        none_label = "✓ None (Direct Internet)" if not active_exit else "None (Direct Internet)"
+        act_none = Gtk.MenuItem(label=none_label)
+        act_none.connect("activate", lambda _: self.set_exit_node(""))
+        exit_submenu.append(act_none)
+
+        if exit_candidates:
+            exit_submenu.append(Gtk.SeparatorMenuItem())
+            for c in exit_candidates:
+                prefix = "✓ " if active_exit and active_exit["id"] == c["id"] else ""
+                c_item = Gtk.MenuItem(label=f"{prefix}{c['name']} ({c['ip']})")
+                c_item.connect("activate", lambda _, ip=c["ip"]: self.set_exit_node(ip))
+                exit_submenu.append(c_item)
+
+        self.menu.append(exit_item)
+        self.menu.append(Gtk.SeparatorMenuItem())
+
+        # 4. Connection Toggle & Actions
+        if self.is_connected:
+            item_toggle = Gtk.MenuItem(label="⏹ Disconnect from Tailscale")
+            item_toggle.connect("activate", lambda _: self.toggle_connection(False))
+            self.menu.append(item_toggle)
+        else:
+            item_toggle = Gtk.MenuItem(label="▶ Connect to Tailscale")
+            item_toggle.connect("activate", lambda _: self.toggle_connection(True))
+            self.menu.append(item_toggle)
+
+        if self.device_dns:
+            item_copy_dns = Gtk.MenuItem(label="📋 Copy MagicDNS Name")
+            item_copy_dns.connect("activate", lambda _: copy_to_clipboard(self.device_dns, "MagicDNS Hostname"))
+            self.menu.append(item_copy_dns)
+
+        item_admin = Gtk.MenuItem(label="🌐 Open Admin Console")
+        item_admin.connect("activate", lambda _: open_admin_console())
+        self.menu.append(item_admin)
+
+        self.menu.append(Gtk.SeparatorMenuItem())
+
+        # Set middle-click / secondary activate to copy IP
+        if hasattr(self.indicator, "set_secondary_activate_target") and self.device_ip:
+            self.indicator.set_secondary_activate_target(item_ip)
+
+        # 5. Maintenance
+        item_refresh = Gtk.MenuItem(label="🔄 Refresh Now")
+        item_refresh.connect("activate", lambda _: self.refresh_status_async())
+        self.menu.append(item_refresh)
+
+        item_quit = Gtk.MenuItem(label="✕ Quit Tray")
+        item_quit.connect("activate", lambda _: Gtk.main_quit())
+        self.menu.append(item_quit)
+
+        self.menu.show_all()
+
+    def toggle_connection(self, connect: bool):
+        """Connects or disconnects Tailscale using non-root operator."""
+        cmd = ["tailscale", "up"] if connect else ["tailscale", "down"]
+        action_name = "Connecting" if connect else "Disconnecting"
+
+        try:
+            icon = ICON_CONNECTED if os.path.exists(ICON_CONNECTED) else "network-vpn"
+            subprocess.run(
+                ["notify-send", "-a", "Tailscale", "-i", icon, "Tailscale", f"{action_name} Tailscale..."],
+                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
+
+        def task():
+            subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(1)
+            self.refresh_status_async()
+
+        threading.Thread(target=task, daemon=True).start()
+
+    def set_exit_node(self, exit_node_ip: str):
+        """Sets or clears the Tailscale exit node."""
+        cmd = ["tailscale", "set", f"--exit-node={exit_node_ip}"]
+        action_text = f"Using exit node {exit_node_ip}" if exit_node_ip else "Direct connection enabled"
+
+        try:
+            icon = ICON_CONNECTED if os.path.exists(ICON_CONNECTED) else "network-vpn"
+            subprocess.run(
+                ["notify-send", "-a", "Tailscale", "-i", icon, "Tailscale Exit Node", action_text],
+                check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
+
+        def task():
+            subprocess.run(cmd, check=False, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            time.sleep(1)
+            self.refresh_status_async()
+
+        threading.Thread(target=task, daemon=True).start()
+
+
+# ── Entry Point ──────────────────────────────────────────────────────────────
+
+_lock_fd = None
+
+def acquire_lock() -> bool:
+    global _lock_fd
+    lock_file = Path.home() / ".cache/tailscale-tray.lock"
+    lock_file.parent.mkdir(parents=True, exist_ok=True)
+    try:
+        import fcntl
+        _lock_fd = open(lock_file, "a+")
+        fcntl.flock(_lock_fd, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        _lock_fd.seek(0)
+        _lock_fd.truncate()
+        _lock_fd.write(f"{os.getpid()}\n")
+        _lock_fd.flush()
+        return True
+    except Exception:
+        return False
+
+
+def main():
+    # Enforce single instance per desktop user
+    if not acquire_lock():
+        # Check if previous instance died without cleanup
+        time.sleep(0.5)
+        if not acquire_lock():
+            print("Another instance of tailscale-tray is already running. Exiting.", file=sys.stderr)
+            sys.exit(0)
+
+    # Initialize GTK application loop
+    app = TailscaleTray()
+    try:
+        Gtk.main()
+    except KeyboardInterrupt:
+        pass
+
+
+if __name__ == "__main__":
+    main()
