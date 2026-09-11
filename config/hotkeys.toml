@@ -72,17 +72,21 @@ keys = [
   { mod="SUPER",            key="b",       desc="Browser",                 func="spawn",       exec=["dwm-default-apps", "open", "https://"] },
 
   # ── Screenshots ───────────────────────────────────────────────────────────────
+  { mod="",                 key="Print",   desc="Flameshot GUI",           func="spawn",       exec=["flameshot", "gui"] },
+  { mod="SUPER",            key="Print",   desc="Flameshot GUI",           func="spawn",       exec=["flameshot", "gui"] },
+  { mod="SUPER SHIFT",      key="s",       desc="Flameshot GUI",           func="spawn",       exec=["flameshot", "gui"] },
   { mod="SUPER",            key="p",       desc="Screenshot active monitor", func="spawn",     cmd="dwm-screenshot screen" },
-  { mod="SUPER SHIFT",      key="p",       desc="Screenshot area → file",  func="spawn",       cmd="dwm-screenshot gui" },
+  { mod="SUPER SHIFT",      key="p",       desc="Flameshot GUI",           func="spawn",       exec=["flameshot", "gui"] },
   { mod="SUPER CTRL",       key="p",       desc="Screenshot area → clip",  func="spawn",       cmd="dwm-screenshot clip" },
 
   # ── Files & utilities ─────────────────────────────────────────────────────────
-  { mod="SUPER",            key="e",       desc="File manager",            func="spawn",       cmd="xdg-open ." },
+  { mod="SUPER",            key="e",       desc="File manager",            func="spawn",       exec=["thunar"] },
   { mod="SUPER",            key="slash",   desc="Keybinds cheatsheet",     func="spawn",       cmd="quickshell ipc --path \"${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml\" call controlcenter openKeybinds" },
   { mod="SUPER",            key="F1",      desc="Control center",          func="spawn",       cmd="quickshell ipc --path \"${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml\" call controlcenter open" },
   { mod="SUPER ALT",        key="F1",      desc="Control center",          func="spawn",       cmd="quickshell ipc --path \"${XDG_CONFIG_HOME:-$HOME/.config}/quickshell/shell.qml\" call controlcenter open" },
   { mod="SUPER SHIFT",      key="r",       desc="Restart Quickshell",      func="spawn",       cmd="dwm-quickshell-controlcenter action restart-quickshell" },
   { mod="SUPER CTRL",       key="r",       desc="Restart Proton/Steam",    func="spawn",       cmd="protonrestart" },
+  { mod="SUPER CTRL",       key="d",       desc="RustDesk Remote Desktop", func="spawn",       exec=["rustdesk"] },
 
   # ── Volume  (no modifier — press the media key directly) ─────────────────────
   { mod="",                 key="XF86AudioRaiseVolume",   desc="Volume up",     func="spawn",  cmd="amixer sset Master 5%+ unmute" },
