@@ -749,7 +749,7 @@ remove_legacy_system_runtime() {
 		sudo rm -f -- "$legacy_release"
 		ok "Removed legacy release helper: $legacy_release"
 	fi
-	if [[ -f $legacy_session ]] &&
+	if [[ -f $legacy_session && ! -L $legacy_session ]] &&
 		sudo grep -Fqx 'Exec=/usr/local/bin/dwm-session' "$legacy_session"; then
 		sudo rm -f -- "$legacy_session"
 		ok "Removed legacy dwm session entry: $legacy_session"

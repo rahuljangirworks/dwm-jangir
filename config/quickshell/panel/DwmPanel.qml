@@ -37,8 +37,10 @@ PanelWindow {
     required property var panelSettingsModel
     required property var powerModel
     required property var powerMenuModel
+    property var oneorganizeModel: null
     required property bool primaryPanel
 
+    visible: root.primaryPanel
     implicitHeight: Theme.panelHeight
     color: Theme.barBackground
     exclusiveZone: Theme.panelHeight
@@ -223,6 +225,49 @@ PanelWindow {
                     }
 
                     PanelPill {
+                        id: oneorganizePill
+                        visible: root.oneorganizeModel !== null
+                        Layout.preferredWidth: oneorganizeRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
+                        Layout.preferredHeight: Theme.compactWidgetSize
+                        active: root.oneorganizeModel ? root.oneorganizeModel.visible : false
+                        hovered: oneorganizeMouse.containsMouse
+
+                        RowLayout {
+                            id: oneorganizeRow
+                            anchors.centerIn: parent
+                            spacing: Theme.compactSpacing
+
+                            IconText {
+                                text: "󰥔"
+                                color: root.oneorganizeModel && root.oneorganizeModel.clockedIn
+                                    ? (root.oneorganizeModel.clockedOut ? Theme.menuMutedText : Theme.success)
+                                    : Theme.warning
+                                font.pixelSize: Math.round((Theme.panelIconFontSize + 1) * 1.1)
+                            }
+
+                            UiText {
+                                visible: root.oneorganizeModel && root.oneorganizeModel.clockedIn && !root.oneorganizeModel.clockedOut
+                                text: root.oneorganizeModel.workedDurationShort
+                                color: Theme.textStrong
+                                font.pixelSize: Theme.panelFontSize
+                            }
+                        }
+
+                        MouseArea {
+                            id: oneorganizeMouse
+                            anchors.fill: parent
+                            hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                if (root.oneorganizeModel) {
+                                    root.popupRequested(root, "oneorganize");
+                                    root.oneorganizeModel.toggle();
+                                }
+                            }
+                        }
+                    }
+
+                    PanelPill {
                         visible: root.panelSettingsModel.widgetEnabled("bluetooth")
                         Layout.preferredWidth: bluetoothRow.implicitWidth + Theme.compactWidgetHorizontalPadding * 2
                         Layout.preferredHeight: Theme.compactWidgetSize
@@ -374,6 +419,17 @@ PanelWindow {
         anchorWindow: root
         anchorItem: batteryPill
         label: root.powerModel.batteryPercent.toString() + "% - " + root.powerModel.batteryStatus
+        anchorY: Theme.panelHeight
+        rightAligned: true
+    }
+
+    PanelTooltip {
+        visible: oneorganizeMouse.containsMouse
+        anchorWindow: root
+        anchorItem: oneorganizeMouse
+        label: root.oneorganizeModel
+            ? ("OneOrganize: " + root.oneorganizeModel.statusText + (root.oneorganizeModel.clockedIn && !root.oneorganizeModel.clockedOut ? " (" + root.oneorganizeModel.workedDuration + ")" : ""))
+            : "OneOrganize HRM"
         anchorY: Theme.panelHeight
         rightAligned: true
     }

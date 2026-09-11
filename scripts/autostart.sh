@@ -415,6 +415,12 @@ export XDG_SESSION_TYPE=x11
 export QT_QPA_PLATFORM=xcb
 unset WAYLAND_DISPLAY
 
+# Initialize GNOME Keyring secret service if available
+if command -v gnome-keyring-daemon >/dev/null 2>&1; then
+	eval "$(gnome-keyring-daemon --start --components=secrets,ssh,pkcs11 2>/dev/null)"
+	export SSH_AUTH_SOCK GNOME_KEYRING_CONTROL
+fi
+
 # Export display and theme env to systemd/dbus in parallel (both are IPC round-trips).
 systemctl_import_pid=
 dbus_import_pid=
@@ -424,7 +430,8 @@ if command -v systemctl >/dev/null 2>&1; then
 		systemctl --user import-environment \
 			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION \
 			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
-			XCURSOR_THEME XCURSOR_SIZE
+			XCURSOR_THEME XCURSOR_SIZE \
+			SSH_AUTH_SOCK GNOME_KEYRING_CONTROL
 	} &
 	systemctl_import_pid=$!
 fi
@@ -434,7 +441,8 @@ if command -v dbus-update-activation-environment >/dev/null 2>&1; then
 		dbus-update-activation-environment --systemd \
 			DISPLAY XAUTHORITY XDG_CURRENT_DESKTOP DESKTOP_SESSION \
 			XDG_SESSION_TYPE QT_QPA_PLATFORM QT_QPA_PLATFORMTHEME \
-			XCURSOR_THEME XCURSOR_SIZE
+			XCURSOR_THEME XCURSOR_SIZE \
+			SSH_AUTH_SOCK GNOME_KEYRING_CONTROL
 	} 2>/dev/null &
 	dbus_import_pid=$!
 fi
@@ -511,8 +519,42 @@ fi
 # Compositor
 start_detached_once picom picom --backend "$PICOM_BACKEND"
 
+# Screenshots daemon (Flameshot)
+flameshot_cmd=
+if command -v flameshot >/dev/null 2>&1; then
+	flameshot_cmd=flameshot
+elif [ -x "$HOME/.local/bin/flameshot" ]; then
+	flameshot_cmd="$HOME/.local/bin/flameshot"
+elif [ -x /usr/bin/flameshot ]; then
+	flameshot_cmd=/usr/bin/flameshot
+fi
+if [ -n "$flameshot_cmd" ]; then
+	start_detached_once flameshot "$flameshot_cmd"
+fi
+
 # dwm root-window status publisher for Quickshell's event-driven panel.
 start_detached_display_command_once dwm-status
+
+# Launch default web browser on login (mapped to workspace 2 via window-rules.toml)
+if [ "${DWM_AUTOSTART_BROWSER:-1}" = "1" ]; then
+	browser_running=0
+	for proc in chrome google-chrome chromium firefox brave brave-browser; do
+		if pgrep -u "$(id -u)" -x "$proc" >/dev/null 2>&1; then
+			browser_running=1
+			break
+		fi
+	done
+	if [ "$browser_running" -eq 0 ]; then
+		browser_desktop=$(xdg-settings get default-web-browser 2>/dev/null || true)
+		if [ -n "$browser_desktop" ] && command -v gtk-launch >/dev/null 2>&1; then
+			gtk-launch "$browser_desktop" >/dev/null 2>&1 &
+		elif command -v google-chrome >/dev/null 2>&1; then
+			google-chrome >/dev/null 2>&1 &
+		elif command -v xdg-open >/dev/null 2>&1; then
+			xdg-open "about:blank" >/dev/null 2>&1 &
+		fi
+	fi
+fi
 
 # Event-driven bridge for loginctl/logind lock requests. This keeps external
 # lock commands working without leaving light-locker resident for DPMS events.
@@ -558,3 +600,17 @@ fi
 # entry. Reapply the persisted policy after XDG startup so disabled locking
 # cannot leave an independently started locker attached to DPMS events.
 apply_power_settings
+
+# Auto clock-in on login (OneOrganize HRM portal)
+oneorganize_cmd=oneorganize-clockin
+if ! command -v "$oneorganize_cmd" >/dev/null 2>&1; then
+	case $0 in
+	*/*) oneorganize_cmd=${0%/*}/oneorganize-clockin ;;
+	esac
+fi
+if command -v "$oneorganize_cmd" >/dev/null 2>&1 || [ -x "$oneorganize_cmd" ]; then
+	(
+		# Wait up to 60s for network connection before executing clock-in
+		"$oneorganize_cmd" --wait-for-network 60 --silent >/dev/null 2>&1
+	) &
+fi

@@ -1,0 +1,332 @@
+#!/usr/bin/env python3
+"""
+OneOrganize Automated Clock-In Script
+-------------------------------------
+Automates the login and clock-in process on OneOrganize HRM portal:
+1. Verifies existing session or logs in with provided credentials.
+2. Navigates to the account dashboard.
+3. Detects current clock-in status:
+   - If already clocked in today, displays current time and exits safely.
+   - If not clocked in, clicks the "CLOCK IN" button and verifies success.
+4. Optionally sends desktop notifications via notify-send.
+"""
+
+import sys
+import os
+import re
+import json
+import subprocess
+import argparse
+import http.cookiejar
+import urllib.request
+import urllib.parse
+import urllib.error
+from pathlib import Path
+
+DEFAULT_BASE_URL = os.environ.get("ONEORG_URL", "http://192.168.0.143/oneorganize")
+DEFAULT_EMAIL = os.environ.get("ONEORG_EMAIL", "rahul.jangir@getmysolutions.in")
+DEFAULT_PASSWORD = os.environ.get("ONEORG_PASSWORD", "Rahul@1998")
+
+COOKIE_DIR = Path.home() / ".cache" / "oneorganize"
+COOKIE_FILE = COOKIE_DIR / "cookies.txt"
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# ANSI Colors for terminal output
+COLOR_GREEN = "\033[92m"
+COLOR_YELLOW = "\033[93m"
+COLOR_RED = "\033[91m"
+COLOR_CYAN = "\033[96m"
+COLOR_RESET = "\033[0m"
+
+class OneOrganizeClient:
+    def __init__(self, base_url=DEFAULT_BASE_URL, email=DEFAULT_EMAIL, password=DEFAULT_PASSWORD, verbose=True, notify=True):
+        self.base_url = base_url.rstrip('/')
+        self.email = email
+        self.password = password
+        self.verbose = verbose
+        self.enable_notify = notify
+
+        # Setup persistent cookie jar
+        COOKIE_DIR.mkdir(parents=True, exist_ok=True)
+        self.cookie_jar = http.cookiejar.MozillaCookieJar(str(COOKIE_FILE))
+        if COOKIE_FILE.exists():
+            try:
+                self.cookie_jar.load(ignore_discard=True, ignore_expires=True)
+            except Exception:
+                pass
+
+        self.opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(self.cookie_jar)
+        )
+
+    def log(self, message, color=None):
+        if not self.verbose:
+            return
+        if color and sys.stdout.isatty():
+            print(f"{color}{message}{COLOR_RESET}")
+        else:
+            print(message)
+
+    def notify(self, title, message, icon="appointment-soon", urgency="normal"):
+        if not self.enable_notify:
+            return
+        try:
+            subprocess.run(
+                ["notify-send", "-u", urgency, "-i", icon, title, message],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
+
+    def save_cookies(self):
+        try:
+            self.cookie_jar.save(ignore_discard=True, ignore_expires=True)
+        except Exception:
+            pass
+
+    def request(self, url, data=None, headers=None, method=None, timeout=15):
+        req_headers = {
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9"
+        }
+        if headers:
+            req_headers.update(headers)
+
+        req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+        try:
+            with self.opener.open(req, timeout=timeout) as resp:
+                content = resp.read().decode('utf-8', errors='replace')
+                return resp.geturl(), content, resp.getcode()
+        except urllib.error.HTTPError as e:
+            content = e.read().decode('utf-8', errors='replace')
+            return e.geturl(), content, e.code
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"Cannot reach server at {self.base_url} ({e.reason}). Make sure you are connected to the office network.")
+        except Exception as e:
+            raise RuntimeError(f"Request failed: {e}")
+
+    def wait_for_network(self, max_seconds=30):
+        """Wait until OneOrganize server is reachable (useful on login/boot)."""
+        import time
+        start_time = time.time()
+        self.log(f"Waiting for network connection to {self.base_url} (up to {max_seconds}s)...", COLOR_CYAN)
+        while time.time() - start_time < max_seconds:
+            try:
+                req = urllib.request.Request(f"{self.base_url}/login", headers={"User-Agent": USER_AGENT})
+                with self.opener.open(req, timeout=3):
+                    self.log("✓ Network connection established.", COLOR_GREEN)
+                    return True
+            except Exception:
+                time.sleep(2)
+        raise RuntimeError(f"Network timeout: Cannot reach {self.base_url} after {max_seconds} seconds.")
+
+    def is_logged_in(self):
+        """Check if currently active session is valid by accessing account-dashboard."""
+        self.log(f"Checking session validity at {self.base_url}/account-dashboard...", COLOR_CYAN)
+        final_url, content, _ = self.request(f"{self.base_url}/account-dashboard")
+        if "login" in final_url.lower() or 'id="loginForm"' in content:
+            return False, None
+        return True, content
+
+    def login(self):
+        self.log(f"Logging in to {self.base_url}/login as {self.email}...", COLOR_CYAN)
+        login_url = f"{self.base_url}/login"
+        _, content, _ = self.request(login_url)
+
+        # Extract CSRF token from login form
+        token_match = re.search(r'name="_token"[^>]*value="([^"]+)"', content)
+        if not token_match:
+            token_match = re.search(r'value="([^"]+)"[^>]*name="_token"', content)
+        if not token_match:
+            raise RuntimeError("Could not find CSRF _token in login form.")
+        csrf_token = token_match.group(1)
+
+        login_data = urllib.parse.urlencode({
+            "_token": csrf_token,
+            "email": self.email,
+            "password": self.password
+        }).encode('utf-8')
+
+        login_headers = {
+            "Referer": login_url,
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+
+        post_url, post_content, _ = self.request(
+            login_url,
+            data=login_data,
+            headers=login_headers,
+            method="POST"
+        )
+        self.save_cookies()
+
+        if "login" in post_url.lower() and 'id="loginForm"' in post_content:
+            err_match = re.search(r'<div class="alert alert-danger[^"]*">([^<]+)</div>', post_content)
+            err_msg = err_match.group(1).strip() if err_match else "Invalid credentials or login rejected"
+            raise RuntimeError(f"Login failed: {err_msg}")
+
+        self.log("✓ Login successful.", COLOR_GREEN)
+        return True
+
+    def get_dashboard_info(self, html_content=None):
+        if html_content is None:
+            _, html_content, _ = self.request(f"{self.base_url}/account-dashboard")
+            self.save_cookies()
+
+        # Employee name
+        emp_match = re.search(r'Welcome\s+([^<\n\r]+)', html_content)
+        emp_name = emp_match.group(1).strip() if emp_match else "Employee"
+
+        # Worked time / Clock in info
+        clock_in_time = None
+        time_match = re.search(r'Clock In At-\s*([^\s<]+(?:\s*[AP]M)?)', html_content, re.I)
+        if time_match:
+            clock_in_time = time_match.group(1).strip()
+
+        clock_in_js = re.search(r'const\s+CLOCK_IN\s*=\s*"([^"]+)"', html_content)
+        clock_in_raw = clock_in_js.group(1) if clock_in_js else None
+
+        btn_match = re.search(r'<button[^>]*id="clock_in"([^>]*)>', html_content, re.I)
+        btn_attrs = btn_match.group(1) if btn_match else ""
+        is_disabled = "disabled" in btn_attrs
+
+        already_clocked_in = is_disabled or bool(clock_in_raw and clock_in_raw != "00:00:00")
+
+        # Clock-in form action and token
+        form_match = re.search(r'<form[^>]*id="create_dash_att"[^>]*action="([^"]+)"', html_content)
+        form_action = form_match.group(1) if form_match else f"{self.base_url}/attendanceemployee/attendance"
+
+        form_token_match = re.search(r'id="create_dash_att".*?name="_token"\s+value="([^"]+)"', html_content, re.DOTALL)
+        if not form_token_match:
+            form_token_match = re.search(r'name="_token"[^>]*value="([^"]+)"', html_content)
+        form_token = form_token_match.group(1) if form_token_match else None
+
+        return {
+            "employee": emp_name,
+            "already_clocked_in": already_clocked_in,
+            "clock_in_time": clock_in_time,
+            "clock_in_raw": clock_in_raw,
+            "form_action": form_action,
+            "form_token": form_token
+        }
+
+    def clock_in(self, force=False):
+        logged_in, dash_content = self.is_logged_in()
+        if not logged_in:
+            self.login()
+            _, dash_content, _ = self.request(f"{self.base_url}/account-dashboard")
+            self.save_cookies()
+
+        info = self.get_dashboard_info(dash_content)
+        self.log(f"Employee: {info['employee']}", COLOR_CYAN)
+
+        if info['already_clocked_in'] and not force:
+            status_str = "Already clocked in today"
+            if info['clock_in_time']:
+                status_str += f" at {info['clock_in_time']}"
+            elif info['clock_in_raw']:
+                status_str += f" at {info['clock_in_raw']}"
+            self.log(f"[INFO] {status_str}.", COLOR_YELLOW)
+            self.notify("OneOrganize Attendance", f"{status_str} ({info['employee']})", icon="emblem-default")
+            return True, status_str
+
+        self.log("Clock In button is active. Submitting clock-in request...", COLOR_CYAN)
+        if not info['form_token']:
+            raise RuntimeError("Could not find attendance CSRF token on dashboard.")
+
+        action_url = info['form_action']
+        post_data = urllib.parse.urlencode({
+            "_token": info['form_token'],
+            "in": "0"
+        }).encode('utf-8')
+
+        ajax_headers = {
+            "Referer": f"{self.base_url}/account-dashboard",
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+        }
+
+        _, resp_body, _ = self.request(
+            action_url,
+            data=post_data,
+            headers=ajax_headers,
+            method="POST"
+        )
+        self.save_cookies()
+
+        success_msg = None
+        try:
+            res_json = json.loads(resp_body)
+            if "success" in res_json:
+                success_msg = res_json["success"]
+            elif "error" in res_json:
+                raise RuntimeError(f"Server returned error: {res_json['error']}")
+        except json.JSONDecodeError:
+            pass
+
+        # Re-fetch dashboard to verify
+        _, new_dash, _ = self.request(f"{self.base_url}/account-dashboard")
+        new_info = self.get_dashboard_info(new_dash)
+
+        res_time = new_info['clock_in_time'] or new_info['clock_in_raw'] or "Now"
+        msg = success_msg or f"Successfully clocked in at {res_time}"
+        self.log(f"[SUCCESS] {msg}", COLOR_GREEN)
+        self.notify("OneOrganize Attendance", f"Clock In Successful! Time: {res_time}", icon="emblem-default")
+        return True, msg
+
+def main():
+    parser = argparse.ArgumentParser(description="OneOrganize Automated Clock-In Tool")
+    parser.add_argument("--url", default=DEFAULT_BASE_URL, help=f"Base URL (default: {DEFAULT_BASE_URL})")
+    parser.add_argument("--email", default=DEFAULT_EMAIL, help=f"Email (default: {DEFAULT_EMAIL})")
+    parser.add_argument("--password", default=DEFAULT_PASSWORD, help="Password")
+    parser.add_argument("--check", action="store_true", help="Check clock-in status without performing clock in")
+    parser.add_argument("--silent", "-q", action="store_true", help="Silent mode (suppress terminal output)")
+    parser.add_argument("--no-notify", action="store_true", help="Disable desktop notification via notify-send")
+    parser.add_argument("--force", action="store_true", help="Force submit clock-in even if already recorded")
+    parser.add_argument("--open", action="store_true", help="Open account dashboard in Google Chrome after execution")
+    parser.add_argument("--wait-for-network", type=int, default=0, help="Wait up to N seconds for office network to become available")
+    args = parser.parse_args()
+
+    client = OneOrganizeClient(
+        base_url=args.url,
+        email=args.email,
+        password=args.password,
+        verbose=not args.silent,
+        notify=not args.no_notify
+    )
+
+    try:
+        if args.wait_for_network > 0:
+            client.wait_for_network(args.wait_for_network)
+
+        if args.check:
+            logged_in, dash_content = client.is_logged_in()
+            if not logged_in:
+                client.login()
+                _, dash_content, _ = client.request(f"{client.base_url}/account-dashboard")
+            info = client.get_dashboard_info(dash_content)
+            status = "Clocked In" if info['already_clocked_in'] else "Not Clocked In"
+            time_str = info['clock_in_time'] or info['clock_in_raw'] or "None"
+            client.log(f"Employee: {info['employee']}", COLOR_CYAN)
+            client.log(f"Status  : {status} (Time: {time_str})", COLOR_GREEN if info['already_clocked_in'] else COLOR_YELLOW)
+        else:
+            client.clock_in(force=args.force)
+
+        if args.open:
+            subprocess.Popen(
+                ["google-chrome", f"{client.base_url}/account-dashboard"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+
+    except Exception as e:
+        client.log(f"[ERROR] {e}", COLOR_RED)
+        client.notify("OneOrganize Clock In Error", str(e), icon="dialog-error", urgency="critical")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()

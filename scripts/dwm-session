@@ -23,5 +23,11 @@ if [ -z "${DBUS_SESSION_BUS_ADDRESS:-}" ] && \
 	exec dbus-run-session -- "$0" "$@"
 fi
 
+# Initialize GNOME Keyring daemon so dwm and its children inherit the secret environment
+if command -v gnome-keyring-daemon >/dev/null 2>&1; then
+	eval "$(gnome-keyring-daemon --start --components=secrets,ssh,pkcs11 2>/dev/null)"
+	export SSH_AUTH_SOCK GNOME_KEYRING_CONTROL
+fi
+
 # Start dwm
 exec dwm "$@"

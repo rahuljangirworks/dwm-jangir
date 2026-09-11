@@ -124,6 +124,13 @@ DWM_TERMINAL_TEST_OUT="$work/malformed-out" \
 	"$BASH_BIN" "$HELPER"
 grep -Fqx "$work/bin/alacritty" "$work/malformed-out"
 
+printf '%s\n' '[vars]' 'terminal = "dwm-terminal"' \
+	>"$XDG_CONFIG_HOME/dwm-jangir/hotkeys.toml"
+DWM_TERMINAL_TEST_OUT="$work/self-recursive-out" \
+	PATH="$work/bin" \
+	"$BASH_BIN" "$HELPER"
+grep -Fqx "$work/bin/alacritty" "$work/self-recursive-out"
+
 rm -f "$work/bin/alacritty" "$work/bin/kitty" "$work/bin/custom-term" "$work/bin/herdr"
 
 if PATH="$work/bin" "$BASH_BIN" "$HELPER" 2>"$work/err"; then

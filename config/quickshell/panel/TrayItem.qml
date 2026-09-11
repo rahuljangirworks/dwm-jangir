@@ -19,10 +19,10 @@ Rectangle {
 
     function handleClick(button) {
         if (button === Qt.LeftButton) {
-            if (!root.trayItem.onlyMenu) {
-                root.trayItem.activate();
-            } else if (root.trayItem.hasMenu) {
+            if (root.trayItem && root.trayItem.hasMenu) {
                 root.openContextMenu();
+            } else if (!root.trayItem.onlyMenu) {
+                root.trayItem.activate();
             }
         } else if (button === Qt.MiddleButton) {
             root.trayItem.secondaryActivate();

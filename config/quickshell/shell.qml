@@ -44,12 +44,14 @@ ShellRoot {
         if (popupId !== "controls") controlsModel.close();
         if (popupId !== "network") networkModel.close();
         if (popupId !== "power") powerMenuModel.close("panel");
+        if (popupId !== "oneorganize") oneorganizeModel.close();
         root.selectedPanelWindow = panel;
     }
 
     function openCommandMenu(screen) {
         networkModel.close();
         bluetoothModel.close();
+        oneorganizeModel.close();
         controlCenterModel.close();
         controlsModel.close();
         powerMenuModel.close("panel");
@@ -196,6 +198,10 @@ ShellRoot {
         id: bluetoothModel
     }
 
+    OneOrganizeModel {
+        id: oneorganizeModel
+    }
+
     ControlCenterModel {
         id: controlCenterModel
         powerModel: powerModel
@@ -233,6 +239,7 @@ ShellRoot {
                 networkModel.refresh();
                 bluetoothModel.refresh();
                 controlsModel.refresh();
+                oneorganizeModel.refresh();
             }
         }
     }
@@ -334,6 +341,42 @@ ShellRoot {
 
         function toggle(): void {
             networkModel.toggle();
+        }
+    }
+
+    IpcHandler {
+        target: "oneorganize"
+
+        function open(): void {
+            oneorganizeModel.open();
+        }
+
+        function close(): void {
+            oneorganizeModel.close();
+        }
+
+        function toggle(): void {
+            oneorganizeModel.toggle();
+        }
+
+        function status(): string {
+            return oneorganizeModel.statusText;
+        }
+
+        function worked(): string {
+            return oneorganizeModel.workedDuration;
+        }
+
+        function employee(): string {
+            return oneorganizeModel.employee;
+        }
+
+        function isClockedIn(): bool {
+            return oneorganizeModel.clockedIn;
+        }
+
+        function refresh(): void {
+            oneorganizeModel.refresh();
         }
     }
 
@@ -1131,6 +1174,7 @@ ShellRoot {
             networkModel: networkModel
             controlsModel: controlsModel
             bluetoothModel: bluetoothModel
+            oneorganizeModel: oneorganizeModel
             controlCenterModel: controlCenterModel
             panelSettingsModel: panelSettingsModel
             powerModel: powerModel
@@ -1161,6 +1205,11 @@ ShellRoot {
 
     BluetoothWindow {
         bluetoothModel: bluetoothModel
+        panelWindow: root.activePanelWindow
+    }
+
+    OneOrganizeWindow {
+        oneorganizeModel: oneorganizeModel
         panelWindow: root.activePanelWindow
     }
 

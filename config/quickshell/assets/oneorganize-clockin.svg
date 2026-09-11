@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <defs>
+    <linearGradient id="gradIn" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A3BE8C" />
+      <stop offset="100%" stop-color="#8FBCBB" />
+    </linearGradient>
+    <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+  <!-- Background Circle -->
+  <rect x="4" y="4" width="56" height="56" rx="16" fill="#2E3440" stroke="#4C566A" stroke-width="2" filter="url(#shadow)"/>
+  <!-- Inner Ring -->
+  <circle cx="32" cy="32" r="22" fill="none" stroke="url(#gradIn)" stroke-width="3.5" stroke-linecap="round"/>
+  <!-- Clock Hands -->
+  <line x1="32" y1="32" x2="32" y2="19" stroke="#ECEFF4" stroke-width="3" stroke-linecap="round"/>
+  <line x1="32" y1="32" x2="42" y2="32" stroke="#ECEFF4" stroke-width="3" stroke-linecap="round"/>
+  <circle cx="32" cy="32" r="3" fill="#A3BE8C"/>
+  <!-- Status Dot (Green) -->
+  <circle cx="48" cy="16" r="6" fill="#A3BE8C" stroke="#2E3440" stroke-width="2"/>
+</svg>

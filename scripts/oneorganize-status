@@ -1,0 +1,210 @@
+#!/usr/bin/env python3
+"""
+OneOrganize Status and Action Helper for Quickshell
+---------------------------------------------------
+Subcommands:
+    json / status   : Outputs single-line JSON with current attendance state & live elapsed time
+    clockin         : Runs clock-in action
+    clockout <task> : Runs clock-out action with specified task
+    open            : Opens HRM dashboard in default browser
+"""
+
+import os
+import sys
+import re
+import json
+import subprocess
+import urllib.request
+import urllib.parse
+import urllib.error
+import http.cookiejar
+from datetime import datetime
+from pathlib import Path
+
+DEFAULT_BASE_URL = os.environ.get("ONEORG_URL", "http://192.168.0.143/oneorganize")
+DEFAULT_EMAIL = os.environ.get("ONEORG_EMAIL", "rahul.jangir@getmysolutions.in")
+DEFAULT_PASSWORD = os.environ.get("ONEORG_PASSWORD", "Rahul@1998")
+DEFAULT_PROJECT_ID = "2"
+DEFAULT_PROJECT_NAME = "SDV Platform"
+
+COOKIE_DIR = Path.home() / ".cache" / "oneorganize"
+COOKIE_FILE = COOKIE_DIR / "cookies.txt"
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+COOKIE_DIR.mkdir(parents=True, exist_ok=True)
+cookie_jar = http.cookiejar.MozillaCookieJar(str(COOKIE_FILE))
+if COOKIE_FILE.exists():
+    try:
+        cookie_jar.load(ignore_discard=True, ignore_expires=True)
+    except Exception:
+        pass
+
+opener = urllib.request.build_opener(urllib.request.HTTPCookieProcessor(cookie_jar))
+
+
+def save_cookies():
+    try:
+        cookie_jar.save(ignore_discard=True, ignore_expires=True)
+    except Exception:
+        pass
+
+
+def http_request(url, data=None, headers=None, method=None, timeout=10):
+    req_headers = {"User-Agent": USER_AGENT}
+    if headers:
+        req_headers.update(headers)
+    req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+    try:
+        with opener.open(req, timeout=timeout) as resp:
+            content = resp.read().decode("utf-8", errors="replace")
+            return resp.geturl(), content, resp.getcode()
+    except urllib.error.HTTPError as e:
+        content = e.read().decode("utf-8", errors="replace")
+        return e.geturl(), content, e.code
+
+
+def login():
+    login_url = f"{DEFAULT_BASE_URL}/login"
+    _, content, _ = http_request(login_url)
+    token_match = re.search(r'name="_token"[^>]*value="([^"]+)"', content)
+    if not token_match:
+        token_match = re.search(r'value="([^"]+)"[^>]*name="_token"', content)
+    if not token_match:
+        raise RuntimeError("Cannot extract login CSRF token.")
+
+    login_data = urllib.parse.urlencode({
+        "_token": token_match.group(1),
+        "email": DEFAULT_EMAIL,
+        "password": DEFAULT_PASSWORD,
+    }).encode("utf-8")
+
+    http_request(
+        login_url,
+        data=login_data,
+        method="POST",
+        headers={"Referer": login_url, "Content-Type": "application/x-www-form-urlencoded"},
+    )
+    save_cookies()
+
+
+def get_status_data():
+    dash_url = f"{DEFAULT_BASE_URL}/account-dashboard"
+    try:
+        final_url, html, code = http_request(dash_url)
+    except Exception as e:
+        return {
+            "ok": False,
+            "error": str(e),
+            "employee": "Mr. Rahul Jangir",
+            "is_clocked_in": False,
+            "is_clocked_out": False,
+            "clock_in_text": "",
+            "clock_out_text": "",
+            "clock_in_raw": "",
+            "clock_out_raw": "",
+            "project_id": DEFAULT_PROJECT_ID,
+            "project_name": DEFAULT_PROJECT_NAME,
+            "elapsed_seconds": 0,
+            "worked_formatted": "00:00:00",
+        }
+
+    if "login" in final_url.lower() or 'id="loginForm"' in html:
+        try:
+            login()
+            final_url, html, code = http_request(dash_url)
+            save_cookies()
+        except Exception as e:
+            return {
+                "ok": False,
+                "error": f"Login failed: {e}",
+                "employee": "Mr. Rahul Jangir",
+                "is_clocked_in": False,
+                "is_clocked_out": False,
+                "clock_in_text": "",
+                "clock_out_text": "",
+                "clock_in_raw": "",
+                "clock_out_raw": "",
+                "project_id": DEFAULT_PROJECT_ID,
+                "project_name": DEFAULT_PROJECT_NAME,
+                "elapsed_seconds": 0,
+                "worked_formatted": "00:00:00",
+            }
+
+    emp_match = re.search(r"Welcome\s+([^<\n\r]+)", html)
+    emp_name = emp_match.group(1).strip() if emp_match else "Mr. Rahul Jangir"
+
+    cin_match = re.search(r"Clock In At-\s*([^\s<]+(?:\s*[AP]M)?)", html, re.I)
+    clock_in_text = cin_match.group(1).strip() if cin_match else ""
+
+    cout_match = re.search(r"Clock Out At-\s*([^\s<]+(?:\s*[AP]M)?)", html, re.I)
+    clock_out_text = cout_match.group(1).strip() if cout_match else ""
+
+    clock_in_js = re.search(r'const\s+CLOCK_IN\s*=\s*"([^"]+)"', html)
+    clock_in_raw = clock_in_js.group(1) if clock_in_js else ""
+
+    clock_out_js = re.search(r'const\s+CLOCK_OUT\s*=\s*"([^"]+)"', html)
+    clock_out_raw = clock_out_js.group(1) if clock_out_js else ""
+
+    is_cin = bool(clock_in_raw and clock_in_raw != "00:00:00")
+    is_cout = bool(clock_out_raw and clock_out_raw != "00:00:00")
+    if not is_cout:
+        clock_out_text = ""
+
+    elapsed = 0
+    if is_cin and not is_cout:
+        now = datetime.now()
+        today_str = now.strftime("%Y-%m-%d")
+        try:
+            cin_dt = datetime.strptime(f"{today_str} {clock_in_raw}", "%Y-%m-%d %H:%M:%S")
+            elapsed = max(0, int((now - cin_dt).total_seconds()))
+        except Exception:
+            pass
+
+    h = elapsed // 3600
+    m = (elapsed % 3600) // 60
+    s = elapsed % 60
+    worked_str = f"{h:02d}:{m:02d}:{s:02d}"
+
+    return {
+        "ok": True,
+        "employee": emp_name,
+        "is_clocked_in": is_cin,
+        "is_clocked_out": is_cout,
+        "clock_in_text": clock_in_text or clock_in_raw,
+        "clock_out_text": (clock_out_text or clock_out_raw) if is_cout else "",
+        "clock_in_raw": clock_in_raw,
+        "clock_out_raw": clock_out_raw,
+        "project_id": DEFAULT_PROJECT_ID,
+        "project_name": DEFAULT_PROJECT_NAME,
+        "elapsed_seconds": elapsed,
+        "worked_formatted": worked_str,
+    }
+
+
+def main():
+    cmd = sys.argv[1] if len(sys.argv) > 1 else "json"
+
+    if cmd in ("json", "status"):
+        data = get_status_data()
+        print(json.dumps(data))
+    elif cmd == "clockin":
+        script = Path.home() / ".local/bin/oneorganize-clockin"
+        if not script.exists():
+            script = Path("/home/rahul/work/dwm-jangir/scripts/oneorganize-clockin")
+        subprocess.run([str(script), "--force"])
+    elif cmd == "clockout":
+        task = sys.argv[2] if len(sys.argv) > 2 else "Completed scheduled development tasks, code review, bug fixes, and daily progress reporting."
+        script = Path.home() / ".local/bin/oneorganize-clockout"
+        if not script.exists():
+            script = Path("/home/rahul/work/dwm-jangir/scripts/oneorganize-clockout")
+        subprocess.run([str(script), task])
+    elif cmd == "open":
+        portal_url = f"{DEFAULT_BASE_URL}/account-dashboard"
+        subprocess.run(["xdg-open", portal_url])
+    else:
+        print(f"Unknown command: {cmd}", file=sys.stderr)
+        sys.exit(1)
+
+
+if __name__ == "__main__":
+    main()
