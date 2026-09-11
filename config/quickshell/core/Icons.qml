@@ -136,80 +136,129 @@ Singleton {
             addIconSource(sources, "image://icon/dialog-password-symbolic");
         } else if (iconName === "steam_tray_mono") {
             addIconSource(sources, "file:///usr/share/pixmaps/steam_tray_mono.png");
+        } else if (iconName === "flameshot-tray" || iconName === "flameshot") {
+            const home = Quickshell.env("HOME") || "";
+            const xdgDataHome = Quickshell.env("XDG_DATA_HOME") || (home.length > 0 ? home + "/.local/share" : "");
+
+            if (xdgDataHome.length > 0) {
+                addIconSource(sources, "file://" + xdgDataHome + "/icons/flameshot-tray.svg");
+                addIconSource(sources, "file://" + xdgDataHome + "/icons/flameshot.svg");
+                addIconSource(sources, "file://" + xdgDataHome + "/flatpak/exports/share/icons/hicolor/scalable/apps/org.flameshot.Flameshot.svg");
+                addIconSource(sources, "file://" + xdgDataHome + "/flatpak/exports/share/icons/hicolor/48x48/apps/org.flameshot.Flameshot.png");
+            }
+            if (home.length > 0) {
+                addIconSource(sources, "file://" + home + "/.icons/flameshot-tray.svg");
+                addIconSource(sources, "file://" + home + "/.icons/flameshot.svg");
+            }
+            addIconSource(sources, "file:///usr/share/icons/breeze-dark/status/24/flameshot-tray.svg");
+            addIconSource(sources, "file:///usr/share/icons/breeze/status/24/flameshot-tray.svg");
+            addIconSource(sources, "file:///usr/share/icons/hicolor/48x48/apps/flameshot.png");
+            addIconSource(sources, "file:///usr/share/icons/hicolor/scalable/apps/flameshot.svg");
+            addIconSource(sources, "image://icon/flameshot-tray-symbolic");
+            addIconSource(sources, "image://icon/flameshot-tray");
+            addIconSource(sources, "image://icon/flameshot");
+            addIconSource(sources, "image://icon/org.flameshot.Flameshot");
         }
     }
 
     function trayIconSources(trayItem) {
-        const icon = trayItem && trayItem.icon;
+        const icon = (trayItem && trayItem.icon) || "";
+        const id = (trayItem && (trayItem.id || trayItem.title)) || "";
+        const title = (trayItem && (trayItem.title || trayItem.tooltipTitle || "")) || "";
         const sources = [];
 
-        if (typeof icon !== "string" && !(icon instanceof String)) {
-            return sources;
+        const isFlameshot = id === "flameshot" || icon === "flameshot" || icon === "flameshot-tray" || icon === "org.flameshot.Flameshot";
+        if (isFlameshot) {
+            addThemeFallbacks(sources, "flameshot-tray");
+            addHicolorFallbacks(sources, "flameshot-tray");
+            addCheckedThemeSources(sources, "flameshot-tray");
         }
 
-        if (icon.length === 0) {
-            return sources;
+        const isRustDesk = title.toLowerCase() === "rustdesk"
+            || id.toLowerCase().indexOf("rustdesk") >= 0
+            || (typeof icon === "string" && icon.toLowerCase().indexOf("rustdesk") >= 0);
+        if (isRustDesk) {
+            const home = Quickshell.env("HOME") || "";
+            addIconSource(sources, Qt.resolvedUrl("../assets/rustdesk-tray.svg"));
+            if (home.length > 0) {
+                addIconSource(sources, "file://" + home + "/.config/quickshell/assets/rustdesk-tray.svg");
+                addIconSource(sources, "file://" + home + "/.local/share/dwm-jangir/config/quickshell/assets/rustdesk-tray.svg");
+            }
+            addIconSource(sources, "file:///home/rahul/work/personal-projacts/dwm-jangir/config/quickshell/assets/rustdesk-tray.svg");
+            addIconSource(sources, "file:///usr/share/icons/hicolor/scalable/apps/rustdesk.svg");
         }
 
-        if (icon.indexOf("image://icon/") === 0) {
-            const queryIndex = icon.indexOf("?path=");
-            const iconStart = "image://icon/".length;
-            const iconName = decodeIconPart(queryIndex >= 0 ? icon.substring(iconStart, queryIndex) : icon.substring(iconStart));
+        if (typeof icon === "string" || icon instanceof String) {
+            if (icon.indexOf("image://icon/") === 0) {
+                const queryIndex = icon.indexOf("?path=");
+                const iconStart = "image://icon/".length;
+                const iconName = decodeIconPart(queryIndex >= 0 ? icon.substring(iconStart, queryIndex) : icon.substring(iconStart));
 
-            if (iconName.indexOf("/") === 0) {
-                addIconSource(sources, "file://" + iconName);
+                if (iconName.indexOf("/") === 0) {
+                    addIconSource(sources, "file://" + iconName);
+                    addIconSource(sources, icon);
+                    return sources;
+                }
+
+                if (queryIndex >= 0) {
+                    let iconPath = icon.substring(queryIndex + "?path=".length);
+                    const iconPathEnd = iconPath.indexOf("&");
+
+                    if (iconPathEnd >= 0) {
+                        iconPath = iconPath.substring(0, iconPathEnd);
+                    }
+
+                    iconPath = decodeIconPart(iconPath);
+                    if (iconName.indexOf("/") !== 0) {
+                        if (iconPath.indexOf("/") === 0 && looksLikeIconFilePath(iconPath)) {
+                            addIconSource(sources, "file://" + iconPath);
+                        }
+
+                        addIconSource(sources, "file://" + iconPath + "/" + iconName);
+                        addIconSource(sources, "file://" + iconPath + "/" + iconName + ".png");
+                        addIconSource(sources, "file://" + iconPath + "/" + iconName + ".svg");
+                        addIconSource(sources, "file://" + iconPath + "/" + iconName + ".ico");
+                        addIconSource(sources, "file://" + iconPath + "/" + iconName + ".tga");
+                        addIconThemeFileSources(sources, iconPath, iconName);
+                    }
+                }
+
+                addThemeFallbacks(sources, iconName);
+                addHicolorFallbacks(sources, iconName);
+                addCheckedThemeSources(sources, iconName);
                 addIconSource(sources, icon);
                 return sources;
             }
 
-            if (queryIndex >= 0) {
-                let iconPath = icon.substring(queryIndex + "?path=".length);
-                const iconPathEnd = iconPath.indexOf("&");
-
-                if (iconPathEnd >= 0) {
-                    iconPath = iconPath.substring(0, iconPathEnd);
+            if (icon.indexOf("image://") === 0 || icon.indexOf("file://") === 0 || icon.indexOf("qrc:") === 0) {
+                addIconSource(sources, icon);
+                if (!isFlameshot && !isRustDesk) {
+                    return sources;
+                }
+            } else if (icon.indexOf("/") === 0) {
+                addIconSource(sources, "file://" + icon);
+                if (!isFlameshot && !isRustDesk) {
+                    return sources;
+                }
+            } else if (icon.length > 0) {
+                if (icon === "dialog-password") {
+                    addIconSource(sources, Quickshell.iconPath("dialog-password-symbolic", true));
                 }
 
-                iconPath = decodeIconPart(iconPath);
-                if (iconName.indexOf("/") !== 0) {
-                    if (iconPath.indexOf("/") === 0 && looksLikeIconFilePath(iconPath)) {
-                        addIconSource(sources, "file://" + iconPath);
-                    }
-
-                    addIconSource(sources, "file://" + iconPath + "/" + iconName);
-                    addIconSource(sources, "file://" + iconPath + "/" + iconName + ".png");
-                    addIconSource(sources, "file://" + iconPath + "/" + iconName + ".svg");
-                    addIconSource(sources, "file://" + iconPath + "/" + iconName + ".ico");
-                    addIconSource(sources, "file://" + iconPath + "/" + iconName + ".tga");
-                    addIconThemeFileSources(sources, iconPath, iconName);
-                }
+                addThemeFallbacks(sources, icon);
+                addHicolorFallbacks(sources, icon);
+                addCheckedThemeSources(sources, icon);
+                addIconSource(sources, icon);
+                return sources;
             }
-
-            addThemeFallbacks(sources, iconName);
-            addHicolorFallbacks(sources, iconName);
-            addCheckedThemeSources(sources, iconName);
-            addIconSource(sources, icon);
-            return sources;
         }
 
-        if (icon.indexOf("image://") === 0 || icon.indexOf("file://") === 0 || icon.indexOf("qrc:") === 0) {
-            addIconSource(sources, icon);
-            return sources;
+        if (id.length > 0 && sources.length === 0) {
+            addThemeFallbacks(sources, id);
+            addHicolorFallbacks(sources, id);
+            addCheckedThemeSources(sources, id);
         }
 
-        if (icon.indexOf("/") === 0 && icon.indexOf("file://") !== 0) {
-            addIconSource(sources, "file://" + icon);
-            return sources;
-        }
-
-        if (icon === "dialog-password") {
-            addIconSource(sources, Quickshell.iconPath("dialog-password-symbolic", true));
-        }
-
-        addThemeFallbacks(sources, icon);
-        addHicolorFallbacks(sources, icon);
-        addCheckedThemeSources(sources, icon);
-        addIconSource(sources, icon);
         return sources;
     }
 }
