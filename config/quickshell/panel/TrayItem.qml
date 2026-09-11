@@ -11,6 +11,18 @@ Rectangle {
     property var iconSources: Icons.trayIconSources(root.trayItem)
     property int iconSourceIndex: 0
 
+    function toggleContextMenu() {
+        if (root.trayItem && root.trayItem.hasMenu) {
+            if (trayMenu.visible) {
+                trayMenu.close();
+            } else {
+                trayMenu.open();
+            }
+        } else if (root.trayItem) {
+            root.trayItem.activate();
+        }
+    }
+
     function openContextMenu() {
         if (root.trayItem && root.trayItem.hasMenu) {
             trayMenu.open();
@@ -18,14 +30,12 @@ Rectangle {
     }
 
     function handleClick(button) {
-        if (button === Qt.LeftButton) {
-            if (!root.trayItem.onlyMenu) {
-                root.trayItem.activate();
-            } else if (root.trayItem.hasMenu) {
-                root.openContextMenu();
-            }
+        if (button === Qt.LeftButton || button === Qt.RightButton) {
+            root.toggleContextMenu();
         } else if (button === Qt.MiddleButton) {
-            root.trayItem.secondaryActivate();
+            if (root.trayItem) {
+                root.trayItem.secondaryActivate();
+            }
         }
     }
 
@@ -88,15 +98,14 @@ Rectangle {
         cursorShape: Qt.PointingHandCursor
 
         onPressed: mouse => {
-            if (mouse.button === Qt.RightButton) {
-                root.openContextMenu();
+            if (mouse.button === Qt.RightButton || mouse.button === Qt.LeftButton) {
+                root.toggleContextMenu();
                 mouse.accepted = true;
-            }
-        }
-
-        onClicked: mouse => {
-            if (mouse.button !== Qt.RightButton) {
-                root.handleClick(mouse.button);
+            } else if (mouse.button === Qt.MiddleButton) {
+                if (root.trayItem) {
+                    root.trayItem.secondaryActivate();
+                }
+                mouse.accepted = true;
             }
         }
     }
