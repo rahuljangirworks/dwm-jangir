@@ -69,6 +69,10 @@ INSTALL_COMMANDS = \
 	scripts/nvidia-gpu \
 	scripts/nvidia-suspend-test.sh \
 	scripts/nvidia-temp \
+	scripts/oneorganize-clockin \
+	scripts/oneorganize-clockout \
+	scripts/oneorganize-status \
+	scripts/oneorganize-tray \
 	scripts/pkg-scan.py \
 	scripts/power-management.sh \
 	scripts/protonrestart \
