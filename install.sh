@@ -71,6 +71,9 @@ Options:
                          Defaults to DWM_INSTALL_PROFILE or full.
   --display-profile NAME Install an opt-in personal display profile. Supported:
                          dell-5820. It is never selected automatically.
+  --lightdm-theme NAME  Select a LightDM greeter theme: stock or solar.
+                         Defaults to stock for new installs and preserves an
+                         existing Solar selection on installer re-runs.
   --non-interactive      Use unattended defaults and do not prompt.
   --yes                  Accept the interactive install summary.
   --install-herdr        Install verified Herdr as an optional workspace.
@@ -118,6 +121,8 @@ ASSUME_YES=false
 FEDORA_GAMING_REPOS_APPROVED=false
 DRY_RUN=false
 DISPLAY_PROFILE=""
+LIGHTDM_THEME_OPTION="${DWM_LIGHTDM_THEME:-}"
+LIGHTDM_THEME=""
 
 while (($# > 0)); do
 	case "$1" in
@@ -143,6 +148,18 @@ while (($# > 0)); do
 		;;
 	--display-profile=*)
 		DISPLAY_PROFILE=${1#*=}
+		shift
+		;;
+	--lightdm-theme)
+		if (($# < 2)); then
+			err "--lightdm-theme requires a value."
+			exit 1
+		fi
+		LIGHTDM_THEME_OPTION=$2
+		shift 2
+		;;
+	--lightdm-theme=*)
+		LIGHTDM_THEME_OPTION=${1#*=}
 		shift
 		;;
 	--non-interactive)
@@ -199,6 +216,15 @@ case "$DISPLAY_PROFILE" in
 *)
 	err "Unsupported display profile: $DISPLAY_PROFILE"
 	err "Supported display profiles: dell-5820"
+	exit 1
+	;;
+esac
+
+case "$LIGHTDM_THEME_OPTION" in
+"" | stock | solar) ;;
+*)
+	err "Unsupported LightDM theme: $LIGHTDM_THEME_OPTION"
+	err "Supported LightDM themes: stock, solar"
 	exit 1
 	;;
 esac
@@ -382,6 +408,10 @@ print_install_summary() {
 	printf '  Family: %s\n' "$DISTRO_FAMILY"
 	printf '  Package manager: %s\n' "$PKG_CMD"
 	printf '  Profile: %s\n' "$INSTALL_PROFILE"
+	printf '  LightDM greeter theme: %s\n' "$LIGHTDM_THEME"
+	if [[ $LIGHTDM_THEME == solar ]]; then
+		printf '  Solar timeline: optional wttr.in weather, refreshed every 15 minutes\n'
+	fi
 	if [[ -n $DISPLAY_PROFILE ]]; then
 		printf '  Personal display profile: %s (opt-in)\n' "$DISPLAY_PROFILE"
 	else
@@ -889,11 +919,15 @@ install_lightdm_config() {
 	local lightdm_logind_check=false
 
 	lightdm_seat_section="Seat:*"
-	lightdm_greeter_session="slick-greeter"
+	if [[ $LIGHTDM_THEME == solar ]]; then
+		install_solar_lightdm_greeter
+		lightdm_greeter_session="dwm-jangir-slick-greeter"
+	fi
 	lightdm_session_wrapper=""
 	lightdm_logind_check=true
 
 	sudo make -C "$REPO_DIR/lightdm" \
+		LIGHTDM_THEME="$LIGHTDM_THEME" \
 		LIGHTDM_SEAT_SECTION="$lightdm_seat_section" \
 		LIGHTDM_GREETER_SESSION="$lightdm_greeter_session" \
 		LIGHTDM_SESSION_WRAPPER="$lightdm_session_wrapper" \
@@ -905,7 +939,61 @@ install_lightdm_config() {
 			/etc/lightdm/slick-greeter.conf \
 			/usr/share/pixmaps/dwm-jangir.jpg \
 			/usr/share/pixmaps/dwm-jangir-logo.png
+		if [[ $LIGHTDM_THEME == solar ]]; then
+			sudo restorecon -R \
+				/usr/share/dwm-jangir/lightdm-assets \
+				/usr/share/themes/dwm-jangir-dark
+			sudo restorecon \
+				/usr/libexec/dwm-jangir-slick-greeter \
+				/usr/libexec/dwm-jangir-slick-greeter-bin \
+				/usr/share/xgreeters/dwm-jangir-slick-greeter.desktop
+		fi
 	fi
+}
+
+resolve_lightdm_theme() {
+	if [[ -n $LIGHTDM_THEME_OPTION ]]; then
+		LIGHTDM_THEME=$LIGHTDM_THEME_OPTION
+		return
+	fi
+
+	# Preserve the opt-in theme when the installer is re-run, but make the
+	# upstream Slick Greeter the default on new installations.
+	if [[ -r /etc/lightdm/lightdm.conf ]] &&
+		grep -Eq '^greeter-session=dwm-jangir-slick-greeter$' /etc/lightdm/lightdm.conf; then
+		LIGHTDM_THEME=solar
+	else
+		LIGHTDM_THEME=stock
+	fi
+}
+
+install_solar_lightdm_greeter() {
+	local installed_version overlay_version rpm_path
+
+	command -v rpm >/dev/null 2>&1 || {
+		err "The Solar LightDM theme requires the Fedora rpm command."
+		exit 1
+	}
+	installed_version=$(rpm -q --qf '%{VERSION}' slick-greeter 2>/dev/null || true)
+	if [[ $installed_version != 2.2.6 ]]; then
+		err "Solar requires slick-greeter 2.2.6; detected: ${installed_version:-not installed}."
+		err "Use --lightdm-theme stock, or install the compatible Fedora package first."
+		exit 1
+	fi
+	overlay_version=$(rpm -q --qf '%{VERSION}' dwm-jangir-slick-greeter 2>/dev/null || true)
+	if [[ $overlay_version == 2.2.6 ]]; then
+		ok "Solar Slick Greeter overlay is already installed."
+		return
+	fi
+
+	info "Building the pinned Solar Slick Greeter overlay..."
+	dwm_install_package_profile lightdm-solar-build
+	rpm_path=$("$REPO_DIR/lightdm/rpm/build-dwm-jangir-slick-greeter-rpm.sh" --print-rpm)
+	[[ -f $rpm_path ]] || {
+		err "Solar greeter build did not produce an RPM."
+		exit 1
+	}
+	sudo dnf install -y "$rpm_path"
 }
 
 echo ""
@@ -917,6 +1005,7 @@ info "Distribution: $DISTRO_NAME"
 info "Family: $DISTRO_FAMILY"
 info "Package manager: $PKG_CMD"
 info "Install profile: $INSTALL_PROFILE"
+resolve_lightdm_theme
 print_install_preflight
 confirm_install_summary
 ensure_sudo_access
@@ -1088,7 +1177,7 @@ fi
 
 # ── LightDM greeter config ───────────────────────────────
 if [[ $currentdm == "lightdm" ]]; then
-	info "Deploying LightDM Slick Greeter config..."
+	info "Deploying LightDM $LIGHTDM_THEME greeter config..."
 	install_lightdm_config
 	ok "LightDM config deployed."
 fi

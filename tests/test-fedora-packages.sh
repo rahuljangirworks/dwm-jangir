@@ -28,6 +28,7 @@ mapfile -t packages < <(
 	{
 		dwm_packages fedora required
 		dwm_packages fedora image-build
+		dwm_packages fedora lightdm-solar-build
 		dwm_packages fedora desktop
 		dwm_packages fedora system-management
 		dwm_packages fedora system-management-optional
@@ -71,6 +72,9 @@ printf '%s\n' "$installed_provider_packages" | grep -Fxq upower
 printf '%s\n' "$installed_provider_packages" | grep -Fxq dbus-tools
 printf '%s\n' "$installed_provider_packages" | grep -Fxq inotify-tools
 printf '%s\n' "$installed_provider_packages" | grep -Fxq xsettingsd
+for package in lightdm-gobject-devel xapps-devel; do
+	dwm_packages fedora lightdm-solar-build | grep -Fx "$package" >/dev/null
+done
 # Drain each producer under pipefail; grep -q can close a successful match early.
 for package in PackageKit PackageKit-glib python3-gobject python3-rpm accountsservice cups system-config-printer; do
 	dwm_packages fedora system-management | grep -Fx "$package" >/dev/null

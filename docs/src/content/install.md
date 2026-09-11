@@ -96,6 +96,29 @@ ssh -tt user@host 'cd /path/to/dwm-jangir && ./install.sh --non-interactive --pr
 `--dry-run` does not require sudo and remains safe for CI or non-interactive
 preflight checks.
 
+### LightDM greeter themes
+
+When LightDM is installed, the default `stock` theme uses Fedora's packaged
+`slick-greeter` with the project wallpaper and logo. The optional `solar`
+theme recreates the VM1 image-free line/grain design with a local clock and an
+optional solar/weather timeline:
+
+```bash
+./install.sh --profile full --lightdm-theme solar
+```
+
+Solar is a locally built overlay pinned to `slick-greeter` 2.2.6. The installer
+checks that exact installed version and fails with an actionable error if it is
+incompatible; it does not silently substitute another greeter. Its no-key
+`wttr.in` lookup has a two-second connection limit, four-second total limit,
+and fifteen-minute refresh. If it cannot obtain data, only the timeline hides;
+the greeter remains usable.
+
+New installations default to `stock`. A later installer run without a theme
+flag preserves an existing Solar choice. To return to the upstream greeter,
+run `./install.sh --lightdm-theme stock`. Switching to stock retains Solar's
+installed RPM and assets for a future explicit switch back.
+
 ### Runtime identity migration
 
 The active installed identity is `dwm-jangir`. A normal installer run first

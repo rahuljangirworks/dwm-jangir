@@ -1,0 +1,5 @@
+[Desktop Entry]
+Name=dwm-jangir Slick Greeter
+Comment=Image-free Solar timeline Slick Greeter
+Exec=/usr/libexec/dwm-jangir-slick-greeter
+Type=Application

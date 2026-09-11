@@ -82,6 +82,12 @@ dwm_packages() {
 	fedora:lightdm)
 		printf '%s\n' lightdm slick-greeter
 		;;
+	fedora:lightdm-solar-build)
+		# Build dependencies for the optional, pinned Solar greeter overlay.
+		printf '%s\n' \
+			rpm-build meson desktop-file-utils gettext-devel intltool patch \
+			lightdm-gobject-devel gtk3-devel libcanberra-devel xapps-devel vala
+		;;
 	fedora:terminal)
 		printf '%s\n' alacritty kitty
 		;;

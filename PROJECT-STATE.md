@@ -3,7 +3,7 @@ title: DWM-Jangir Project State
 type: live-project-state
 project: dwm-jangir
 status: active
-last-verified: 2026-09-10
+last-verified: 2026-09-11
 ---
 
 # DWM-Jangir Project State
@@ -27,14 +27,16 @@ This record contains verified current facts only.
 
 The sync imports the upstream Phase 6 system-management work, docked/undocked
 display profiles, relative monitor placement, `dwmterm`, and Anaconda branding.
-It retains only D-001 through D-007: Rahul panel branding, the `dwm-jangir`
-runtime identity, generic NVIDIA MetaModes, the minimal D-Bus session wrapper,
-and the opt-in Dell 5820 profile.
+At the 2026-09-10 sync point it retained only D-001 through D-007: Rahul panel
+branding, the `dwm-jangir` runtime identity, generic NVIDIA MetaModes, the
+minimal D-Bus session wrapper, and the opt-in Dell 5820 profile. D-008 was
+approved afterwards for the optional Solar LightDM theme.
 
-The fork-specific patched LightDM greeter, custom RPM, wallpapers, and visual
-overlay were removed. The active configuration uses upstream `slick-greeter`
-with `user-session=dwm-jangir`; `dwm.desktop` is only a compatibility symlink
-to `dwm-jangir.desktop`.
+The active default configuration uses upstream `slick-greeter` with
+`user-session=dwm-jangir`; `dwm.desktop` is only a compatibility symlink to
+`dwm-jangir.desktop`. D-008 adds the former VM1 Solar visual greeter only as
+an explicit `--lightdm-theme solar` choice. It is an image-free, Slick Greeter
+2.2.6-pinned overlay; no historical wallpaper bundle was restored.
 
 ## Validation
 
@@ -52,6 +54,15 @@ Passed locally:
 - Installer non-TTY sudo preflight: the Fedora VM reproduces a non-interactive
   invocation without a pseudo-terminal exiting before build configuration or
   package changes, with the tested `ssh -tt` remediation message.
+- Fedora 44 VM `dwm-jangir-test`, restored from the `working-lightdm`
+  snapshot: `slick-greeter-2.2.6-2.fc44` built the local Solar RPM successfully
+  with `lightdm-gobject-devel` and `xapps-devel`. The core installer deployed
+  Solar, LightDM restarted into the image-free clock/sun-timeline greeter, and
+  a real `jangir` login reached the `dwm-jangir` desktop. An explicit stock
+  installer run restarted into upstream Slick Greeter and confirmed that the
+  Solar wrapper and RPM were retained. Switching back to Solar and running a
+  no-flag dry run resolved `LightDM greeter theme: solar`, proving rerun
+  selection preservation.
 
 Not fully validated here:
 
@@ -63,6 +74,6 @@ Not fully validated here:
 
 ## Next Action
 
-Review the final diff, run the unavailable Fedora validation where possible,
-then push `dev` only with maintainer approval. Do not force-push or modify the
-read-only upstream remote.
+Review the Solar-theme final diff and offline-weather failure behavior before
+release, then push `dev` only with maintainer approval. Do not force-push or
+modify the read-only upstream remote.

@@ -6,6 +6,14 @@ versions from `config.mk`.
 
 ## [Unreleased]
 
+### Added
+
+- Add the optional `--lightdm-theme solar` LightDM theme. It restores the VM1
+  image-free line/grain, clock, and bounded optional sun/weather timeline as a
+  pinned Slick Greeter 2.2.6 overlay, while Fedora's stock `slick-greeter`
+  remains the default. Installer re-runs preserve a Solar selection unless an
+  explicit `--lightdm-theme stock` switch is requested.
+
 ### Changed
 
 - Validate sudo access before installation mutates the checkout or system. A

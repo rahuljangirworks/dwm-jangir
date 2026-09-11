@@ -1,0 +1,15 @@
+#!/usr/bin/env bash
+# Launch the optional Solar Slick Greeter.
+# The greeter renders its image-free background itself; the only network access
+# is its bounded, optional weather lookup.
+set -euo pipefail
+
+readonly greeter_bin=/usr/libexec/dwm-jangir-slick-greeter-bin
+
+if [[ -x "$greeter_bin" ]]; then
+  exec "$greeter_bin" "$@"
+fi
+
+logger -t dwm-jangir-slick-greeter \
+  'Patched greeter binary is missing; falling back to Fedora slick-greeter.'
+exec /usr/sbin/slick-greeter "$@"
