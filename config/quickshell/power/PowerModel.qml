@@ -30,6 +30,7 @@ Scope {
     property int batteryTimeToFull: 0
     property real batteryRate: 0
     property string batteryDetail: "No system battery is present"
+    property var physicalBatteries: []
     property string externalPowerState: "unknown"
     property string externalPowerDetail: "External power state is unavailable"
 
@@ -69,6 +70,7 @@ Scope {
     readonly property bool sectionVisible: root.settingsVisible || root.controlCenterVisible
         || root.sessionMenuVisible
     readonly property var nativeBattery: UPower.displayDevice
+    readonly property var nativeBatteries: UPower.devices.values
     readonly property var timeoutPresets: [
         { "label": "5m", "seconds": 300 },
         { "label": "10m", "seconds": 600 },
@@ -141,6 +143,7 @@ Scope {
         root.batteryTimeToFull = 0;
         root.batteryRate = 0;
         root.batteryDetail = detail;
+        root.physicalBatteries = [];
     }
 
     function clearPolicyState(detail) {
@@ -171,6 +174,7 @@ Scope {
 
     function updateNativeBattery() {
         const battery = root.nativeBattery;
+        root.updatePhysicalBatteries();
         if (battery === null || !battery.ready) {
             root.clearExternalPowerState("UPower external-power state is unavailable");
             root.clearBatteryState("UPower display battery is unavailable");
@@ -197,6 +201,27 @@ Scope {
         root.batteryTimeToFull = Math.max(0, Math.round(battery.timeToFull));
         root.batteryRate = Math.max(0, battery.changeRate);
         root.batteryDetail = battery.model.length > 0 ? battery.model : "UPower display battery";
+    }
+
+    function updatePhysicalBatteries() {
+        const batteries = [];
+        const devices = root.nativeBatteries;
+        for (let index = 0; index < devices.length; index++) {
+            const battery = devices[index];
+            if (battery === null || !battery.ready || !battery.isLaptopBattery || !battery.isPresent)
+                continue;
+            const nativePath = typeof battery.nativePath === "string" ? battery.nativePath : "";
+            const name = nativePath.length > 0 ? nativePath.split("/").pop()
+                : "Battery " + (index + 1).toString();
+            batteries.push({
+                "name": name,
+                "percent": Math.max(0, Math.min(100, Math.round(battery.percentage * 100))),
+                "status": root.nativeBatteryStatus(battery.state),
+                "health": battery.healthSupported
+                    ? Math.max(0, Math.min(100, Math.round(battery.healthPercentage * 100))) : -1
+            });
+        }
+        root.physicalBatteries = batteries;
     }
 
     function nativeBatteryStatus(state) {
@@ -495,6 +520,26 @@ Scope {
     Connections {
         target: UPower
         function onOnBatteryChanged() { root.updateNativeBattery(); }
+    }
+
+    Connections {
+        target: UPower.devices
+        function onObjectInsertedPost() { root.updatePhysicalBatteries(); }
+        function onObjectRemovedPost() { root.updatePhysicalBatteries(); }
+    }
+
+    Instantiator {
+        model: UPower.devices
+
+        delegate: Connections {
+            required property var modelData
+            target: modelData
+            function onReadyChanged() { root.updatePhysicalBatteries(); }
+            function onIsPresentChanged() { root.updatePhysicalBatteries(); }
+            function onPercentageChanged() { root.updatePhysicalBatteries(); }
+            function onStateChanged() { root.updatePhysicalBatteries(); }
+            function onHealthPercentageChanged() { root.updatePhysicalBatteries(); }
+        }
     }
 
     Connections {

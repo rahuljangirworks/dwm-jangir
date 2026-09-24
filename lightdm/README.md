@@ -52,6 +52,11 @@ installed: they appear as real login choices. Remove or move an exactly
 identified test entry only after confirming the real `dwm-jangir.desktop`
 entry remains.
 
+When an older `dwm` session is renamed to `dwm-jangir`, Slick Greeter can keep
+the retired ID as a per-user AccountsService preference. The main installer and
+the live synchronization helper migrate that exact stale ID without changing
+any other session the user selected.
+
 The source of truth for GTK/Vala UI changes is
 `rpm/patches/0001-dwm-jangir-greeter-ui.patch`, not the installed binary.
 Recreate the patch from the pinned Slick Greeter source, run the LightDM

@@ -3,14 +3,17 @@
 ## Purpose
 
 `dwm-quickshell-controlcenter power-snapshot` exposes the power state used by
-the shared Quickshell Power model. It combines the UPower display device,
+the shared Quickshell Power model. It combines the UPower display device and
+physical laptop-battery inventory,
 Power Profiles D-Bus service, systemd-logind capability state, X11 DPMS, and
 the existing light-locker and `power.conf` policy without granting QML a
 generic command or privileged interface.
 
 The same root-scoped model supplies the panel battery indicator and the Power
-Settings pane. Service events request a new bounded snapshot; they do not
-carry trusted state directly into QML.
+Settings pane. The panel shows each physical laptop battery when more than one
+is present, alongside UPower's aggregate total in its tooltip. Service events
+request a new bounded snapshot; they do not carry trusted state directly into
+QML.
 
 ## Version and Parsing
 

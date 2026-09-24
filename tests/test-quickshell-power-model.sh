@@ -14,6 +14,9 @@ shell=$repo/config/quickshell/shell.qml
 
 grep -Fq 'import Quickshell.Services.UPower' "$model"
 grep -Fq 'readonly property var nativeBattery: UPower.displayDevice' "$model"
+grep -Fq 'readonly property var nativeBatteries: UPower.devices.values' "$model"
+grep -Fq 'function updatePhysicalBatteries()' "$model"
+grep -Fq 'model: UPower.devices' "$model"
 grep -Fq 'function onOnBatteryChanged()' "$model"
 grep -Fq 'Math.round(battery.percentage * 100)' "$model"
 grep -Fq 'function nativeBatteryStatus(state)' "$model"
@@ -101,6 +104,11 @@ grep -Fq 'powerModel: powerModel' "$shell"
 grep -Fq 'required property var powerModel' "$panel"
 grep -Fq 'visible: root.powerModel.batteryAvailable' "$panel"
 grep -Fq 'root.powerModel.batteryPercent.toString() + "%"' "$panel"
+grep -Fq 'function batteryTooltip()' "$panel"
+grep -Fq 'function batteryPanelText()' "$panel"
+grep -Fq 'root.powerModel.physicalBatteries' "$panel"
+grep -Fq 'root.controlCenterModel.openPower();' "$panel"
+grep -Fq 'Click for Power settings' "$panel"
 if grep -Fq 'visible: root.state.batteryAvailable' "$panel"; then
 	printf 'Panel still renders battery state from the legacy DwmState model.\n' >&2
 	exit 1

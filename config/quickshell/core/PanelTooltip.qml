@@ -14,7 +14,7 @@ PopupWindow {
     readonly property real tooltipWidth: tooltipLabel.implicitWidth + Theme.pillHorizontalPadding * 2
 
     implicitWidth: root.tooltipWidth
-    implicitHeight: Theme.pillHeight
+    implicitHeight: Math.max(Theme.pillHeight, tooltipLabel.implicitHeight + Theme.spacingSm * 2)
     color: Theme.transparent
     mask: Region {}
 
@@ -43,6 +43,7 @@ PopupWindow {
             text: root.label
             color: Theme.textStrong
             font.pixelSize: Theme.smallFontSize
+            horizontalAlignment: Text.AlignHCenter
         }
     }
 }

@@ -48,6 +48,7 @@ INSTALL_COMMANDS = \
 	scripts/dwm-polkit \
 	scripts/dwm-packages.sh \
 	scripts/dwm-jangir-release \
+	scripts/migrate-lightdm-session \
 	scripts/dwm-screenshot \
 	scripts/dwm-settings \
 	scripts/dwm-settings-display \

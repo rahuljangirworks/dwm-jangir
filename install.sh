@@ -1091,6 +1091,10 @@ sudo make install-system \
 	USER_HOME="$HOME" \
 	OWNER="$(id -un)" \
 	DATADIR="/usr/share"
+if [[ $currentdm == "lightdm" ]]; then
+	info "Migrating a retired saved LightDM session, if present..."
+	"$REPO_DIR/scripts/migrate-lightdm-session" "$(id -un)"
+fi
 migrate_user_runtime_identity
 make install-user \
 	USER_HOME="$HOME" \

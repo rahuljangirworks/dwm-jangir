@@ -28,6 +28,56 @@ PanelWindow {
         return "󰂎";
     }
 
+    function batteryStatusLabel(status) {
+        if (status === "charging") return "Charging";
+        if (status === "discharging") return "On battery";
+        if (status === "full") return "Charge limit reached";
+        if (status === "pending-charge") return "Waiting to charge";
+        if (status === "pending-discharge") return "Waiting to discharge";
+        if (status === "empty") return "Battery empty";
+        return "Battery status unavailable";
+    }
+
+    function formatBatteryTime(seconds) {
+        if (!Number.isInteger(seconds) || seconds <= 0) return "";
+        const hours = Math.floor(seconds / 3600);
+        const minutes = Math.floor((seconds % 3600) / 60);
+        if (hours > 0) return hours.toString() + "h " + minutes.toString() + "m";
+        return minutes.toString() + "m";
+    }
+
+    function batteryPanelText() {
+        const batteries = root.powerModel.physicalBatteries;
+        if (batteries.length < 2) return root.powerModel.batteryPercent.toString() + "%";
+        return batteries.map(function(battery) {
+            return battery.name + " " + battery.percent.toString() + "%";
+        }).join("  ");
+    }
+
+    function batteryTooltip() {
+        const batteries = root.powerModel.physicalBatteries;
+        const lines = [(batteries.length > 1 ? "Total " : "")
+            + root.powerModel.batteryPercent.toString() + "% - "
+            + root.batteryStatusLabel(root.powerModel.batteryStatus)];
+        for (let index = 0; index < batteries.length; index++) {
+            const battery = batteries[index];
+            let line = battery.name + ": " + battery.percent.toString() + "% - "
+                + root.batteryStatusLabel(battery.status);
+            if (battery.health >= 0) line += " (health " + battery.health.toString() + "%)";
+            lines.push(line);
+        }
+        const timeToEmpty = root.formatBatteryTime(root.powerModel.batteryTimeToEmpty);
+        const timeToFull = root.formatBatteryTime(root.powerModel.batteryTimeToFull);
+        if (root.powerModel.batteryStatus === "discharging" && timeToEmpty.length > 0)
+            lines.push(timeToEmpty + " remaining");
+        else if (root.powerModel.batteryStatus === "charging" && timeToFull.length > 0)
+            lines.push(timeToFull + " until charged");
+        lines.push(root.powerModel.externalPowerState === "on" ? "AC connected"
+            : root.powerModel.externalPowerState === "off" ? "Battery power" : "Power source unknown");
+        lines.push("Click for Power settings");
+        return lines.join("\n");
+    }
+
     required property var state
     required property var clock
     required property var networkModel
@@ -209,7 +259,7 @@ PanelWindow {
                             }
 
                             UiText {
-                                text: root.powerModel.batteryPercent.toString() + "%"
+                                text: root.batteryPanelText()
                                 color: Theme.textStrong
                                 font.pixelSize: Theme.panelFontSize
                             }
@@ -219,6 +269,12 @@ PanelWindow {
                             id: batteryMouse
                             anchors.fill: parent
                             hoverEnabled: true
+                            cursorShape: Qt.PointingHandCursor
+                            onClicked: {
+                                root.popupRequested(root, "controlcenter");
+                                root.controlCenterModel.open();
+                                root.controlCenterModel.openPower();
+                            }
                         }
                     }
 
@@ -373,7 +429,7 @@ PanelWindow {
         visible: root.powerModel.batteryAvailable && batteryMouse.containsMouse
         anchorWindow: root
         anchorItem: batteryPill
-        label: root.powerModel.batteryPercent.toString() + "% - " + root.powerModel.batteryStatus
+        label: root.batteryTooltip()
         anchorY: Theme.panelHeight
         rightAligned: true
     }

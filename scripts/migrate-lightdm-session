@@ -1,0 +1,70 @@
+#!/usr/bin/env bash
+# Migrate the saved AccountsService session only when it names the retired
+# "dwm" desktop entry.  Slick Greeter gives this per-user preference priority
+# over LightDM's user-session setting, so leaving it behind prevents login.
+set -euo pipefail
+
+readonly legacy_session=dwm
+readonly current_session=dwm-jangir
+
+warn() {
+	printf 'dwm-jangir: %s\n' "$*" >&2
+}
+
+usage() {
+	printf 'usage: %s [user]\n' "$0" >&2
+}
+
+[[ $# -le 1 ]] || {
+	usage
+	exit 2
+}
+
+target_user=${1:-$(id -un)}
+target_uid=$(id -u "$target_user" 2>/dev/null) || {
+	warn "cannot determine the UID for $target_user; saved LightDM session was not changed."
+	exit 0
+}
+
+command -v sudo >/dev/null 2>&1 || {
+	warn 'sudo is unavailable; saved LightDM session was not changed.'
+	exit 0
+}
+command -v busctl >/dev/null 2>&1 || {
+	warn 'busctl is unavailable; saved LightDM session was not changed.'
+	exit 0
+}
+
+account_path="/org/freedesktop/Accounts/User$target_uid"
+read_session_property() {
+	sudo busctl get-property org.freedesktop.Accounts "$account_path" \
+		org.freedesktop.Accounts.User "$1" 2>/dev/null
+}
+
+stored_session=$(read_session_property Session || true)
+stored_xsession=$(read_session_property XSession || true)
+legacy_value=$(printf 's "%s"' "$legacy_session")
+
+if [[ $stored_session != "$legacy_value" && $stored_xsession != "$legacy_value" ]]; then
+	printf 'dwm-jangir: saved LightDM session for %s does not require migration.\n' "$target_user"
+	exit 0
+fi
+
+if ! sudo busctl call org.freedesktop.Accounts "$account_path" \
+	org.freedesktop.Accounts.User SetSession s "$current_session"; then
+	warn "could not update the saved LightDM session for $target_user; it was left unchanged."
+	exit 0
+fi
+if ! sudo busctl call org.freedesktop.Accounts "$account_path" \
+	org.freedesktop.Accounts.User SetXSession s "$current_session"; then
+	warn "updated Session but could not update XSession for $target_user."
+	exit 0
+fi
+if ! sudo busctl call org.freedesktop.Accounts "$account_path" \
+	org.freedesktop.Accounts.User SetSessionType s x11; then
+	warn "updated the saved session but could not set its X11 type for $target_user."
+	exit 0
+fi
+
+printf 'dwm-jangir: migrated saved LightDM session for %s to %s.\n' \
+	"$target_user" "$current_session"

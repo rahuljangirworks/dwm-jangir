@@ -45,12 +45,10 @@ rules = [
   # { class="Gimp",           isfloating=1 },
   # { class="pavucontrol",    isfloating=1 },
 
-  # ── RustDesk remote desktop ─────────────────────────────────────────────
-  # Incoming connection authorization & security prompts must float & stay on top
-  { class="RustDesk", title="Incoming",       isfloating=1, alwaysontop=1 },
-  { class="rustdesk", title="Incoming",       isfloating=1, alwaysontop=1 },
-  { class="RustDesk", title="Authorization",  isfloating=1, alwaysontop=1 },
-  { class="rustdesk", title="Authorization",  isfloating=1, alwaysontop=1 },
+  # ── RustDesk remote desktop (send to background tag 9, no float, no pop-up) ──
+  { class="Rustdesk", tags=9, isfloating=0, alwaysontop=0 },
+  { instance="rustdesk", tags=9, isfloating=0, alwaysontop=0 },
+  { class="RustDesk", tags=9, isfloating=0, alwaysontop=0 },
   # Dialogs, preferences, and file transfer should float
   { class="RustDesk", title="Connection",     isfloating=1 },
   { class="rustdesk", title="Connection",     isfloating=1 },

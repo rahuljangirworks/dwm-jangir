@@ -44,6 +44,10 @@ cp -a \
 	"$repo_dir/scripts" \
 	"$repo_dir/assets" \
 	"$test_repo/"
+grep -Fq 'migrate_retired_lightdm_session() {' \
+	"$test_repo/scripts/dev-sync-install.sh"
+grep -Fq '"$repo_dir/scripts/migrate-lightdm-session" "$owner"' \
+	"$test_repo/scripts/dev-sync-install.sh"
 printf '%s\n' 'test dwm binary' >"$test_repo/dwm"
 chmod 755 "$test_repo/dwm"
 

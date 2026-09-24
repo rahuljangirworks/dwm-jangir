@@ -23,7 +23,6 @@ logind-check-graphical=true
 
 [Seat:*]
 greeter-session=dwm-jangir-slick-greeter
-greeter-session=slick-greeter
 user-session=dwm-jangir
 CONF
 cmp -s "$work/fedora.expected" "$fedora_stage/etc/lightdm/lightdm.conf"
@@ -52,5 +51,40 @@ if grep -Fq 'display-setup-script=' "$fedora_stage/etc/lightdm/lightdm.conf"; th
 	exit 1
 fi
 bash -n "$repo/lightdm/dwm-jangir-slick-greeter"
+bash -n "$repo/scripts/migrate-lightdm-session"
+
+mock_bin="$work/mock-bin"
+mock_log="$work/migrate-lightdm-session.log"
+mkdir -p "$mock_bin"
+cat >"$mock_bin/sudo" <<'EOF'
+#!/bin/sh
+exec "$@"
+EOF
+cat >"$mock_bin/busctl" <<'EOF'
+#!/bin/sh
+printf '%s\n' "$*" >>"${MOCK_BUSCTL_LOG:?}"
+case "$1:$5" in
+get-property:Session) printf 's "%s"\n' "${MOCK_SESSION:-dwm}" ;;
+get-property:XSession) printf 's "%s"\n' "${MOCK_XSESSION:-dwm}" ;;
+call:*) ;;
+*) exit 64 ;;
+esac
+EOF
+chmod 755 "$mock_bin/sudo" "$mock_bin/busctl"
+PATH="$mock_bin:$PATH" MOCK_BUSCTL_LOG="$mock_log" \
+	"$repo/scripts/migrate-lightdm-session" "$(id -un)" >"$work/migration.out"
+grep -Fq 'migrated saved LightDM session' "$work/migration.out"
+grep -Fq 'SetSession s dwm-jangir' "$mock_log"
+grep -Fq 'SetXSession s dwm-jangir' "$mock_log"
+grep -Fq 'SetSessionType s x11' "$mock_log"
+: >"$mock_log"
+PATH="$mock_bin:$PATH" MOCK_BUSCTL_LOG="$mock_log" \
+	MOCK_SESSION=gnome MOCK_XSESSION=gnome \
+	"$repo/scripts/migrate-lightdm-session" "$(id -un)" >"$work/current-session.out"
+grep -Fq 'does not require migration' "$work/current-session.out"
+if grep -Fq ' call ' "$mock_log"; then
+	printf 'LightDM session migration overwrote a non-legacy session.\n' >&2
+	exit 1
+fi
 
 printf 'LightDM config rendering: PASS\n'

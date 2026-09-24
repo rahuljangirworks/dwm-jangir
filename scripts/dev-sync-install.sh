@@ -487,6 +487,17 @@ fi
 prepare_expected_files
 reconcile_source_update_dependencies
 
+migrate_retired_lightdm_session() {
+	[ -x /usr/bin/lightdm ] && [ -f /etc/lightdm/lightdm.conf ] || return 0
+	[ -x "$repo_dir/scripts/migrate-lightdm-session" ] ||
+		die "missing LightDM session migration helper"
+	command -v sudo >/dev/null 2>&1 ||
+		die "sudo is required to migrate the saved LightDM session"
+	note "Migrating a retired saved LightDM session, if present"
+	sudo -v
+	"$repo_dir/scripts/migrate-lightdm-session" "$owner"
+}
+
 if [ "$check_only" -eq 1 ]; then
 	note "Checking live install against $repo_dir"
 	verify_install || exit 1
@@ -500,6 +511,7 @@ note "Building current checkout"
 
 if verify_install; then
 	note "Live installation is already current"
+	migrate_retired_lightdm_session
 	runtime_verify 0 || exit 1
 	exit 0
 fi
@@ -521,6 +533,8 @@ sudo "$make_path" -C "$repo_dir" install \
 	OWNER="$owner" \
 	XDG_CONFIG_HOME="$config_home" \
 	XDG_DATA_HOME="$xdg_data_home"
+
+migrate_retired_lightdm_session
 
 note "Verifying installed state"
 verify_install || die "live installation does not match the checkout"
