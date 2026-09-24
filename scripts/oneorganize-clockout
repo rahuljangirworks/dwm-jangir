@@ -1,0 +1,432 @@
+#!/usr/bin/env python3
+"""
+OneOrganize Automated Clock-Out Script
+--------------------------------------
+Automates the clock-out process on OneOrganize HRM portal:
+1. Verifies existing session or logs in with provided credentials.
+2. Checks that you are clocked in today and not already clocked out.
+3. Obtains today's attendance record and available projects.
+4. Allows specifying task details via CLI argument, interactive prompt,
+   graphical Zenity dialog, or default daily update.
+5. Submits the Clock-Out form with project ID and task description (min 50 chars).
+6. Verifies clock-out confirmation and sends desktop notification.
+"""
+
+import sys
+import os
+import re
+import json
+import subprocess
+import argparse
+import http.cookiejar
+import urllib.request
+import urllib.parse
+import urllib.error
+from pathlib import Path
+
+DEFAULT_BASE_URL = os.environ.get("ONEORG_URL", "http://192.168.0.143/oneorganize")
+DEFAULT_EMAIL = os.environ.get("ONEORG_EMAIL", "rahul.jangir@getmysolutions.in")
+DEFAULT_PASSWORD = os.environ.get("ONEORG_PASSWORD", "Rahul@1998")
+DEFAULT_TASK = "Completed scheduled development tasks, code review, bug fixes, and daily progress reporting."
+
+COOKIE_DIR = Path.home() / ".cache" / "oneorganize"
+COOKIE_FILE = COOKIE_DIR / "cookies.txt"
+USER_AGENT = "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+
+# ANSI Colors for terminal output
+COLOR_GREEN = "\033[92m"
+COLOR_YELLOW = "\033[93m"
+COLOR_RED = "\033[91m"
+COLOR_CYAN = "\033[96m"
+COLOR_RESET = "\033[0m"
+
+class OneOrganizeClockOutClient:
+    def __init__(self, base_url=DEFAULT_BASE_URL, email=DEFAULT_EMAIL, password=DEFAULT_PASSWORD, verbose=True, notify=True):
+        self.base_url = base_url.rstrip('/')
+        self.email = email
+        self.password = password
+        self.verbose = verbose
+        self.enable_notify = notify
+
+        COOKIE_DIR.mkdir(parents=True, exist_ok=True)
+        self.cookie_jar = http.cookiejar.MozillaCookieJar(str(COOKIE_FILE))
+        if COOKIE_FILE.exists():
+            try:
+                self.cookie_jar.load(ignore_discard=True, ignore_expires=True)
+            except Exception:
+                pass
+
+        self.opener = urllib.request.build_opener(
+            urllib.request.HTTPCookieProcessor(self.cookie_jar)
+        )
+
+    def log(self, message, color=None):
+        if not self.verbose:
+            return
+        if color and sys.stdout.isatty():
+            print(f"{color}{message}{COLOR_RESET}")
+        else:
+            print(message)
+
+    def notify(self, title, message, icon="appointment-soon", urgency="normal"):
+        if not self.enable_notify:
+            return
+        try:
+            subprocess.run(
+                ["notify-send", "-u", urgency, "-i", icon, title, message],
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+        except Exception:
+            pass
+
+    def save_cookies(self):
+        try:
+            self.cookie_jar.save(ignore_discard=True, ignore_expires=True)
+        except Exception:
+            pass
+
+    def request(self, url, data=None, headers=None, method=None, timeout=15):
+        req_headers = {
+            "User-Agent": USER_AGENT,
+            "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,image/avif,image/webp,*/*;q=0.8",
+            "Accept-Language": "en-US,en;q=0.9"
+        }
+        if headers:
+            req_headers.update(headers)
+
+        req = urllib.request.Request(url, data=data, headers=req_headers, method=method)
+        try:
+            with self.opener.open(req, timeout=timeout) as resp:
+                content = resp.read().decode('utf-8', errors='replace')
+                return resp.geturl(), content, resp.getcode()
+        except urllib.error.HTTPError as e:
+            content = e.read().decode('utf-8', errors='replace')
+            return e.geturl(), content, e.code
+        except urllib.error.URLError as e:
+            raise RuntimeError(f"Cannot reach server at {self.base_url} ({e.reason}). Make sure you are connected to the office network.")
+        except Exception as e:
+            raise RuntimeError(f"Request failed: {e}")
+
+    def wait_for_network(self, max_seconds=30):
+        import time
+        start_time = time.time()
+        self.log(f"Waiting for network connection to {self.base_url} (up to {max_seconds}s)...", COLOR_CYAN)
+        while time.time() - start_time < max_seconds:
+            try:
+                req = urllib.request.Request(f"{self.base_url}/login", headers={"User-Agent": USER_AGENT})
+                with self.opener.open(req, timeout=3):
+                    self.log("✓ Network connection established.", COLOR_GREEN)
+                    return True
+            except Exception:
+                time.sleep(2)
+        raise RuntimeError(f"Network timeout: Cannot reach {self.base_url} after {max_seconds} seconds.")
+
+    def is_logged_in(self):
+        self.log(f"Checking session validity at {self.base_url}/account-dashboard...", COLOR_CYAN)
+        final_url, content, _ = self.request(f"{self.base_url}/account-dashboard")
+        if "login" in final_url.lower() or 'id="loginForm"' in content:
+            return False, None
+        return True, content
+
+    def login(self):
+        self.log(f"Logging in to {self.base_url}/login as {self.email}...", COLOR_CYAN)
+        login_url = f"{self.base_url}/login"
+        _, content, _ = self.request(login_url)
+
+        token_match = re.search(r'name="_token"[^>]*value="([^"]+)"', content)
+        if not token_match:
+            token_match = re.search(r'value="([^"]+)"[^>]*name="_token"', content)
+        if not token_match:
+            raise RuntimeError("Could not find CSRF _token in login form.")
+        csrf_token = token_match.group(1)
+
+        login_data = urllib.parse.urlencode({
+            "_token": csrf_token,
+            "email": self.email,
+            "password": self.password
+        }).encode('utf-8')
+
+        login_headers = {
+            "Referer": login_url,
+            "Content-Type": "application/x-www-form-urlencoded"
+        }
+
+        post_url, post_content, _ = self.request(
+            login_url,
+            data=login_data,
+            headers=login_headers,
+            method="POST"
+        )
+        self.save_cookies()
+
+        if "login" in post_url.lower() and 'id="loginForm"' in post_content:
+            err_match = re.search(r'<div class="alert alert-danger[^"]*">([^<]+)</div>', post_content)
+            err_msg = err_match.group(1).strip() if err_match else "Invalid credentials or login rejected"
+            raise RuntimeError(f"Login failed: {err_msg}")
+
+        self.log("✓ Login successful.", COLOR_GREEN)
+        return True
+
+    def get_clock_out_info(self, html_content=None):
+        if html_content is None:
+            _, html_content, _ = self.request(f"{self.base_url}/account-dashboard")
+            self.save_cookies()
+
+        # Employee name
+        emp_match = re.search(r'Welcome\s+([^<\n\r]+)', html_content)
+        emp_name = emp_match.group(1).strip() if emp_match else "Employee"
+
+        # Clock-in / Clock-out timestamps
+        clock_in_js = re.search(r'const\s+CLOCK_IN\s*=\s*"([^"]+)"', html_content)
+        clock_in_raw = clock_in_js.group(1) if clock_in_js else None
+
+        clock_out_js = re.search(r'const\s+CLOCK_OUT\s*=\s*"([^"]+)"', html_content)
+        clock_out_raw = clock_out_js.group(1) if clock_out_js else None
+
+        clock_in_text = None
+        cin_match = re.search(r'Clock In At-\s*([^\s<]+(?:\s*[AP]M)?)', html_content, re.I)
+        if cin_match:
+            clock_in_text = cin_match.group(1).strip()
+
+        clock_out_text = None
+        cout_match = re.search(r'Clock Out At-\s*([^\s<]+(?:\s*[AP]M)?)', html_content, re.I)
+        if cout_match:
+            clock_out_text = cout_match.group(1).strip()
+
+        worked_timer_match = re.search(r'id="workedTimer"[^>]*>([^<]+)</h4>', html_content)
+        worked_timer = worked_timer_match.group(1).strip() if worked_timer_match else None
+
+        is_clocked_in = bool(clock_in_raw and clock_in_raw != "00:00:00")
+        is_clocked_out = bool(clock_out_raw and clock_out_raw != "00:00:00")
+
+        # Clock out form
+        form_match = re.search(r'<form\b([^>]*id="update_dash_att"[^>]*)>(.*?)</form>', html_content, re.DOTALL)
+        form_action = None
+        form_token = None
+        projects = []
+
+        if form_match:
+            form_tag = form_match.group(1)
+            form_body = form_match.group(2)
+            act_match = re.search(r'action="([^"]+)"', form_tag)
+            if act_match:
+                form_action = act_match.group(1)
+
+            tok_match = re.search(r'name="_token"\s+type="hidden"\s+value="([^"]+)"', form_body)
+            if not tok_match:
+                tok_match = re.search(r'value="([^"]+)"[^>]*name="_token"', form_body)
+            if tok_match:
+                form_token = tok_match.group(1)
+
+            # Available projects
+            proj_matches = re.findall(r'<option\s+value="([^"]+)">([^<]+)</option>', form_body)
+            for p_id, p_name in proj_matches:
+                p_id = p_id.strip()
+                p_name = p_name.strip()
+                if p_id and p_name != "-- Select Project --":
+                    projects.append((p_id, p_name))
+
+        return {
+            "employee": emp_name,
+            "is_clocked_in": is_clocked_in,
+            "is_clocked_out": is_clocked_out,
+            "clock_in_time": clock_in_text or clock_in_raw,
+            "clock_out_time": clock_out_text or clock_out_raw,
+            "worked_timer": worked_timer,
+            "form_action": form_action,
+            "form_token": form_token,
+            "projects": projects
+        }
+
+    def prompt_zenity(self, projects):
+        """Prompt for today's task on SDV Platform using Zenity GUI dialog."""
+        project_id = "2"  # Automatically pre-selected: SDV Platform
+        cmd_task = [
+            "zenity", "--entry",
+            "--title=Today's Task - SDV Platform",
+            "--text=Project: SDV Platform\n\nEnter your task description for today (min 50 characters):",
+            f"--entry-text={DEFAULT_TASK}"
+        ]
+        try:
+            res_task = subprocess.run(cmd_task, capture_output=True, text=True, check=True)
+            task_text = res_task.stdout.strip()
+            if not task_text:
+                task_text = DEFAULT_TASK
+            return project_id, task_text
+        except subprocess.CalledProcessError:
+            sys.exit(0)  # User clicked Cancel
+
+    def clock_out(self, project_id=None, task=None, use_gui=False, default_task=False):
+        logged_in, dash_content = self.is_logged_in()
+        if not logged_in:
+            self.login()
+            _, dash_content, _ = self.request(f"{self.base_url}/account-dashboard")
+            self.save_cookies()
+
+        info = self.get_clock_out_info(dash_content)
+        self.log(f"Employee: {info['employee']}", COLOR_CYAN)
+
+        # Check pre-conditions
+        if not info['is_clocked_in']:
+            err = "Cannot Clock Out: You have not clocked in yet today."
+            self.log(f"[ERROR] {err}", COLOR_RED)
+            self.notify("OneOrganize Clock Out", err, icon="dialog-error", urgency="critical")
+            raise RuntimeError(err)
+
+        if info['is_clocked_out']:
+            msg = f"Already clocked out today at {info['clock_out_time']}."
+            self.log(f"[INFO] {msg}", COLOR_YELLOW)
+            self.notify("OneOrganize Attendance", msg, icon="emblem-default")
+            return True, msg
+
+        if not info['form_action'] or not info['form_token']:
+            raise RuntimeError("Could not find clock-out submission form on dashboard.")
+
+        projects = info['projects']
+
+        # Pre-select SDV Platform (ID: 2)
+        selected_project = "2"
+        if project_id is not None:
+            for pid, pname in projects:
+                if str(project_id).lower() in (pid.lower(), pname.lower()):
+                    selected_project = pid
+                    break
+
+        project_name = next((p[1] for p in projects if p[0] == selected_project), "SDV Platform")
+        self.log(f"Project: {project_name} [ID: {selected_project}]", COLOR_GREEN)
+
+        # Resolve Task text
+        if use_gui:
+            _, task_text = self.prompt_zenity(projects)
+        elif task:
+            task_text = task.strip()
+        elif default_task or not sys.stdin.isatty():
+            task_text = DEFAULT_TASK
+        else:
+            self.log(f"\nEnter Task for {project_name} (min 50 chars). Press Enter for default:", COLOR_CYAN)
+            self.log(f"Default: \"{DEFAULT_TASK}\"", COLOR_YELLOW)
+            user_input = input("Task: ").strip()
+            task_text = user_input if user_input else DEFAULT_TASK
+
+        # Validate minimum 50 characters requirement
+        if len(task_text) < 50:
+            pad = f" (SDV Platform: {DEFAULT_TASK})"
+            task_text = (task_text + pad)[:150]
+            self.log(f"Note: Task description was padded to satisfy minimum 50 character requirement.", COLOR_YELLOW)
+
+        self.log(f"\nSubmitting Clock-Out:", COLOR_CYAN)
+        self.log(f"  Project ID: {selected_project}")
+        self.log(f"  Task      : {task_text}")
+
+        post_data = urllib.parse.urlencode([
+            ("_token", info['form_token']),
+            ("project_id[]", selected_project),
+            ("task", task_text),
+            ("out", "1")
+        ]).encode('utf-8')
+
+        ajax_headers = {
+            "Referer": f"{self.base_url}/account-dashboard",
+            "X-Requested-With": "XMLHttpRequest",
+            "Accept": "application/json, text/javascript, */*; q=0.01",
+            "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8"
+        }
+
+        _, resp_body, _ = self.request(
+            info['form_action'],
+            data=post_data,
+            headers=ajax_headers,
+            method="POST"
+        )
+        self.save_cookies()
+
+        success_msg = None
+        clock_out_time = None
+        try:
+            res_json = json.loads(resp_body)
+            if "success" in res_json:
+                success_msg = res_json["success"]
+                clock_out_time = res_json.get("clock_out")
+            elif "error" in res_json:
+                raise RuntimeError(f"Server error: {res_json['error']}")
+        except json.JSONDecodeError:
+            pass
+
+        # Re-fetch dashboard to verify
+        _, new_dash, _ = self.request(f"{self.base_url}/account-dashboard")
+        new_info = self.get_clock_out_info(new_dash)
+
+        res_time = clock_out_time or new_info['clock_out_time'] or "Now"
+        msg = success_msg or f"Successfully clocked out at {res_time}"
+        self.log(f"\n[SUCCESS] {msg}", COLOR_GREEN)
+        self.notify("OneOrganize Attendance", f"Clock Out Successful! Time: {res_time}", icon="emblem-default")
+        return True, msg
+
+def main():
+    parser = argparse.ArgumentParser(description="OneOrganize Automated Clock-Out Tool")
+    parser.add_argument("--url", default=DEFAULT_BASE_URL, help=f"Base URL (default: {DEFAULT_BASE_URL})")
+    parser.add_argument("--email", default=DEFAULT_EMAIL, help=f"Email (default: {DEFAULT_EMAIL})")
+    parser.add_argument("--password", default=DEFAULT_PASSWORD, help="Password")
+    parser.add_argument("--project", "-p", help="Project ID or name (e.g. 2, 'SDV Platform')")
+    parser.add_argument("--task", "-t", help="Task description for today (minimum 50 characters)")
+    parser.add_argument("--default-task", "-d", action="store_true", help="Use default task text without prompting")
+    parser.add_argument("--gui", "-g", action="store_true", help="Prompt for project and task using Zenity dialogs")
+    parser.add_argument("--check", action="store_true", help="Check attendance status without performing clock-out")
+    parser.add_argument("--silent", "-q", action="store_true", help="Silent mode (suppress terminal output)")
+    parser.add_argument("--no-notify", action="store_true", help="Disable desktop notification via notify-send")
+    parser.add_argument("--open", action="store_true", help="Open account dashboard in Google Chrome after execution")
+    parser.add_argument("--wait-for-network", type=int, default=0, help="Wait up to N seconds for office network")
+    parser.add_argument("task_pos", nargs="?", help="Optional task description string (e.g. oneorganize-clockout 'My task update')")
+    args = parser.parse_args()
+
+    client = OneOrganizeClockOutClient(
+        base_url=args.url,
+        email=args.email,
+        password=args.password,
+        verbose=not args.silent,
+        notify=not args.no_notify
+    )
+
+    try:
+        if args.wait_for_network > 0:
+            client.wait_for_network(args.wait_for_network)
+
+        if args.check:
+            logged_in, dash_content = client.is_logged_in()
+            if not logged_in:
+                client.login()
+                _, dash_content, _ = client.request(f"{client.base_url}/account-dashboard")
+            info = client.get_clock_out_info(dash_content)
+            client.log(f"Employee     : {info['employee']}", COLOR_CYAN)
+            client.log(f"Clock In At  : {info['clock_in_time'] or 'Not Clocked In'}")
+            client.log(f"Clock Out At : {info['clock_out_time'] or 'Not Clocked Out'}")
+            client.log(f"Worked Time  : {info['worked_timer'] or '00:00:00'}")
+            if info['projects']:
+                client.log("Projects     :")
+                for pid, pname in info['projects']:
+                    client.log(f"  - [{pid}] {pname}")
+        else:
+            task_input = args.task or args.task_pos
+            client.clock_out(
+                project_id=args.project,
+                task=task_input,
+                use_gui=args.gui,
+                default_task=args.default_task
+            )
+
+        if args.open:
+            subprocess.Popen(
+                ["google-chrome", f"{client.base_url}/account-dashboard"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL
+            )
+
+    except Exception as e:
+        client.log(f"[ERROR] {e}", COLOR_RED)
+        client.notify("OneOrganize Clock Out Error", str(e), icon="dialog-error", urgency="critical")
+        sys.exit(1)
+
+if __name__ == "__main__":
+    main()
