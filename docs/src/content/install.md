@@ -158,6 +158,10 @@ the known legacy `dwm-graphical-session.service` and
 start only after the X11 display environment is available; customized user
 units are disabled from early startup but otherwise preserved.
 
+The installer also migrates unambiguous legacy `dwm-titus` XDG configuration,
+data, and state directories to `dwm-jangir`. When both names contain different
+files, it preserves both directories and reports the paths for manual review.
+
 System files are installed with `sudo`, while configuration and data under the
 user's XDG directories are installed as that user.
 
