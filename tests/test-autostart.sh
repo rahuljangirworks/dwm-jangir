@@ -99,6 +99,14 @@ make_mock_command() {
 	cat >"$work/bin/$name" <<'EOF'
 #!/bin/sh
 name=$(basename "$0")
+# The wallpaper helper probes a candidate before applying it. Probes are not
+# launches and must return the loadable filename like real feh does.
+if [ "$name" = feh ] && [ "${1:-}" = --loadable ]; then
+    for candidate in "$@"; do
+        [ ! -f "$candidate" ] || printf '%s\n' "$candidate"
+    done
+    exit 0
+fi
 count_file="${TEST_STATE:?}/$name.count"
 count=0
 [ ! -f "$count_file" ] || count=$(cat "$count_file")
@@ -117,6 +125,19 @@ wait_for_marker() {
 		i=$((i + 1))
 		sleep 0.02
 	done
+	return 1
+}
+
+wait_for_count() {
+	count_path=$1
+	expected_count=$2
+	attempt=0
+	while [ "$attempt" -lt 100 ]; do
+		[ "$(cat "$count_path" 2>/dev/null || :)" != "$expected_count" ] || return 0
+		attempt=$((attempt + 1))
+		sleep 0.02
+	done
+	printf 'Timed out waiting for %s to reach %s\n' "$count_path" "$expected_count" >&2
 	return 1
 }
 
@@ -173,6 +194,7 @@ cat >"$work/bin/systemctl" <<'EOF'
 #!/bin/sh
 printf '%s\t%s\n' "${XDG_CURRENT_DESKTOP:-}" "$*" >>"${TEST_STATE:?}/systemctl.log"
 printf 'systemctl\t%s\n' "$*" >>"${TEST_STATE:?}/events.log"
+printf '%s\n' "${XDG_DATA_DIRS:-}" >>"${TEST_STATE:?}/data-dirs.log"
 case $* in
 *"start wm-graphical-session.service"*)
 	[ "${TEST_SYSTEMD_START_FAIL:-0}" != 1 ] || exit 1
@@ -223,6 +245,13 @@ EOF
 for name in feh picom dwm-status dwm-lock-watch light-locker dex dex-autostart; do
 	make_mock_command "$name"
 done
+
+cat >"$work/bin/dwm-settings-picom" <<'EOF'
+#!/bin/sh
+[ "$1" = start ] || exit 1
+[ -f "${TEST_STATE:?}/picom.running" ] || picom
+EOF
+chmod +x "$work/bin/dwm-settings-picom"
 
 # The production status publisher is a Bash script, so its comm is "bash"
 # rather than "dwm-status". Keep a real shebang process alive to exercise the
@@ -428,20 +457,50 @@ chmod +x "$work/bin/quickshell"
 
 run_duplicate_case() {
 	mode=$1
+	session_runner="sh"
+	if [ "$mode" = custom-prefix ]; then
+		mkdir -p "$work/custom-prefix/bin"
+		cat >"$work/custom-prefix/parent.c" <<'EOF'
+#include <sys/wait.h>
+#include <unistd.h>
+int main(int argc, char **argv) {
+    if (argc != 2) return 2;
+    if (unlink(argv[0]) != 0) return 6;
+    pid_t pid = fork();
+    if (pid < 0) return 3;
+    if (pid == 0) { execl("/bin/sh", "sh", argv[1], (char *)0); _exit(127); }
+    int status;
+    if (waitpid(pid, &status, 0) < 0) return 4;
+    return WIFEXITED(status) ? WEXITSTATUS(status) : 5;
+}
+EOF
+		${CC:-cc} -o "$work/custom-prefix/parent-fixture" "$work/custom-prefix/parent.c"
+		cat >"$work/custom-prefix/bin/dwm-desktop-update" <<'EOF'
+#!/bin/sh
+[ "$1" = data-directories ] || exit 2
+printf '%s\n' '/custom/theme-data:/usr/share'
+EOF
+		chmod +x "$work/custom-prefix/bin/dwm-desktop-update"
+		session_runner=$work/custom-prefix/bin/dwm
+	fi
 	case_display=:99
 	[ "$mode" != startx ] || case_display=:100
+	[ "$mode" != custom-prefix ] || case_display=:197
 	home="$work/$mode/home"
 	state="$work/$mode/state"
 	runtime="$work/$mode/runtime"
 	mkdir -p "$home/Pictures/backgrounds" "$home/.config/quickshell" "$state" "$runtime"
 	chmod 700 "$runtime"
-	: >"$home/Pictures/backgrounds/wallpaper"
+	: >"$home/Pictures/backgrounds/wallpaper.png"
 	: >"$home/.config/quickshell/shell.qml"
 
 	# Prevent this isolated test from starting a host polkit agent.
 	: >"$state/polkit-mate-authentication-agent-1.running"
 
 	for iteration in 1 2; do
+		if [ "$mode" = custom-prefix ]; then
+			cp "$work/custom-prefix/parent-fixture" "$session_runner"
+		fi
 		if [ "$mode" = startx ]; then
 			XDG_RUNTIME_DIR="$runtime" dbus-run-session -- env \
 				DISPLAY="$case_display" \
@@ -456,7 +515,7 @@ run_duplicate_case() {
 				TEST_AUTOSTART_ITERATION="$iteration" \
 				TEST_QUICKSHELL_PGREP_RACE="$([ "$iteration" = 1 ] && printf 1 || printf 0)" \
 				DWM_AUTOSTART_NO_SETSID=1 \
-				sh "$repo_dir/scripts/autostart.sh"
+				"$session_runner" "$repo_dir/scripts/autostart.sh"
 		else
 			DISPLAY="$case_display" \
 				HOME=$home \
@@ -471,9 +530,10 @@ run_duplicate_case() {
 				TEST_AUTOSTART_ITERATION="$iteration" \
 				TEST_QUICKSHELL_PGREP_RACE="$([ "$mode" = display-manager ] && [ "$iteration" = 1 ] && printf 1 || printf 0)" \
 				DWM_AUTOSTART_NO_SETSID=1 \
-				sh "$repo_dir/scripts/autostart.sh"
+				"$session_runner" "$repo_dir/scripts/autostart.sh"
 		fi
-		wait_for_marker "$state/feh.running"
+		# Each startup applies wallpaper asynchronously, unlike resident services.
+		wait_for_count "$state/feh.count" "$iteration"
 		wait_for_marker "$state/picom.running"
 		wait_for_marker "$state/dwm-status.running"
 		wait_for_marker "$state/dwm-lock-watch.running"
@@ -484,6 +544,9 @@ run_duplicate_case() {
 		fi
 	done
 
+	if [ "$mode" = custom-prefix ]; then
+		grep -Fqx "/custom/theme-data:/usr/share" "$state/data-dirs.log"
+	fi
 	test "$(cat "$state/feh.count")" -eq 2
 	for name in picom dwm-status dwm-lock-watch quickshell; do
 		test "$(cat "$state/$name.count")" -eq 1
@@ -493,8 +556,9 @@ run_duplicate_case() {
 	test ! -e "$state/dex-autostart.count"
 	awk '
 		/--user import-environment/ && !imported { imported = NR }
+		/--user daemon-reload/ && !reloaded { reloaded = NR }
 		/--user start wm-graphical-session.service/ && !started { started = NR }
-		END { exit !(imported && started && imported < started) }
+		END { exit !(imported && reloaded && started && imported < reloaded && reloaded < started) }
 	' "$state/systemctl.log"
 	awk -F '\t' '
 		index(":" $1 ":", ":X-DWM:") && index(":" $1 ":", ":dwm:") { found = 1 }
@@ -952,6 +1016,7 @@ EOF
 }
 
 run_duplicate_case display-manager
+run_duplicate_case custom-prefix
 run_duplicate_case startx
 run_relative_config_home_case
 run_wallpaper_recovery_with_existing_feh_case

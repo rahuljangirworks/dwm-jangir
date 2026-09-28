@@ -31,7 +31,7 @@ SH
 	chmod +x "$work/bin/$name"
 }
 
-for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom feh maim notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps dwm-settings-wallpaper xdg-open nwg-look pkill pgrep dnf; do
+for name in quickshell xprop dwm-quickshell-launcher dwm-quickshell-controlcenter dex picom dwm-settings-picom feh maim notify-send pactl brightnessctl xset gsettings light-locker setsid dwm-terminal dwm-default-apps dwm-settings-wallpaper xdg-open nwg-look pkill pgrep dnf; do
 	stub_command "$name"
 done
 
@@ -419,8 +419,7 @@ grep -Fq 'quickshell --no-duplicate' "$work/actions.log"
 : >"$work/actions.log"
 run_helper action restart-picom >"$work/picom.out"
 grep -Fqx 'action	restart-picom' "$work/picom.out"
-grep -Fq 'pkill -x picom' "$work/actions.log"
-grep -Fqx 'picom ' "$work/actions.log"
+grep -Fqx 'dwm-settings-picom restart' "$work/actions.log"
 
 : >"$work/actions.log"
 run_helper action open-wallpapers >"$work/wallpapers.out"
@@ -467,9 +466,49 @@ if run_helper action not-real 2>"$work/action.err"; then
 fi
 grep -Fqx 'unknown action: not-real' "$work/action.err"
 
+# Self-Heal passes an executable path as one argv value, including punctuation.
+self_heal_script="$work/self heal 'quoted';.sh"
+cat >"$self_heal_script" <<'SH'
+#!/bin/sh
+printf 'self-heal invoked\n'
+exit "${DWM_TEST_SELF_HEAL_STATUS:-0}"
+SH
+chmod +x "$self_heal_script"
+cp "$work/bin/dwm-terminal" "$work/bin/dwm-terminal.saved"
+cat >"$work/bin/dwm-terminal" <<'SH'
+#!/bin/sh
+if [ "$1" = --print-command ]; then
+	exit "${DWM_TEST_TERMINAL_STATUS:-0}"
+fi
+[ "$1" = -e ] || exit 2
+shift
+exec "$@"
+SH
+chmod +x "$work/bin/dwm-terminal"
+printf '%s\n' "$self_heal_script" >"$work/config/dwm-jangir/self-heal.path"
+printf '\n' | run_helper action self-heal >"$work/self-heal.out"
+grep -Fqx 'self-heal invoked' "$work/self-heal.out"
+grep -Fq 'Self-Heal exited with status 0.' "$work/self-heal.out"
+status=0
+printf '\n' | DWM_TEST_SELF_HEAL_STATUS=7 run_helper action self-heal >"$work/self-heal-fail.out" || status=$?
+[ "$status" -eq 7 ]
+if DWM_SELF_HEAL_SCRIPT="$work/missing" run_helper action self-heal 2>"$work/self-heal-missing.err"; then
+	exit 1
+fi
+grep -Fq 'Self-Heal script is not executable' "$work/self-heal-missing.err"
+if DWM_TEST_TERMINAL_STATUS=127 run_helper action self-heal \
+	>"$work/self-heal-no-terminal.out" 2>"$work/self-heal-no-terminal.err"; then
+	printf 'Self-Heal accepted an unavailable terminal backend\n' >&2
+	exit 1
+fi
+[ ! -s "$work/self-heal-no-terminal.out" ]
+grep -Fq 'Self-Heal requires an available terminal' "$work/self-heal-no-terminal.err"
+rm "$work/config/dwm-jangir/self-heal.path"
+mv "$work/bin/dwm-terminal.saved" "$work/bin/dwm-terminal"
+
 grep -Fq 'watchChanges: true' "$repo/config/quickshell/appearance/AppearanceModel.qml"
-[ "$(grep -Fc 'watchChanges: true' "$repo/config/quickshell/appearance/AppearanceModel.qml")" -eq 5 ]
-[ "$(grep -Fc 'onFileChanged: reload()' "$repo/config/quickshell/appearance/AppearanceModel.qml")" -eq 6 ]
+[ "$(grep -Fc 'watchChanges: true' "$repo/config/quickshell/appearance/AppearanceModel.qml")" -eq 6 ]
+[ "$(grep -Fc 'onFileChanged: reload()' "$repo/config/quickshell/appearance/AppearanceModel.qml")" -eq 7 ]
 grep -Fq 'themes.toml' "$repo/config/quickshell/appearance/AppearanceModel.qml"
 grep -Fq 'ClickAwayPopup {' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
 grep -Fq 'onDismissed: controlCenterModel.close()' "$repo/config/quickshell/controlcenter/ControlCenterWindow.qml"
@@ -592,8 +631,8 @@ grep -Fq 'root.anchorItem.mapToGlobal(edge, 0)' "$repo/config/quickshell/core/Pa
 grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/PanelPill.qml"
 grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/ShellSurface.qml"
 grep -Fq 'opacity: 1.0' "$repo/config/quickshell/core/ClickAwayPopup.qml"
-grep -Fq 'RunningAppsArea { state: root.state }' "$repo/config/quickshell/panel/DwmPanel.qml"
-grep -Fq 'onFocusRequested: windowId => root.state.focusWindow(windowId)' "$repo/config/quickshell/panel/RunningAppsArea.qml"
+grep -Fq 'RunningAppsArea { desktopState: root.state }' "$repo/config/quickshell/panel/DwmPanel.qml"
+grep -Fq 'onFocusRequested: windowId => root.desktopState.focusWindow(windowId)' "$repo/config/quickshell/panel/RunningAppsArea.qml"
 grep -Fq 'source: Icons.launcherIcon(root.app.appClass)' "$repo/config/quickshell/panel/RunningAppItem.qml"
 grep -Fq 'root.state.activeWindowTitle' "$repo/config/quickshell/panel/DwmPanel.qml"
 grep -Fq 'root.state.statusSegments' "$repo/config/quickshell/panel/DwmPanel.qml"

@@ -93,7 +93,9 @@ quickshell_dir=$config_home/quickshell
 binary_target=$prefix/bin/dwm
 man_target=$manprefix/man1/dwm.1
 xsession_target=$xsessions_dir/dwm-jangir.desktop
+xsession_alias_target=$xsessions_dir/dwm.desktop
 display_root_helper_target=$prefix/libexec/dwm-jangir/dwm-settings-display-root
+desktop_root_helper_target=$prefix/libexec/dwm-jangir/dwm-desktop-update-root
 make_command=${MAKE:-make}
 os_release_file=/etc/os-release
 if [ "${DWM_DEV_SYNC_TEST_MODE:-0}" = 1 ] &&
@@ -122,6 +124,7 @@ install_sources_file=$work/install-sources
 expected_man=$work/dwm.1
 expected_xsession=$work/dwm-jangir.desktop
 expected_display_root_helper=$work/dwm-settings-display-root
+expected_desktop_root_helper=$work/dwm-desktop-update-root
 tree_diff=$work/tree.diff
 
 prepare_expected_files() {
@@ -138,6 +141,8 @@ prepare_expected_files() {
 	sed "s|@PREFIX@|$prefix|g" "$repo_dir/dwm-jangir.desktop" >"$expected_xsession"
 	sed "s|@PREFIX@|$prefix|g" "$repo_dir/scripts/dwm-settings-display-root" \
 		>"$expected_display_root_helper"
+	sed "s|@PREFIX@|$prefix|g" "$repo_dir/scripts/dwm-desktop-update-root" \
+		>"$expected_desktop_root_helper"
 }
 
 source_update_dependencies_ready() {
@@ -151,7 +156,10 @@ source_update_dependencies_ready() {
 	fi
 	command -v xsettingsd >/dev/null 2>&1 &&
 		command -v dump_xsettings >/dev/null 2>&1 &&
-		command -v xkbset >/dev/null 2>&1
+		command -v xkbset >/dev/null 2>&1 &&
+		command -v bwrap >/dev/null 2>&1 &&
+		/usr/bin/python3 -c 'import ctypes; ctypes.CDLL("libseccomp.so.2")' >/dev/null 2>&1 &&
+		rpm -q NetworkManager-wifi >/dev/null 2>&1
 }
 
 source_update_dependencies_needed() {
@@ -272,21 +280,35 @@ verify_install() {
 	done <"$install_sources_file"
 	verify_executable "$expected_display_root_helper" \
 		"$display_root_helper_target" "privileged display helper"
+	verify_executable "$expected_desktop_root_helper" \
+		"$desktop_root_helper_target" "privileged desktop update helper"
 	verify_privileged_helper_trust=1
 	if [ "${DWM_DEV_SYNC_SKIP_PRIVILEGED_TRUST:-0}" = 1 ]; then
 		verify_privileged_helper_trust=0
 	fi
-	if [ "$verify_privileged_helper_trust" -eq 1 ] && [ -e "$display_root_helper_target" ]; then
-		if [ "$(stat -c %u "$display_root_helper_target")" -ne 0 ] ||
-			find "$display_root_helper_target" -maxdepth 0 -perm /022 -print -quit | grep -q .; then
-			printf 'UNTRUSTED: privileged display helper ownership or mode (%s)\n' \
-				"$display_root_helper_target" >&2
+	if [ "$verify_privileged_helper_trust" -eq 1 ]; then
+		if ! python3 "$repo_dir/scripts/dwm-desktop-update" verify-trust \
+			"$prefix/share/dwm-jangir/desktop-install.json"; then
 			verification_failed=1
 		fi
+		for privileged_target in "$display_root_helper_target" "$desktop_root_helper_target"; do
+			[ -e "$privileged_target" ] || continue
+			if [ "$(stat -c %u "$privileged_target")" -ne 0 ] ||
+				find "$privileged_target" -maxdepth 0 -perm /022 -print -quit | grep -q .; then
+				printf 'UNTRUSTED: privileged helper ownership or mode (%s)\n' \
+					"$privileged_target" >&2
+				verification_failed=1
+			fi
+		done
 	fi
 
 	verify_file "$expected_man" "$man_target" "dwm man page"
-	verify_file "$expected_xsession" "$xsession_target" "dwm X session"
+	verify_file "$expected_xsession" "$xsession_target" "dwm-jangir X session"
+	if [ ! -L "$xsession_alias_target" ] ||
+		[ "$(readlink "$xsession_alias_target")" != dwm-jangir.desktop ]; then
+		printf 'MISMATCH: legacy dwm X session alias (%s)\n' "$xsession_alias_target" >&2
+		verification_failed=1
+	fi
 	verify_tree "$repo_dir/config" "$data_dir/config" "managed data config"
 	verify_tree "$repo_dir/scripts" "$data_dir/scripts" "managed data scripts"
 	verify_tree "$repo_dir/config/quickshell" "$quickshell_dir" "managed Quickshell"
@@ -297,9 +319,23 @@ verify_install() {
 		verify_tree "$cursor_source" "$data_root/icons/$cursor_name" \
 			"cursor theme $cursor_name"
 	done
+	for theme_source in "$repo_dir"/assets/themes/Dwm-*; do
+		[ -d "$theme_source" ] || continue
+		verify_tree "$theme_source" "$data_root/themes/${theme_source##*/}" \
+			"application theme ${theme_source##*/}"
+		for qt_backend in qt5ct qt6ct; do
+			verify_file "$theme_source/qt/colors.conf" \
+				"$data_root/$qt_backend/colors/${theme_source##*/}.conf" "Qt palette ${theme_source##*/}"
+		done
+	done
 	verify_file "$repo_dir/assets/cursors/COPYING" \
 		"$data_root/licenses/dwm-jangir/capitaine-cursors/COPYING" \
 		"cursor license"
+	if ! HOME="$user_home" XDG_CONFIG_HOME="$config_home" XDG_DATA_HOME="$xdg_data_home" \
+		XDG_STATE_HOME="$state_home" python3 "$repo_dir/scripts/dwm-desktop-update" \
+		verify-receipts "$repo_dir" "$prefix/share/dwm-jangir/desktop-install.json"; then
+		verification_failed=1
+	fi
 
 	if [ "$verification_failed" -eq 0 ]; then
 		printf 'All managed files match the checkout.\n'
@@ -341,14 +377,25 @@ backup_live_install() {
 	add_system_backup_path "$binary_target"
 	add_system_backup_path "$man_target"
 	add_system_backup_path "$xsession_target"
+	add_system_backup_path "$xsession_alias_target"
 	while IFS= read -r install_source; do
 		[ -n "$install_source" ] || continue
 		add_system_backup_path "$prefix/bin/${install_source##*/}"
 	done <"$install_sources_file"
 	add_system_backup_path "$display_root_helper_target"
+	add_system_backup_path "$desktop_root_helper_target"
+	add_system_backup_path "$prefix/share/dwm-jangir/desktop-install.json"
 	for cursor_source in "$repo_dir"/assets/cursors/Capitaine-Cursors*; do
 		[ -d "$cursor_source" ] || continue
 		add_system_backup_path "$data_root/icons/${cursor_source##*/}"
+	done
+	for theme_target in "$data_root"/themes/Dwm-*; do
+		add_system_backup_path "$theme_target"
+	done
+	for qt_backend in qt5ct qt6ct; do
+		for palette_target in "$data_root/$qt_backend"/colors/Dwm-*.conf; do
+			add_system_backup_path "$palette_target"
+		done
 	done
 	add_system_backup_path "$data_root/licenses/dwm-jangir/capitaine-cursors/COPYING"
 	if [ -s "$system_manifest" ]; then
@@ -517,7 +564,8 @@ sudo "$make_path" -C "$repo_dir" install \
 	USER_HOME="$user_home" \
 	OWNER="$owner" \
 	XDG_CONFIG_HOME="$config_home" \
-	XDG_DATA_HOME="$xdg_data_home"
+	XDG_DATA_HOME="$xdg_data_home" \
+	XDG_STATE_HOME="$state_home"
 
 note "Verifying installed state"
 verify_install || die "live installation does not match the checkout"

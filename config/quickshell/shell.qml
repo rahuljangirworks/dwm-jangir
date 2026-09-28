@@ -40,6 +40,9 @@ ShellRoot {
         }
 
         commandMenuModel.close();
+        launcherModel.close();
+        notificationModel.closeHistory();
+        controlCenterModel.closeUtility();
         if (popupId !== "bluetooth") bluetoothModel.close();
         if (popupId !== "controlcenter") controlCenterModel.close();
         if (popupId !== "controls") controlsModel.close();
@@ -208,9 +211,20 @@ ShellRoot {
 
     SystemManagementModel {
         id: systemManagementModel
+        desktopUpdateBusy: desktopUpdateModel.updateOwned
+        desktopUpdateInterrupted: desktopUpdateModel.status.state === "interrupted"
         healthModel: systemHealthModel
         targetScreen: settingsWindow.screen || settingsModel.targetScreen || root.activePanelScreen
         onHealthOpened: settingsModel.close()
+    }
+
+    DesktopUpdateModel {
+        id: desktopUpdateModel
+        backgroundMonitor: true
+        onAuthorizationRequested: settingsModel.close()
+        settingsVisible: settingsModel.visible && settingsModel.selectedSectionId === "system"
+        systemBusy: systemManagementModel.operation.busy || systemManagementModel.activeOperation !== null
+            || systemManagementModel.updateConfirmation !== null
     }
 
     SettingsModel {
@@ -1050,7 +1064,7 @@ ShellRoot {
         }
 
         function open(): void {
-            settingsModel.open();
+            settingsModel.openOnScreen(dwmState.focusedScreen());
         }
 
         function refresh(): void {
@@ -1066,7 +1080,8 @@ ShellRoot {
         }
 
         function toggle(): void {
-            settingsModel.toggle();
+            if (settingsModel.visible) settingsModel.close();
+            else settingsModel.openOnScreen(dwmState.focusedScreen());
         }
     }
 
@@ -1138,6 +1153,7 @@ ShellRoot {
             panelSettingsModel: panelSettingsModel
             powerModel: powerModel
             powerMenuModel: powerMenuModel
+            desktopUpdateModel: desktopUpdateModel
             primaryPanel: modelData === Quickshell.screens[0]
             onPopupRequested: (panel, popupId) => root.selectPanelPopup(panel, popupId)
         }
@@ -1202,5 +1218,6 @@ ShellRoot {
         notificationModel: notificationModel
         panelSettingsModel: panelSettingsModel
         systemManagementModel: systemManagementModel
+        desktopUpdateModel: desktopUpdateModel
     }
 }

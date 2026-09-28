@@ -27,8 +27,10 @@ fi
 mapfile -t packages < <(
 	{
 		dwm_packages fedora required
-		dwm_packages fedora image-build
-		dwm_packages fedora lightdm-solar-build
+		dwm_packages fedora image-factory
+		dwm_packages fedora image-boot
+		# Official image additions; brave-origin is resolved by factory repos.
+		dwm_packages fedora image-desktop | awk '$0 != "brave-origin"'
 		dwm_packages fedora desktop
 		dwm_packages fedora system-management
 		dwm_packages fedora system-management-optional
@@ -72,9 +74,6 @@ printf '%s\n' "$installed_provider_packages" | grep -Fxq upower
 printf '%s\n' "$installed_provider_packages" | grep -Fxq dbus-tools
 printf '%s\n' "$installed_provider_packages" | grep -Fxq inotify-tools
 printf '%s\n' "$installed_provider_packages" | grep -Fxq xsettingsd
-for package in lightdm-gobject-devel xapps-devel; do
-	dwm_packages fedora lightdm-solar-build | grep -Fx "$package" >/dev/null
-done
 # Drain each producer under pipefail; grep -q can close a successful match early.
 for package in PackageKit PackageKit-glib python3-gobject python3-rpm accountsservice cups system-config-printer; do
 	dwm_packages fedora system-management | grep -Fx "$package" >/dev/null
@@ -84,10 +83,10 @@ for package in lxqt-admin dnfdragora; do
 	dwm_packages fedora system-management-optional | grep -Fx "$package" >/dev/null
 	dwm_packages fedora optional | grep -Fx "$package" >/dev/null
 done
-for package in xsettingsd xkbset; do
+for package in xsettingsd xkbset bubblewrap libseccomp NetworkManager-wifi; do
 	dwm_packages fedora source-update | grep -Fx "$package" >/dev/null
 done
-[[ $("$repo/scripts/dwm-packages.sh" fedora source-update) == $'xsettingsd\nxkbset' ]]
+[[ $("$repo/scripts/dwm-packages.sh" fedora source-update) == $'xsettingsd\nxkbset\nbubblewrap\nlibseccomp\nNetworkManager-wifi' ]]
 grep -Fq 'dwm_install_package_profile system-management' "$repo/install.sh"
 grep -Fq 'check_cmd "xsettingsd"' "$repo/scripts/check-deps.sh"
 grep -Fq 'xsetroot xkbset' "$repo/scripts/check-deps.sh"

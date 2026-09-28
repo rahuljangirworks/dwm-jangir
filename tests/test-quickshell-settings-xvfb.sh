@@ -3,11 +3,12 @@ set -eu
 
 repo=$(CDPATH='' cd -- "$(dirname -- "$0")/.." && pwd)
 screen_geometry=${DWM_SETTINGS_TEST_SCREEN_GEOMETRY:-1280x800x24}
-expected_window_width=${DWM_SETTINGS_EXPECTED_WINDOW_WIDTH:-1180}
-expected_window_height=${DWM_SETTINGS_EXPECTED_WINDOW_HEIGHT:-760}
+expected_window_width=${DWM_SETTINGS_EXPECTED_WINDOW_WIDTH:-${screen_geometry%%x*}}
+screen_dimensions=${screen_geometry#*x}
+expected_window_height=${DWM_SETTINGS_EXPECTED_WINDOW_HEIGHT:-${screen_dimensions%%x*}}
 
 for command_name in Xvfb dbus-monitor dbus-run-session glib-compile-schemas \
-	gsettings inotifywait quickshell xdotool xinput xkbset xprop pgrep getconf; do
+	gsettings inotifywait python3 quickshell xdotool xinput xkbset xprop pgrep getconf; do
 	if ! command -v "$command_name" >/dev/null 2>&1; then
 		printf 'SKIP: %s is unavailable\n' "$command_name"
 		exit 77
@@ -330,6 +331,9 @@ glib-compile-schemas "$schema_dir"
 export GSETTINGS_SCHEMA_DIR="$schema_dir"
 export GSETTINGS_BACKEND=keyfile
 cp -a "$repo/config/quickshell/." "$config_home/quickshell/"
+# Make an acknowledged disk write necessary before the persistence restart.
+python3 "$repo/tests/fixtures/delay-notification-policy.py" \
+	"$config_home/quickshell/notifications/NotificationModel.qml"
 cp "$repo/tests/fixtures/system-operation-provider.py" "$data_home/dwm-jangir/scripts/dwm-system-management"
 chmod +x "$data_home/dwm-jangir/scripts/dwm-system-management"
 cp "$repo/config/quickshell/assets/ctt_logo.png" "$home/Pictures/backgrounds/test-wallpaper.png"
@@ -380,7 +384,7 @@ cp "$repo/scripts/dwm-settings-provider" "$repo/scripts/dwm-system-health" \
 	"$repo/scripts/dwm-default-apps" "$repo/scripts/dwm-xdg-autostart" \
 	"$repo/scripts/dwm-settings-appearance" "$repo/scripts/dwm-settings-wallpaper" \
 	"$repo/scripts/dwm-settings-font" "$repo/scripts/dwm-settings-personalization" \
-	"$repo/scripts/dwm-settings-theme" "$repo/scripts/dwm-xsettings" \
+	"$repo/scripts/dwm-settings-theme" "$repo/scripts/dwm-xsettings" "$repo/scripts/dwm-cursor-reload" \
 	"$repo/scripts/dwm-panel-settings" "$repo/scripts/dwm-accessibility-settings" \
 	"$repo/scripts/theme-apply.sh" \
 	"$repo/scripts/dwm-terminal" "$repo/scripts/dwm-lock" "$data_home/dwm-jangir/scripts/"
@@ -839,19 +843,6 @@ HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
 config=$config_home/quickshell/shell.qml
 : >"$work/quickshell.log"
 start_quickshell
-env DISPLAY="$display" HOME="$home" XDG_CONFIG_HOME="$config_home" \
-	XDG_DATA_HOME="$data_home" XDG_RUNTIME_DIR="$runtime" \
-	QT_QPA_PLATFORMTHEME= \
-	TMPDIR="$helper_tmp" \
-	DWM_SETTINGS_TEST_POWER_STATE="$power_state" DWM_SETTINGS_TEST_DELAY_POWER=1 \
-	DWM_SETTINGS_TEST_MALFORMED_POWER_SNAPSHOT="$malformed_power_snapshot" \
-	DWM_SETTINGS_TEST_APPEARANCE_FAILURE="$appearance_failure_fixture" \
-	DWM_SETTINGS_TEST_WALLPAPER_STATUS="$wallpaper_status_fixture" \
-	DWM_SETTINGS_TEST_THEME_STATUS="$theme_status_fixture" \
-	PATH="$data_home/dwm-jangir/scripts:$PATH" \
-	quickshell --no-duplicate >"$work/quickshell.log" 2>&1 &
-quickshell_pid=$!
-quickshell_identity=$(capture_process_identity "$quickshell_pid")
 test_stage='waiting for Quickshell IPC'
 
 settings_power_watch_count() {
@@ -964,6 +955,28 @@ y=$(printf '%s\n' "$geometry" | awk -F= '$1 == "Y" { print $2 }')
 [ "$width" = "$expected_window_width" ]
 [ "$height" = "$expected_window_height" ]
 
+if [ "${DWM_SETTINGS_GEOMETRY_ONLY:-0}" = 1 ]; then
+	# Exercise both IPC entry points on a screen smaller than the preferred size.
+	settings_ipc_retry close >/dev/null
+	settings_ipc_retry toggle >/dev/null
+	i=0
+	while [ "$i" -lt 100 ]; do
+		window=$(DISPLAY=$display xdotool search --onlyvisible --name '^dwm settings$' 2>/dev/null | head -1 || true)
+		[ -n "$window" ] && break
+		i=$((i + 1))
+		sleep 0.05
+	done
+	[ -n "$window" ]
+	geometry=$(DISPLAY=$display xdotool getwindowgeometry --shell "$window")
+	width=$(printf '%s\n' "$geometry" | awk -F= '$1 == "WIDTH" { print $2 }')
+	height=$(printf '%s\n' "$geometry" | awk -F= '$1 == "HEIGHT" { print $2 }')
+	[ "$width" = "$expected_window_width" ]
+	[ "$height" = "$expected_window_height" ]
+	settings_ipc_retry close >/dev/null
+	printf 'Settings small-screen IPC geometry: PASS\n'
+	exit 0
+fi
+
 i=0
 while [ "$i" -lt 100 ]; do
 	status=$(DISPLAY=$display HOME=$home XDG_CONFIG_HOME=$config_home XDG_DATA_HOME=$data_home \
@@ -1063,7 +1076,7 @@ done
 # Hold a pre-change discovery result across Keep. The model must queue the
 # resulting refresh instead of letting this stale snapshot win permanently.
 : >"$input_discovery_fixture.hold"
-settings_ipc_retry select input >/dev/null
+settings_ipc_retry refresh >/dev/null
 i=0
 while [ ! -f "$input_discovery_fixture.captured" ] && [ "$i" -lt 100 ]; do
 	i=$((i + 1))
@@ -1892,6 +1905,15 @@ while [ "$i" -lt 100 ]; do
 done
 [ "$(notification_ipc_retry policyState)" = available ]
 notification_ipc_retry setPopupTimeout 4000 >/dev/null
+# IPC exposes the optimistic value before FileView finishes its atomic write.
+notification_wait_available
+python3 - "$config_home/dwm-jangir/notification-settings.json" <<'PYTHON'
+import json
+import sys
+with open(sys.argv[1]) as stream:
+    policy = json.load(stream)
+assert policy == {"version": 1, "doNotDisturb": True, "popupTimeoutMs": 4000}, policy
+PYTHON
 [ "$(notification_ipc_retry doNotDisturb)" = true ]
 [ "$(notification_ipc_retry popupTimeout)" = 4000 ]
 test_stage='validating notification policy after restart'

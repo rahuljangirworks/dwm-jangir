@@ -16,7 +16,23 @@ contract does not widen the project-owned privileged helper allowlist.
 The Settings application is one Quickshell `FloatingWindow` titled
 `dwm settings`. It is part of the managed Quickshell process and is opened from
 Control Center -> Settings, through the `settings` IPC target, or
-with `dwm-settings`.
+with `dwm-settings`. It fills the selected monitor like System Health. Appearance
+scrolls vertically without overscroll bounce. Cursor choices are published through
+XSETTINGS and replace named cursors held by existing X11 clients immediately;
+applications drawing their own custom pointer images retain those images.
+
+The managed panel hides Blueman's redundant tray item while keeping the Bluetooth
+widget and other tray applications available. Installation preserves user-owned
+dwm configuration files and replaces the managed Quickshell directory.
+
+Control Center -> Quick Actions -> Self-Heal runs the workstation's self-heal
+script in a terminal, where its progress, results, and any authorization prompts
+remain visible. Install an executable `dwm-self-heal` on PATH, or put the absolute
+path of the existing script in
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/self-heal.path` (one path, no shell
+arguments). `DWM_SELF_HEAL_SCRIPT` can override that path for the shell session.
+The action reports an unavailable script without changing the system; it does
+not download a script or elevate the Quickshell process.
 
 ### Navigation and Search
 
@@ -37,6 +53,26 @@ Phase 1 is intentionally read-only. Capability cards report the operation
 class, provider, state, and recovery detail. Unsupported and restricted cards
 stay visible when their explanation helps the user; a missing provider never
 prevents another section from opening.
+
+Autostart overrides keep `OnlyShowIn` and `NotShowIn` mutually exclusive.
+When a vendor entry has `OnlyShowIn`, installation removes only the `X-DWM`
+and `dwm` tokens instead of adding `NotShowIn`; other desktop choices remain
+intact. Existing user overrides are preserved and require an explicit repair
+if an older installation produced conflicting keys.
+
+Update recovery normally reads the calling process's logind session. A helper
+launched by the managed user service may have no session scope; in that case
+it uses logind's primary display only after verifying the session belongs to
+the current user and is active, local, and X11. Missing, changing, or invalid
+session evidence retains restart guidance and blocks update actions.
+
+System updates show the current package (or repository during metadata refresh),
+its reported progress, and a separate overall transaction percentage. Missing
+item percentages use an activity indicator, never the overall percentage as a
+package estimate. Raw operation logs and audit hashes remain internal; the page
+shows concise verified completion, errors, cancellation, and recovery guidance.
+After a helper restart, recovery may have only overall progress until new item
+evidence is available. Opening Settings does not install updates.
 
 ## Helper Protocol
 

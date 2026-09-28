@@ -28,6 +28,7 @@ PanelWindow {
         return "󰂎";
     }
 
+    property var desktopUpdateModel: null
     required property var state
     required property var clock
     required property var networkModel
@@ -66,6 +67,11 @@ PanelWindow {
         radius: Theme.barRadius
 
         PillShadow { cornerRadius: island.radius }
+
+        MouseArea {
+            anchors.fill: parent
+            onClicked: root.popupRequested(root, "")
+        }
 
         RowLayout {
             anchors.fill: parent
@@ -183,7 +189,19 @@ PanelWindow {
                         }
                     }
 
-                    RunningAppsArea { state: root.state }
+                    ShellButton {
+                        objectName: "desktopUpdateIndicator"
+                        visible: root.desktopUpdateModel !== null && (root.desktopUpdateModel.active
+                            || ["failed", "interrupted", "restart-required"].indexOf(root.desktopUpdateModel.status.state) >= 0
+                            || (root.desktopUpdateModel.status.state === "current" && !!root.desktopUpdateModel.status.operation))
+                        label: !root.desktopUpdateModel ? "" : root.desktopUpdateModel.active ? "Updating..."
+                            : root.desktopUpdateModel.status.state === "current" ? "Updated"
+                            : root.desktopUpdateModel.status.state === "restart-required" ? "Logout required" : "Update needs attention"
+                        enabled: root.desktopUpdateModel !== null && !root.desktopUpdateModel.progressPending
+                        onActivated: root.desktopUpdateModel.showProgress()
+                    }
+
+                    RunningAppsArea { desktopState: root.state }
 
                     Loader {
                         active: root.primaryPanel
@@ -205,7 +223,7 @@ PanelWindow {
                             IconText {
                                 text: root.batteryIcon(root.powerModel.batteryPercent, root.powerModel.batteryStatus)
                                 color: Theme.textStrong
-                                font.pixelSize: Math.round((Theme.panelIconFontSize + 1) * 1.1)
+                                font.pixelSize: Theme.scaledFontSize(14 * 1.1, 8)
                             }
 
                             UiText {
@@ -237,7 +255,7 @@ PanelWindow {
                             IconText {
                                 text: "󰂯"
                                 color: Theme.textStrong
-                                font.pixelSize: Math.round((Theme.panelIconFontSize + 1) * 0.9)
+                                font.pixelSize: Theme.scaledFontSize(14 * 0.9, 8)
                             }
                         }
 
@@ -269,7 +287,7 @@ PanelWindow {
                                 text: root.networkModel.statusText.indexOf("offline") >= 0
                                     || root.networkModel.statusText.indexOf("unavailable") >= 0 ? "󰤭" : "󰤨"
                                 color: Theme.textStrong
-                                font.pixelSize: Math.round((Theme.panelIconFontSize + 1) * 1.2)
+                                font.pixelSize: Theme.scaledFontSize(14 * 1.2, 8)
                             }
                         }
 
@@ -300,7 +318,7 @@ PanelWindow {
                             IconText {
                                 text: root.controlsModel.volumeMuted ? "󰝟" : "󰕾"
                                 color: Theme.textStrong
-                                font.pixelSize: Math.round((Theme.panelIconFontSize + 1) * 1.5)
+                                font.pixelSize: Theme.scaledFontSize(14 * 1.5, 8)
                             }
 
                             UiText {
@@ -342,7 +360,7 @@ PanelWindow {
                             anchors.centerIn: parent
                             text: "󰐥"
                             color: Theme.textStrong
-                            font.pixelSize: Math.round((Theme.panelIconFontSize + 1) * 1.08)
+                            font.pixelSize: Theme.scaledFontSize(14 * 1.08, 8)
                         }
 
                         MouseArea {

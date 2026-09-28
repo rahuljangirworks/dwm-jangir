@@ -17,7 +17,7 @@ grep -Fq "DATA_DIR  := \${XDG_DATA_HOME}/dwm-jangir" "$repo_dir/Makefile"
 grep -Fq "PRIVILEGED_HELPER_DIR = \${PREFIX}/libexec/dwm-jangir" "$repo_dir/Makefile"
 grep -Fq 'static const char dwmdir[] = "dwm-jangir";' "$repo_dir/dwm.c"
 grep -Fq '90-dwm-jangir-display.conf' "$repo_dir/scripts/dwm-display-setup"
-grep -Fq "legacy \`dwm-titus\` XDG configuration, data, and state directories" "$repo_dir/docs/src/content/install.md"
+grep -Fq "legacy \`dwm-jangir\` XDG configuration, data, and state directories" "$repo_dir/docs/src/content/install.md"
 
 # Execute only the user-owned migration helper definitions. This covers the
 # two important safety cases without invoking the installer or sudo.
@@ -34,7 +34,7 @@ eval "$migration_helpers"
 
 export HOME="$work/home"
 mkdir -p "$HOME"
-legacy="$HOME/.config/dwm-titus"
+legacy="$HOME/.config/dwm-jangir"
 current="$HOME/.config/dwm-jangir"
 mkdir -p "$legacy"
 printf '%s\n' legacy >"$legacy/hotkeys.toml"
@@ -59,16 +59,16 @@ migrate_user_runtime_directory "$legacy" "$current"
 # the new directory, even if the new installer log is additional.
 USER_DATA_HOME="$HOME/.local/share"
 USER_STATE_HOME="$HOME/.local/state"
-export LEGACY_RUNTIME_ID=dwm-titus
+export LEGACY_RUNTIME_ID=dwm-jangir
 export RUNTIME_ID=dwm-jangir
-mkdir -p "$USER_DATA_HOME/dwm-titus/config" "$USER_DATA_HOME/dwm-titus/scripts"
 mkdir -p "$USER_DATA_HOME/dwm-jangir/config" "$USER_DATA_HOME/dwm-jangir/scripts"
-mkdir -p "$USER_STATE_HOME/dwm-titus/appearance" "$USER_STATE_HOME/dwm-jangir/appearance"
-printf '%s\n' preserved >"$USER_STATE_HOME/dwm-titus/appearance/state"
-cp "$USER_STATE_HOME/dwm-titus/appearance/state" "$USER_STATE_HOME/dwm-jangir/appearance/state"
+mkdir -p "$USER_DATA_HOME/dwm-jangir/config" "$USER_DATA_HOME/dwm-jangir/scripts"
+mkdir -p "$USER_STATE_HOME/dwm-jangir/appearance" "$USER_STATE_HOME/dwm-jangir/appearance"
+printf '%s\n' preserved >"$USER_STATE_HOME/dwm-jangir/appearance/state"
+cp "$USER_STATE_HOME/dwm-jangir/appearance/state" "$USER_STATE_HOME/dwm-jangir/appearance/state"
 printf '%s\n' current-log >"$USER_STATE_HOME/dwm-jangir/install-last.log"
 cleanup_legacy_user_runtime
-[[ ! -e $USER_DATA_HOME/dwm-titus ]] || fail 'stale managed data was retained'
-[[ ! -e $USER_STATE_HOME/dwm-titus ]] || fail 'subsumed legacy state was retained'
+[[ ! -e $USER_DATA_HOME/dwm-jangir ]] || fail 'stale managed data was retained'
+[[ ! -e $USER_STATE_HOME/dwm-jangir ]] || fail 'subsumed legacy state was retained'
 
 printf '%s\n' 'test-runtime-identity: ok'

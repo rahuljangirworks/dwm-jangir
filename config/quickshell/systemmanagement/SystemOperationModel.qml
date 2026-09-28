@@ -16,6 +16,8 @@ Scope {
     property string state: "idle"
     property string detail: ""
     property var progress: null
+    readonly property var currentItem: streamOwned && !streamFailed && !terminalPending ? liveItem : null
+    property var liveItem: null
     property var result: null
     property var audit: null
     property var operationError: null
@@ -112,6 +114,7 @@ Scope {
         } else if (active !== null || terminal !== null) {
             const target = active !== null ? active : terminal;
             root.parser = Protocol.create(target.id, target.actionId);
+            root.liveItem = null;
             root.progress = null;
             root.log = [];
             root.streamOwned = true;
@@ -177,6 +180,7 @@ Scope {
                 || args === null)
             return false;
         const command = Commands.systemManagementCommand(action, args);
+        root.liveItem = null;
         root.snapshotKnown = false;
         root.parser = Protocol.create("", action);
         root.progress = null;
@@ -221,6 +225,7 @@ Scope {
                 break;
             }
         }
+        root.liveItem = root.parser.item;
         root.log = root.parser.records.filter(record => !Protocol.terminal(record.state));
     }
 
@@ -393,7 +398,8 @@ Scope {
                 }
             }
         }
-        onExited: (exitCode, exitStatus) => root.finishWatch(exitCode, exitStatus === 0)
+        // Fedora Quickshell qmltypes omit QProcess::ExitStatus; the runtime signal is valid.
+        onExited: (exitCode, exitStatus) => root.finishWatch(exitCode, exitStatus === 0) // qmllint disable signal-handler-parameters
         // FailedToStart has no exited signal. Normal exits finalize ownership
         // above BEFORE runningChanged. Never read retained collector data here.
         onRunningChanged: { if (!running && root.streamOwned) root.finishWatch(-1, false); }
@@ -418,7 +424,8 @@ Scope {
                 }
             }
         }
-        onExited: (exitCode, exitStatus) => root.finishAcknowledgment(exitCode, exitStatus === 0)
+        // Fedora Quickshell qmltypes omit QProcess::ExitStatus; the runtime signal is valid.
+        onExited: (exitCode, exitStatus) => root.finishAcknowledgment(exitCode, exitStatus === 0) // qmllint disable signal-handler-parameters
         onRunningChanged: { if (!running && root.controlOwned) root.finishAcknowledgment(-1, false); }
     }
 }

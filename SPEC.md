@@ -8,13 +8,15 @@ window rules, a managed Quickshell shell and Settings layer, and supporting
 desktop services and helpers.
 
 The product is a cohesive Fedora desktop installed from the official Fedora
-Server Network Install ISO or onto an existing Fedora installation. Other
+Server installer environment with a prebuilt compressed system image, or onto an
+existing Fedora installation. Factory image builds resolve packages online;
+end-user compressed-image installation must work without network access. Other
 distributions are outside the supported product and validation contract.
 
 ## 2. Goals
 
 - Install a complete, daily-usable Fedora desktop from a minimal network
-  installer base.
+  installer base, with packages and desktop assets prepared at image-build time.
 - Provide one cohesive Settings experience for common display, input,
   connectivity, audio, power, appearance, default-application, update, and
   system-information workflows.
@@ -47,7 +49,8 @@ The primary release target is the Fedora desktop image:
 
 | Target | Current contract |
 | --- | --- |
-| Base media | Fedora 44 Server Network Install ISO |
+| Base media | Fedora 44 Server Network Install ISO as the Anaconda runtime |
+| Installation payload | Prebuilt compressed Fedora root filesystem, installed offline |
 | Session | Xorg with dwm and the managed Quickshell shell |
 | Variants | Standard and explicitly selected NVIDIA image |
 | Initial release architecture | x86_64 |
@@ -55,6 +58,13 @@ The primary release target is the Fedora desktop image:
 Fedora aarch64 is not currently a supported release target. Architecture-aware
 package filtering may remain in shared helpers, but it does not constitute an
 aarch64 support claim without native installer and desktop runtime evidence.
+
+Both image variants default to regular partitions with `/home` as an ordinary
+directory on a growing XFS root filesystem that uses available space on the
+selected drive without the Fedora Server autopart root-size cap. Anaconda creates the boot partitions needed
+for BIOS or UEFI. Drive selection and confirmation of destructive storage
+changes remain explicit in Anaconda; the public Kickstarts must not preselect
+or erase disks. Custom partitioning remains available.
 
 The existing-system installer supports Fedora and uses `dnf`/RPM. It must
 report the detected distribution and accept only `ID=fedora` before package
@@ -192,10 +202,14 @@ The supported installation flow must:
 7. Install the binary, man page, X session file, scripts, and default
    configuration.
 8. Seed missing user configuration while preserving existing files.
-9. Set ownership to the invoking user for files in that user's home.
-10. Support repeated execution without destructive side effects.
-11. Print a summary, skipped optional features, and actionable next steps.
-12. Offer interactive Xorg display setup when installation runs inside an
+9. Install Celluloid, mpv, and sxiv in every profile. Seed fresh-account
+   audio/video and image MIME defaults using Celluloid and sxiv respectively;
+   preserve existing MIME preference files. Both ISO variants include these
+   applications and defaults, with Brave Origin as their fresh-account browser.
+10. Set ownership to the invoking user for files in that user's home.
+11. Support repeated execution without destructive side effects.
+12. Print a summary, skipped optional features, and actionable next steps.
+13. Offer interactive Xorg display setup when installation runs inside an
     active X11 session. The setup must support resolution, refresh rate,
     position, rotation, primary-output selection, and compatible TearFree
     drivers; preview changes with rollback; and preserve existing system Xorg
@@ -378,6 +392,12 @@ Runtime dependencies are classified as:
   user-scoped Flathub remote. Existing installations add that runtime by
   rerunning the installer with the `recommended` or `full` profile; source-sync
   does not infer an install profile from independently installed programs.
+- Dedicated image defaults (Phase 8 target): Starship with a theme matching the
+  desktop, stable Brave Origin as the fresh account browser, checksum-verified
+  Herdr available offline, and sxiv as the supported image-format default with
+  Settings discovery. Feh remains available for wallpapers. Factory capture
+  must fail if required image defaults are missing. Existing user preferences
+  are preserved; Herdr activation and existing-system installation remain opt-in.
 - Optional: the Herdr terminal workspace, file manager, network tray, theme
   utilities, display-manager greeter customization, wallpapers, and
   hardware-specific helpers.
@@ -432,7 +452,10 @@ needed for a bounded scan or confirmed repair.
 ### 5.10 Desktop Settings Platform
 
 The managed Quickshell layer must grow into one discoverable Settings
-application. The application must use a hybrid integration model:
+application. Settings opens fullscreen on the selected monitor, matching
+System Health. Appearance scrolling stays within vertical content bounds;
+cursor changes update existing named X11 cursors and toolkit settings without
+requiring a reboot. The application must use a hybrid integration model:
 
 - Common desktop state and controls are presented through consistent
   Quickshell sections.
@@ -527,7 +550,120 @@ Advanced partitioning, unrestricted service control, firewall policy editing,
 and similarly high-risk administration remain delegated unless a later
 specification defines a narrow safe interface.
 
+#### Desktop source updates
+
+Desktop source updates appear first in Settings > System, above Fedora package
+updates. Opening System performs a bounded check against the official repository's
+`main` branch, cached for five minutes; Check again bypasses the cache. Checking
+does not install files. Installation receipts record the source revision and
+managed file hashes so both newer source and installed-file drift are detected,
+including image installs without Git metadata. Unknown or unreadable state must
+never be reported as current.
+
+Confirmed desktop updates download a fixed revision, build as the desktop user,
+stage the complete system installation through the Makefile, back up managed
+files, install and verify them, and activate Quickshell through the managed
+control path. Personal TOML, application settings, `.xinitrc`, and `config.h`
+remain preserved. Mutable source commands run in a Bubblewrap/libseccomp build
+sandbox without host authorization services or socket access; sandbox setup
+failure stops the update instead of running an unconfined build. Git checkouts
+must be clean, on `main`, and fast-forwardable;
+linked worktrees require the documented source update procedure.
+
+A root-owned installed helper accepts existing managed destinations and additions
+within its desktop-owned namespaces: dwm-prefixed commands and helpers, Dwm
+application themes and Qt palettes, Capitaine cursors, and dwm-jangir licenses.
+New files must not overwrite an unmanaged destination. Retired files are removed
+only if they still match the previous receipt. Missing trusted directories are
+created as root-owned 0755 directories; recovery may leave empty directories.
+Administrator approval authorizes replacement contents at those destinations,
+including the dwm binary, commands, and privileged helpers. Candidate hashes
+verify the new payload; they do not have to match the previous installation.
+The helper records the new hashes after installation and verification, retaining
+the previous files and manifest for rollback. Each authorized apply is bound to
+its prepared archive digest and confirmed revision; substitutions during
+authorization are rejected.
+It never executes a staged Makefile or repository helper as root. Changes to
+installation roots still require the source installer. Changes to the release's
+build/source-update package list are handled within the reserved transaction:
+only validated RPM names are passed to DNF, and the resulting manifest must
+match that prepared list. DNF owns package recovery; desktop rollback does not
+uninstall packages. Authorization uses polkit and requires one visible approval per update or
+explicit recovery operation. A root-owned helper retains that approval only
+for the transaction. Updates bind the operation, generation, and selected
+revision; recovery remains limited to the original operation and its owner.
+A private pipe carries at most eight allowlisted phase requests; EOF, completion,
+or the one-hour session deadline ends the grant. Passwords are never saved, and
+there is no blanket authorization cache for other programs or updates.
+Existing installations bootstrap this support through the source
+installer; the GUI does not elevate a repository copy.
+
+The update worker runs independently in a transient user service and retains
+progress, result, and recovery records. The UI watches those records rather than
+polling. Unknown-duration stages use an indeterminate progress bar; file
+verification reports measured progress. Closing Settings does not cancel an
+update. A normal, unprivileged GTK progress window runs in a separate user
+service and survives managed Quickshell restarts. Its first appearance waits
+for pending polkit authorization, so it cannot cover the password dialog. It yields focus to polkit,
+shows elapsed time, stage, measured or indeterminate progress, a bounded log
+viewer, and completion or recovery guidance. Hiding it leaves installation
+running; a panel indicator reopens it. Both surfaces watch durable status
+changes without polling. Completion produces a desktop notification.
+GTK 3 is provided by the required desktop GTK portal; Python GObject is already
+required by system management. Interrupted installation blocks another update until recovery is
+resolved. If dwm changed, installation success remains distinct from activation:
+show logout guidance and defer Quickshell activation to the new session.
+
+### 5.10.1 Picom Appearance
+
+Appearance provides a stable Compositor section backed by Picom configuration,
+independent of process polling. Active and inactive window opacity are global
+0-100 percent settings, saved on slider release (keyboard edits debounce for
+250 ms). Theme application reapplies current values without storing them in
+individual themes or overwriting them during theme rollback. Custom window
+rules retain precedence over managed defaults.
+
+The unprivileged `dwm-settings-picom` JSON protocol version 1 supplies `status`,
+`watch`, `set-opacity ACTIVE INACTIVE REVISION`, `set-backend BACKEND REVISION`,
+and `copy-config REVISION`. Mutations require the displayed source revision,
+validate before publication, preserve unrelated libconfig source and include
+files, back up changed files, and roll back failed activation. Missing Picom
+remains optional. Missing configuration shows 100 percent defaults and is
+created only on edit. Read-only system configurations require an explicit user
+copy, including referenced configuration files.
+
+`start`, `restart`, `reload`, `stop`, and `toggle` share user-and-display-scoped
+session handling. Valid syntax outside the editor's supported subset remains
+usable for session actions, with configuration parsing and backend policy
+delegated to Picom while explicit session overrides remain respected.
+Explicit `DWM_PICOM_CONFIG` and existing session `--config`
+paths precede standard Picom XDG discovery. `PICOM_BACKEND` overrides an
+explicit config backend; absent both, Automatic uses active-renderer diagnostics
+(GLX for accelerated Intel/AMD, XRender for NVIDIA, software, or unknown), with
+one XRender retry if automatic GLX startup fails. EGL is an explicit experimental
+choice. PCI passthrough devices do not determine the active renderer. NVIDIA
+synchronization defaults respect explicit configuration. Stopped Picom stays
+stopped during opacity edits or theme application. File watches end when
+Settings closes; no recurring compositor-state poll is required.
+
 ### 5.11 Fedora Image Contract
+
+Fresh standard and NVIDIA images must include fastfetch and DNF5 defaults that
+make interactive update/upgrade confirmation default to Yes without enabling
+blanket `assumeyes`. Existing administrator configuration retains precedence.
+
+The first package update is offered after real repository access becomes
+available, preserving offline installation and a usable offline desktop. It
+requires visible authorization and DNF transaction confirmation, reports
+progress/failure, and records completion only after success. Failure, denied
+authorization, package-manager contention and interrupted connectivity permit
+retry. Completion persists across logins; reboot is never automatic.
+
+Before that update, bounded mirror measurements must consider throughput and
+connection time on the installed user's network. Select only mirrors from the
+configured repository service, preserve signature verification and fallback
+mirrors, and retain defaults for unsupported or failed measurements. Never
+capture builder-specific mirror selections. See [INITIAL-UPDATE.md](docs/INITIAL-UPDATE.md).
 
 Released Fedora images must be based on the Fedora Server Network Install ISO,
 not a Live ISO. The image builder embeds this repository and the selected
@@ -693,6 +829,11 @@ In a real or nested X11 session:
 - The ISO builder embeds the checkout and selected Kickstart without dropping
   the upstream boot behavior.
 - The documented Fedora Server Network Install source checksum is verified.
+- Compressed-image installation completes without Internet access or package
+  selection. Required desktop packages, screenshot/clipboard tools, fonts,
+  themes and Gear Lever runtimes are present in the captured filesystem.
+- Capture removes factory accounts, temporary authorization, machine identity
+  and storage state, and retains the boot files needed by both firmware paths.
 - At least the standard image completes Anaconda installation in a VM, reboots,
   reaches LightDM and a usable dwm session, and starts the managed Quickshell
   shell.
@@ -700,40 +841,33 @@ In a real or nested X11 session:
   representative NVIDIA hardware.
 - The validation record states firmware mode, architecture, image variant,
   Fedora release, and any untested paths.
+- Phase 8 targets: select the regular install boot entry by default, retaining
+  the optional media check and all published/payload checksums. Remove network
+  startup waits only in the offline installer path with supported configuration;
+  do not disable networking in the installed system.
+- Adopt tar.zst only after the pinned Anaconda runtime is proven to extract it;
+  preserve tar.xz input compatibility, metadata and manifest/checksum validation.
+  Report measured installation stages, archive size, RAM and hardware rather
+  than equating decompression throughput with end-to-end installation time.
+- Fresh-account qualification must exercise the actual themed prompt, Brave
+  Origin, Herdr, sxiv MIME/default discovery and a confirmed signed PackageKit
+  update, not only command presence or update discovery. The PackageKit security
+  floor and unprivileged Settings boundary remain mandatory.
 
 ## 10. Current Gap
 
-The existing desktop provides dwm, a managed Quickshell panel and launcher,
-notifications, quick controls, power actions, network and Bluetooth surfaces,
-display helpers, a system-health dashboard, and the unified Settings platform.
-Settings includes the completed Phase 2 display and input mutation surface,
-Phase 3 NetworkManager, BlueZ, PipeWire, and media workflows, and Phase 4 power,
-session-action, default-application, MIME, and XDG autostart workflows.
-Completed Phase 5 includes theme transactions, wallpaper persistence,
-managed-shell typography, desktop font, cursor, icon, GTK, and Qt controls,
-panel-widget persistence, plus persistent managed-shell contrast and motion
-policy with dedicated Settings controls, practical XKB input accessibility,
-and persistent notification Do Not Disturb and popup-duration controls.
-Cross-capability optional-component isolation and the accessibility capability
-contract are also qualified. The optional UI-5 inventory adopts no runtime
-experience: clipboard history and reminders are deferred, while emoji/symbol
-and generic image pickers are rejected. Reopening a UI-5 candidate requires an
-explicit product requirement and a separately qualified X11-native boundary.
-Combined Fedora 44, nested-X11, live-session, install-parity, restoration, and
-idle-resource qualification is recorded in `docs/P5-EVIDENCE.md` with explicit
-limitations. Completed Phase 6 adds safe Fedora updates, regional and delegated
-administration entry points, and bounded system information, diagnostics, and
-recovery workflows. Its combined evidence and explicit hardware/service limits
-are recorded in `docs/P6-QUALIFICATION.md`. The next gap is Phase 7 Fedora image
-and release qualification; its implementation has not started.
+Phases 1-7 and compressed-image delivery through PR #299 are complete, with
+qualification evidence in `docs/P7-QUALIFICATION.md` and
+`docs/COMPRESSED-QUALIFICATION.md`. Previous roadmap detail is archived in
+`docs/COMPLETED-ROADMAP-20260911.md`. Physical NVIDIA, Secure Boot and suspend
+limitations remain explicit; completion does not establish untested hardware.
 
-The installer contains a Fedora-only package map and rejects other systems.
-The build uses `pkg-config`, supports staged installation with `DESTDIR`, and
-avoids writing user configuration during package builds. Fedora 44 Server
-Network Install is the current documented image base, while real image and
-hardware validation must continue to be recorded per release.
-
-Fedora is the only supported and tested distribution.
+Phase 8 addresses observed fresh-install gaps: missing shell prompt/theming,
+Brave Origin and Herdr provisioning, image-viewer defaults, and the PackageKit
+backport identity error that blocks update actions despite readable discovery.
+It also measures and reduces offline installer media-check/startup/extraction
+cost. Requirements marked Phase 8 are planned acceptance targets, not claims
+about the already published ISO. Fedora 44 and X11 remain the supported scope.
 
 ## 11. Definition of Done
 

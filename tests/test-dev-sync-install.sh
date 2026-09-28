@@ -29,21 +29,11 @@ output="$work/output"
 install_sources="$work/install-sources"
 test_bin="$work/bin"
 source_update_probe="$work/source-update-probe"
-safe_bin="$work/safe-bin"
 
-mkdir -p "$test_repo" "$test_bin" "$safe_bin" "$prefix/bin" "$prefix/libexec/dwm-jangir" \
+mkdir -p "$test_repo" "$test_bin" "$prefix/bin" "$prefix/libexec/dwm-jangir" \
 	"$manprefix/man1" "$xsessions_dir" \
 	"$data_root/icons" "$data_root/licenses/dwm-jangir/capitaine-cursors" \
 	"$config_home/systemd/user" "$data_dir"
-# Keep the test independent of desktop tools installed on the developer host.
-# The fixture controls xsettingsd and dump_xsettings through test_bin.
-find /usr/bin -maxdepth 1 \( -type f -o -type l \) -printf '%f\n' |
-	while IFS= read -r command_name; do
-	case $command_name in
-	xsettingsd | dump_xsettings) continue ;;
-	esac
-	ln -s "/usr/bin/$command_name" "$safe_bin/$command_name"
-done
 cp -a \
 	"$repo_dir/Makefile" \
 	"$repo_dir/config.mk" \
@@ -64,6 +54,8 @@ make -s -C "$test_repo" --no-print-directory \
 install -Dm755 "$test_repo/dwm" "$prefix/bin/dwm"
 sed "s|@PREFIX@|$prefix|g" "$test_repo/scripts/dwm-settings-display-root" |
 	install -Dm755 /dev/stdin "$prefix/libexec/dwm-jangir/dwm-settings-display-root"
+sed "s|@PREFIX@|$prefix|g" "$test_repo/scripts/dwm-desktop-update-root" |
+	install -Dm755 /dev/stdin "$prefix/libexec/dwm-jangir/dwm-desktop-update-root"
 while IFS= read -r install_source; do
 	[ -n "$install_source" ] || continue
 	install -Dm755 "$test_repo/$install_source" \
@@ -73,16 +65,34 @@ done <"$install_sources"
 version=$(awk '$1 == "VERSION" && $2 == "=" { print $3; exit }' "$test_repo/config.mk")
 sed "s/VERSION/$version/g" "$test_repo/dwm.1" >"$manprefix/man1/dwm.1"
 sed "s|@PREFIX@|$prefix|g" "$test_repo/dwm-jangir.desktop" >"$xsessions_dir/dwm-jangir.desktop"
+ln -s dwm-jangir.desktop "$xsessions_dir/dwm.desktop"
 cp -a "$test_repo/config" "$data_dir/config"
 cp -a "$test_repo/scripts" "$data_dir/scripts"
 cp -a "$test_repo/config/quickshell" "$config_home/quickshell"
 printf '%s\n' '# preserved custom user unit' \
 	>"$config_home/systemd/user/wm-graphical-session.service"
+cp -a "$test_repo/assets/themes" "$data_root/themes"
+for theme_source in "$test_repo"/assets/themes/Dwm-*; do
+	for qt_backend in qt5ct qt6ct; do
+		install -Dm644 "$theme_source/qt/colors.conf" \
+			"$data_root/$qt_backend/colors/${theme_source##*/}.conf"
+	done
+done
 for cursor_source in "$test_repo"/assets/cursors/Capitaine-Cursors*; do
 	cp -a "$cursor_source" "$data_root/icons/"
 done
 install -Dm644 "$test_repo/assets/cursors/COPYING" \
 	"$data_root/licenses/dwm-jangir/capitaine-cursors/COPYING"
+set --
+while IFS= read -r install_source; do
+	set -- "$@" "${install_source##*/}"
+done <"$install_sources"
+python3 "$test_repo/scripts/dwm-desktop-update" record-system --source-dir "$test_repo" \
+	--prefix "$prefix" --manprefix "$manprefix" --xsessions "$xsessions_dir" \
+	--datadir "$data_root" --commands "$@" \
+	--helpers dwm-settings-display-root dwm-desktop-update-root --packages gcc xsettingsd xkbset bubblewrap libseccomp
+HOME="$test_home" XDG_CONFIG_HOME="$config_home" XDG_DATA_HOME="$xdg_data_home" \
+	XDG_STATE_HOME="$state_home" python3 "$test_repo/scripts/dwm-desktop-update" record-user "$test_repo"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/xsettingsd"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/dump_xsettings"
 printf '#!/bin/sh\nexit 0\n' >"$test_bin/xkbset"
@@ -90,15 +100,16 @@ chmod +x "$test_bin/xsettingsd" "$test_bin/dump_xsettings" "$test_bin/xkbset"
 
 sed -n '/^source_update_dependencies_ready() {$/,/^}$/p' \
 	"$test_repo/scripts/dev-sync-install.sh" >"$source_update_probe"
-for required_command in xsettingsd dump_xsettings xkbset; do
+for required_command in xsettingsd dump_xsettings xkbset bwrap; do
 	grep -Fq "command -v $required_command" "$source_update_probe" || {
 		printf 'Source-update readiness omits required command: %s\n' \
 			"$required_command" >&2
 		exit 1
 	}
 done
+grep -Fq 'rpm -q NetworkManager-wifi' "$source_update_probe"
 run_check() {
-	PATH="$test_bin:$safe_bin" \
+	PATH="$test_bin:$PATH" \
 		DWM_DEV_SYNC_SKIP_RUNTIME=1 \
 		DWM_DEV_SYNC_SKIP_PRIVILEGED_TRUST=1 \
 		USER_HOME="$test_home" \
@@ -143,7 +154,7 @@ esac
 EOF
 chmod +x "$test_bin/id"
 mv "$test_bin/xsettingsd" "$test_bin/xsettingsd.missing"
-if PATH="$test_bin:$safe_bin" \
+if PATH="$test_bin:$PATH" \
 	DWM_DEV_SYNC_SKIP_RUNTIME=1 \
 	USER_HOME="$test_home" \
 	PREFIX="$prefix" \
@@ -186,7 +197,7 @@ exit 1
 EOF
 chmod +x "$test_bin/id" "$test_bin/sudo" "$test_bin/dnf"
 mv "$test_bin/xsettingsd" "$test_bin/xsettingsd.missing"
-if PATH="$test_bin:$safe_bin" \
+if PATH="$test_bin:$PATH" \
 	DWM_DEV_SYNC_TEST_MODE=1 \
 	DWM_DEV_SYNC_DESKTOP_FEATURE=1 \
 	DWM_DEV_SYNC_SOURCE_UPDATE_READY=0 \

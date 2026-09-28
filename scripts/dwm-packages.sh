@@ -12,8 +12,29 @@ dwm_packages() {
 			libXinerama-devel libXrender-devel imlib2-devel libxcb-devel \
 			xcb-util-devel freetype-devel fontconfig-devel
 		;;
+	fedora:ci-smoke)
+		dwm_packages "$family" build
+		printf '%s\n' quickshell python3 dbus-daemon util-linux procps-ng \
+			xorg-x11-server-Xvfb xdotool xprop xrandr xset xsettingsd \
+			jq inotify-tools gawk google-noto-sans-fonts
+		;;
 	fedora:image-build)
-		printf '%s\n' xorriso rsync squashfs-tools-ng python3-pillow fontconfig google-noto-sans-fonts
+		printf '%s\n' xorriso rsync squashfs-tools-ng isomd5sum python3-pillow fontconfig google-noto-sans-fonts
+		;;
+	fedora:image-factory)
+		dwm_packages "$family" image-build
+		printf '%s\n' qemu-system-x86 qemu-img edk2-ovmf libguestfs pykickstart xz zstd time
+		;;
+	fedora:image-boot)
+		printf '%s\n' tar dracut-network grub2-pc grub2-pc-modules grub2-efi-x64 shim-x64 \
+			lvm2 cryptsetup btrfs-progs xfsprogs e2fsprogs mdadm dosfstools
+		;;
+	fedora:image-desktop)
+		# Dedicated image defaults; existing-system installs retain user choices.
+		printf '%s\n' brave-origin fastfetch python3-libdnf5
+		;;
+	fedora:media)
+		printf '%s\n' celluloid mpv sxiv python3 desktop-file-utils
 		;;
 	fedora:x11)
 		printf '%s\n' xorg-x11-server-Xorg xorg-x11-xinit xrandr xset xsetroot xinput setxkbmap xkbset
@@ -26,7 +47,7 @@ dwm_packages() {
 		# fedora/updates repositories. It is required and belongs in the strict
 		# desktop transaction; the Fedora package-map check proves availability.
 		printf '%s\n' \
-			quickshell picom feh dex-autostart mate-polkit xsettingsd \
+			quickshell picom python3 feh dex-autostart mate-polkit xsettingsd bubblewrap libseccomp \
 			alsa-utils brightnessctl dbus-tools inotify-tools jq pulseaudio-utils pipewire pavucontrol \
 			pipewire-pulseaudio wireplumber libnotify light-locker xorg-x11-drv-libinput \
 			bluez blueman playerctl upower power-profiles-daemon flatpak xdg-desktop-portal-gtk
@@ -42,13 +63,13 @@ dwm_packages() {
 	fedora:source-update)
 		# Dependencies introduced after the initial installation that the supported
 		# source-checkout synchronization path must reconcile for existing systems.
-		printf '%s\n' xsettingsd xkbset
+		printf '%s\n' xsettingsd xkbset bubblewrap libseccomp NetworkManager-wifi
 		;;
 	fedora:desktop-optional)
 		printf '%s\n' \
 			Thunar gvfs gvfs-smb tumbler thunar-archive-plugin file-roller \
 			xdg-user-dirs gnome-keyring gnome-keyring-pam NetworkManager \
-			rsync
+			NetworkManager-wifi rsync
 		;;
 	fedora:gaming)
 		if [[ ${ARCH:-$(uname -m)} == x86_64 ]]; then
@@ -58,7 +79,7 @@ dwm_packages() {
 		fi
 		;;
 	fedora:theme)
-		printf '%s\n' dconf
+		printf '%s\n' dconf adwaita-icon-theme papirus-icon-theme
 		;;
 	fedora:theme-gtk)
 		printf '%s\n' \
@@ -76,7 +97,7 @@ dwm_packages() {
 		printf '%s\n' qt6-qtdeclarative-devel
 		;;
 	fedora:qml-validation)
-		printf '%s\n' quickshell
+		printf '%s\n' quickshell xsettingsd
 		dwm_packages "$family" qml-development
 		;;
 	fedora:lightdm)
@@ -101,6 +122,7 @@ dwm_packages() {
 		dwm_packages "$family" build
 		dwm_packages "$family" x11
 		dwm_packages "$family" runtime-required
+		dwm_packages "$family" media
 		;;
 	fedora:recommended)
 		dwm_packages "$family" desktop

@@ -15,8 +15,8 @@ PanelPill {
         id: logoImage
 
         anchors.centerIn: parent
-        width: 24
-        height: 25.2
+        width: Theme.scaledSize(24)
+        height: Theme.scaledSize(25.2)
         source: Qt.resolvedUrl("../assets/rahuljangirwork.svg")
         fillMode: Image.PreserveAspectFit
         asynchronous: true
@@ -27,7 +27,7 @@ PanelPill {
     UiText {
         anchors.centerIn: parent
         visible: logoImage.status === Image.Error
-        text: "CTT"
+        text: "RJ"
         color: Theme.accent
         font.pixelSize: Theme.tinyFontSize
         font.bold: true

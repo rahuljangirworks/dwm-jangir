@@ -1022,6 +1022,7 @@ info "Installing required build and runtime dependencies..."
 dwm_install_package_profile build
 dwm_install_package_profile x11
 dwm_install_package_profile runtime-required
+dwm_install_package_profile media
 ok "Required build and runtime dependencies installed."
 
 # ── Recommended desktop dependencies ─────────────────────
@@ -1196,6 +1197,12 @@ make install-user \
 	OWNER="$(id -un)" \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
 	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+# Install a low-priority DNF5 default without replacing administrator settings.
+# The main /etc/dnf/dnf.conf and later drop-ins keep precedence.
+info "Installing DNF5 defaults while preserving administrator settings."
+dnf_defaults_helper=$(make -s --no-print-directory print-dnf-defaults-helper)
+sudo /usr/bin/python3 -I "$dnf_defaults_helper" install --source "$REPO_DIR/config/dnf/40-dwm-jangir.conf"
+bash "$REPO_DIR/scripts/seed-default-apps.sh"
 cleanup_legacy_user_runtime
 migrate_managed_xorg_identity
 configure_displays_after_install

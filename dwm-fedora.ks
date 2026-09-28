@@ -2,10 +2,15 @@
 #
 # Build an installer ISO with scripts/build-dwm-fedora-installer-iso.sh so the
 # local checkout is available at /run/install/repo/dwm-jangir during install.
-# Storage, locale, keyboard layout, timezone, hostname, root password, and user
-# creation are intentionally left to the Anaconda UI.
+# Drive selection, erasure confirmation, locale, keyboard layout, timezone,
+# hostname, root password, and user creation remain in the Anaconda UI.
 
 network --bootproto=dhcp --activate
+
+# Use regular partitions with /home inside the root filesystem. Anaconda
+# supplies firmware-specific boot partitions. The ISO builder sets uncapped
+# layout defaults through product.img. Leave partitioning commands out so
+# installation still requires the user to review and confirm selected disks.
 
 firstboot --disable
 selinux --disabled
@@ -32,7 +37,7 @@ gaming_packages=/tmp/dwm-jangir-gaming-packages
 case "$(uname -m)" in
 x86_64)
 	cat >"$gaming_repo" <<'EOF'
-repo --name="rahuljangirworks-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/rahuljangirworks/copr-fedora/fedora-$releasever-$basearch/" --install
+repo --name="christitustech-copr-fedora" --baseurl="https://download.copr.fedorainfracloud.org/results/christitustech/copr-fedora/fedora-$releasever-$basearch/" --install
 EOF
 	cat >"$gaming_packages" <<'EOF'
 steam
@@ -85,13 +90,23 @@ xclip
 xdotool
 xprop
 xdg-utils
+celluloid
+mpv
+sxiv
+desktop-file-utils
+brave-origin
 flatpak
 %include /tmp/dwm-jangir-gaming-packages
 quickshell
+bubblewrap
+libseccomp
 PackageKit
 PackageKit-glib
+python3
 python3-gobject
 python3-rpm
+python3-libdnf5
+fastfetch
 accountsservice
 cups
 system-config-printer
@@ -126,6 +141,8 @@ libnotify
 light-locker
 xorg-x11-drv-libinput
 dconf
+adwaita-icon-theme
+papirus-icon-theme
 arc-theme
 adw-gtk3-theme
 numix-gtk-theme
@@ -138,6 +155,7 @@ qt5ct
 google-noto-color-emoji-fonts
 google-noto-sans-mono-fonts
 NetworkManager
+NetworkManager-wifi
 rsync
 Thunar
 gvfs
@@ -164,6 +182,9 @@ set -eu
 
 repo_dir=/opt/dwm-jangir
 install_sudoers=/etc/sudoers.d/90-dwm-jangir-install
+# Never leave installer-only authorization behind after a failed setup.
+trap 'rm -f "$install_sudoers"' EXIT
+trap 'exit 1' HUP INT TERM
 target_user=$(
 	awk -F: '$3 >= 1000 && $3 < 60000 && $6 ~ "^/home/" && $7 !~ /(nologin|false)$/ { print $1; exit }' /etc/passwd
 )
@@ -205,14 +226,17 @@ chown -R "$target_user:$target_group" "$target_repo_dir"
 install -m 0440 /dev/null "$install_sudoers"
 printf '%s ALL=(ALL) NOPASSWD: ALL\n' "$target_user" > "$install_sudoers"
 
-su - "$target_user" -c 'cd "$HOME/.local/share/dwm-jangir" && ./install.sh --non-interactive --profile core'
-su - "$target_user" -c 'cd "$HOME/.local/share/dwm-jangir" && scripts/install-gearlever'
+# The complete desktop needs the recommended profile's verified Meslo font
+# and Gear Lever setup. Do not query the installer's host AccountsService from
+# this target chroot: it cannot resolve the newly created target user. This
+# private provisioning bus does not change the installed session's policy.
+su - "$target_user" -c 'cd "$HOME/.local/share/dwm-jangir" && dbus-run-session -- sh -c "export DBUS_SYSTEM_BUS_ADDRESS=\$DBUS_SESSION_BUS_ADDRESS; exec ./install.sh --non-interactive --profile recommended"'
 
 if getent group gamemode >/dev/null 2>&1; then
 	usermod -aG gamemode "$target_user"
 fi
 
-find /usr/share/xsessions -mindepth 1 -maxdepth 1 -type f ! -name dwm-jangir.desktop -delete 2>/dev/null || true
+find /usr/share/xsessions -mindepth 1 -maxdepth 1 -type f ! -name dwm.desktop -delete 2>/dev/null || true
 find /usr/share/wayland-sessions -mindepth 1 -maxdepth 1 -type f -delete 2>/dev/null || true
 systemctl disable initial-setup.service initial-setup-graphical.service 2>/dev/null || true
 rm -f "$install_sudoers"
@@ -224,4 +248,7 @@ fi
 systemctl enable power-profiles-daemon.service
 systemctl enable lightdm.service
 systemctl set-default graphical.target
+# Arm only fresh image installations, never existing-system source updates.
+install -d -m 0755 /var/lib/dwm-jangir/initial-update
+printf '{ "variant": "standard", "schema": 1 }\n' > /var/lib/dwm-jangir/initial-update/pending.json
 %end

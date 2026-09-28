@@ -9,6 +9,22 @@
 set -euo pipefail
 
 script_dir=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+# Make installed custom data roots visible to GTK and toolkit subprocesses.
+if [[ $script_dir == */bin && -x $script_dir/dwm-desktop-update ]]; then
+	data_updater=$script_dir/dwm-desktop-update
+else
+	data_updater=$(command -v dwm-desktop-update || printf '%s' "$script_dir/dwm-desktop-update")
+fi
+# Automatic reloads are direct dwm children and do not inherit autostart's PATH.
+session_executable=$(readlink "/proc/$PPID/exe" 2>/dev/null || :)
+session_executable=${session_executable%" (deleted)"}
+if [[ $session_executable == */bin/dwm && -x ${session_executable%/*}/dwm-desktop-update ]]; then
+	data_updater=${session_executable%/*}/dwm-desktop-update
+fi
+if session_data_dirs=$("$data_updater" data-directories 2>/dev/null); then
+	export XDG_DATA_DIRS=$session_data_dirs
+fi
+export XDG_DATA_DIRS=${XDG_DATA_DIRS:-/usr/local/share:/usr/share}
 XSETTINGS_HELPER=${DWM_APPEARANCE_XSETTINGS_HELPER:-$script_dir/dwm-xsettings}
 THEME_DISCOVERY_HOME=${DWM_APPEARANCE_DISCOVERY_HOME:-$HOME}
 [[ $THEME_DISCOVERY_HOME == /* ]] || {
@@ -382,13 +398,78 @@ gtk_theme_available() {
 }
 
 default_gtk_theme() {
+	if gtk_theme_available "Dwm-$THEME_NAME"; then
+		printf '%s\n' "Dwm-$THEME_NAME"
+		return
+	fi
 	if [[ "$DARK_MODE" == "true" ]]; then
 		case "$THEME_NAME" in
-		nord) printf '%s\n' "Nordic" ;;
-		*) printf '%s\n' "Adwaita-dark" ;;
+		nord)
+			if gtk_theme_available "Nordic"; then
+				printf '%s\n' "Nordic"
+				return
+			fi
+			;;
+		dracula)
+			if gtk_theme_available "Dracula"; then
+				printf '%s\n' "Dracula"
+				return
+			elif gtk_theme_available "dracula"; then
+				printf '%s\n' "dracula"
+				return
+			fi
+			;;
+		gruvbox*)
+			if gtk_theme_available "Gruvbox-Dark"; then
+				printf '%s\n' "Gruvbox-Dark"
+				return
+			elif gtk_theme_available "gruvbox-dark"; then
+				printf '%s\n' "gruvbox-dark"
+				return
+			fi
+			;;
+		catppuccin*)
+			if gtk_theme_available "Catppuccin-Mocha"; then
+				printf '%s\n' "Catppuccin-Mocha"
+				return
+			fi
+			;;
+		tokyonight*)
+			if gtk_theme_available "Tokyonight-Dark"; then
+				printf '%s\n' "Tokyonight-Dark"
+				return
+			fi
+			;;
 		esac
+		if gtk_theme_available "adw-gtk3-dark"; then
+			printf '%s\n' "adw-gtk3-dark"
+		elif gtk_theme_available "Adwaita-dark"; then
+			printf '%s\n' "Adwaita-dark"
+		elif gtk_theme_available "Arc-Dark"; then
+			printf '%s\n' "Arc-Dark"
+		else
+			printf '%s\n' "Adwaita-dark"
+		fi
 	else
-		printf '%s\n' "Adwaita"
+		case "$THEME_NAME" in
+		gruvbox-light)
+			if gtk_theme_available "Gruvbox-Light"; then
+				printf '%s\n' "Gruvbox-Light"
+				return
+			fi
+			;;
+		catppuccin-latte)
+			if gtk_theme_available "Catppuccin-Latte"; then
+				printf '%s\n' "Catppuccin-Latte"
+				return
+			fi
+			;;
+		esac
+		if gtk_theme_available "adw-gtk3"; then
+			printf '%s\n' "adw-gtk3"
+		else
+			printf '%s\n' "Adwaita"
+		fi
 	fi
 }
 
@@ -549,8 +630,7 @@ if [[ -n $GTK_CHOICE && $GTK_CHOICE != follow-theme ]]; then
 	GTK_THEME_NAME=$GTK_CHOICE
 fi
 if ! gtk_theme_available "$GTK_THEME_NAME"; then
-	GTK_THEME_FALLBACK="Adwaita"
-	[[ "$DARK_MODE" == "true" ]] && GTK_THEME_FALLBACK="Adwaita-dark"
+	GTK_THEME_FALLBACK="$(default_gtk_theme)"
 	echo "theme-apply: GTK theme '$GTK_THEME_NAME' not found; falling back to '$GTK_THEME_FALLBACK'" >&2
 	GTK_THEME_NAME="$GTK_THEME_FALLBACK"
 fi
@@ -572,13 +652,13 @@ gtk_ini_edit_path() {
 }
 
 gtk_ini_set() {
-	local file="$1" key="$2" value="$3" temporary mode=600
+	local file="$1" key="$2" value="$3" temporary mode=600 section=${4:-Settings}
 	file=$(gtk_ini_edit_path "$file") || return 1
 	mkdir -p -- "${file%/*}"
 	temporary=$(mktemp "${file%/*}/.settings.ini.XXXXXX")
 	if [[ -f $file ]]; then
 		mode=$(stat -c %a -- "$file")
-		awk -v key="$key" -v assignment="$key=$value" '
+		awk -v section="$section" -v key="$key" -v assignment="$key=$value" '
 			BEGIN { in_settings = 0; saw_settings = 0 }
 			/^[[:space:]]*\[[^]]+\][[:space:]]*$/ {
 				if (in_settings && !written) {
@@ -587,7 +667,7 @@ gtk_ini_set() {
 				}
 				header = $0
 				gsub(/^[[:space:]]+|[[:space:]]+$/, "", header)
-				in_settings = (header == "[Settings]")
+				in_settings = (header == "[" section "]")
 				if (in_settings) saw_settings = 1
 				print
 				next
@@ -607,14 +687,14 @@ gtk_ini_set() {
 				if (!written) {
 					if (!saw_settings) {
 						if (NR) print ""
-						print "[Settings]"
+						print "[" section "]"
 					}
 					print assignment
 				}
 			}
 		' "$file" >"$temporary"
 	else
-		printf '[Settings]\n%s=%s\n' "$key" "$value" >"$temporary"
+		printf '[%s]\n%s=%s\n' "$section" "$key" "$value" >"$temporary"
 	fi
 	chmod "$mode" -- "$temporary"
 	mv -f -- "$temporary" "$file"
@@ -916,6 +996,32 @@ fi
 # GTK applications consume the same fixed-point DPI as the persisted choice.
 XSETTINGSD_CONFIG="${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/xsettingsd.conf"
 if [[ $RUNTIME_ONLY == 0 && $LIVE_ONLY == 0 ]]; then
+	XSETTINGS_CURSOR_THEME=${CURSOR_THEME//\\/\\\\}
+	XSETTINGS_CURSOR_THEME=${XSETTINGS_CURSOR_THEME//\"/\\\"}
+	xsettingsd_config_write "$XSETTINGSD_CONFIG" Gtk/CursorThemeName \
+		"Gtk/CursorThemeName \"$XSETTINGS_CURSOR_THEME\""
+	xsettingsd_config_write "$XSETTINGSD_CONFIG" Gtk/CursorThemeSize \
+		"Gtk/CursorThemeSize $CURSOR_SIZE"
+	if [[ $GTK_THEME_NAME == *$'\r'* || $GTK_THEME_NAME == *$'\n'* ]]; then
+		echo "theme-apply: invalid GTK theme name" >&2
+		exit 1
+	fi
+	XSETTINGS_GTK_THEME=${GTK_THEME_NAME//\\/\\\\}
+	XSETTINGS_GTK_THEME=${XSETTINGS_GTK_THEME//\"/\\\"}
+	xsettingsd_config_write "$XSETTINGSD_CONFIG" Net/ThemeName \
+		"Net/ThemeName \"$XSETTINGS_GTK_THEME\""
+	if [[ -n $ICON_CHOICE && $ICON_CHOICE != follow-system ]]; then
+		if [[ $ICON_CHOICE == *$'\r'* || $ICON_CHOICE == *$'\n'* ]]; then
+			echo "theme-apply: invalid icon theme name" >&2
+			exit 1
+		fi
+		XSETTINGS_ICON_THEME=${ICON_CHOICE//\\/\\\\}
+		XSETTINGS_ICON_THEME=${XSETTINGS_ICON_THEME//\"/\\\"}
+		xsettingsd_config_write "$XSETTINGSD_CONFIG" Net/IconThemeName \
+			"Net/IconThemeName \"$XSETTINGS_ICON_THEME\""
+	elif [[ $ICON_CHOICE == follow-system && $PERSONALIZATION_CAPABILITY == icon ]]; then
+		xsettingsd_config_write "$XSETTINGSD_CONFIG" Net/IconThemeName
+	fi
 	if [[ -z $TEXT_SCALE_CHOICE || $TEXT_SCALE_CHOICE == follow-system ]]; then
 		xsettingsd_config_write "$XSETTINGSD_CONFIG" Xft/DPI
 	else
@@ -1121,8 +1227,8 @@ if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 &&
 fi
 
 # Refresh only the project-owned xsettingsd instance after the transaction has
-# published its staged configuration. A follow-system reset stops that instance
-# and releases the XSETTINGS selection instead of pinning a generated scale.
+# published its staged configuration. Follow-system removes the DPI override;
+# the instance can keep publishing cursor settings without pinning text scaling.
 if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 ]]; then
 	if [[ -x $XSETTINGS_HELPER ]]; then
 		if ! "$XSETTINGS_HELPER" reload >/dev/null; then
@@ -1131,11 +1237,20 @@ if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 ]]; then
 				echo 'theme-apply: personalization X11 text-scale convergence failed' >&2
 				exit 1
 			fi
+			if [[ $STRICT_PERSONALIZATION == 1 &&
+				$PERSONALIZATION_CAPABILITY == cursor ]]; then
+				echo 'theme-apply: personalization XSETTINGS cursor convergence failed' >&2
+				exit 1
+			fi
 			echo 'theme-apply: managed X11 text scaling is unavailable' >&2
 		fi
 	elif [[ $STRICT_PERSONALIZATION == 1 &&
 		$PERSONALIZATION_CAPABILITY == text-size ]]; then
 		echo 'theme-apply: managed X11 text-scale helper is unavailable' >&2
+		exit 1
+	elif [[ $STRICT_PERSONALIZATION == 1 &&
+		$PERSONALIZATION_CAPABILITY == cursor ]]; then
+		echo 'theme-apply: managed XSETTINGS cursor helper is unavailable' >&2
 		exit 1
 	fi
 fi
@@ -1167,20 +1282,51 @@ EOF
 
 fi
 
-# Update qt5ct / qt6ct color scheme config if that tool is the active theme
+# Qt palette files are immutable installed assets, so appearance transactions
+# only need to journal the existing qt5ct/qt6ct configuration files.
+qt_palette_path() {
+	local root
+	local -a roots=()
+	IFS=: read -r -a roots <<<"${XDG_DATA_DIRS:-/usr/local/share:/usr/share}"
+	for root in "${XDG_DATA_HOME:-$HOME/.local/share}" "${roots[@]}"; do
+		[[ $root == /* ]] || continue
+		if [[ -f $root/$QT_PLATFORM_THEME/colors/Dwm-$THEME_NAME.conf ]]; then
+			printf '%s\n' "$root/$QT_PLATFORM_THEME/colors/Dwm-$THEME_NAME.conf"
+			return 0
+		fi
+	done
+	return 1
+}
+
 if [[ $RUNTIME_ONLY == 0 && $LIVE_ONLY == 0 &&
 	("$QT_PLATFORM_THEME" == "qt5ct" || "$QT_PLATFORM_THEME" == "qt6ct") ]]; then
 	QT_CT_CONF="${XDG_CONFIG_HOME:-$HOME/.config}/${QT_PLATFORM_THEME}/${QT_PLATFORM_THEME}.conf"
-	if [[ -f "$QT_CT_CONF" ]]; then
-		if [[ "$DARK_MODE" == "true" ]]; then
+	if QT_CT_SCHEME=$(qt_palette_path); then
+		gtk_ini_set "$QT_CT_CONF" color_scheme_path "$QT_CT_SCHEME" Appearance
+		gtk_ini_set "$QT_CT_CONF" custom_palette true Appearance
+	elif [[ -f $QT_CT_CONF ]]; then
+		if [[ $DARK_MODE == true ]]; then
 			QT_CT_SCHEME="/usr/share/${QT_PLATFORM_THEME}/colors/darker.conf"
 		else
 			QT_CT_SCHEME=""
 		fi
-		if grep -q '^color_scheme_path' "$QT_CT_CONF"; then
-			sed -i "s|^color_scheme_path=.*|color_scheme_path=$QT_CT_SCHEME|" "$QT_CT_CONF"
+		gtk_ini_set "$QT_CT_CONF" color_scheme_path "$QT_CT_SCHEME" Appearance
+		if [[ -n $QT_CT_SCHEME && -f $QT_CT_SCHEME ]]; then
+			gtk_ini_set "$QT_CT_CONF" custom_palette true Appearance
 		else
-			sed -i "/^\[Appearance\]/a color_scheme_path=${QT_CT_SCHEME}" "$QT_CT_CONF"
+			gtk_ini_set "$QT_CT_CONF" custom_palette false Appearance
+		fi
+	fi
+fi
+
+# Refresh cached named cursors in existing clients as well as the root window.
+if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 && -n ${DISPLAY:-} ]]; then
+	CURSOR_RELOAD_HELPER=${DWM_APPEARANCE_CURSOR_HELPER:-$script_dir/dwm-cursor-reload}
+	if [[ ! -x $CURSOR_RELOAD_HELPER ]] ||
+		! "$CURSOR_RELOAD_HELPER" "$CURSOR_THEME" "$CURSOR_SIZE"; then
+		echo 'theme-apply: live X11 cursor refresh failed' >&2
+		if [[ $STRICT_PERSONALIZATION == 1 && $PERSONALIZATION_CAPABILITY == cursor ]]; then
+			exit 1
 		fi
 	fi
 fi
@@ -1190,6 +1336,7 @@ if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 ]] && command -v systemctl
 	QT_QPA_PLATFORMTHEME=$QT_PLATFORM_THEME \
 		XCURSOR_THEME=$CURSOR_THEME XCURSOR_SIZE=$CURSOR_SIZE \
 		systemctl --user import-environment \
+		XDG_DATA_DIRS \
 		QT_QPA_PLATFORMTHEME \
 		XCURSOR_THEME \
 		XCURSOR_SIZE 2>/dev/null || true
@@ -1197,9 +1344,20 @@ fi
 if [[ $RUNTIME_ONLY == 0 && $TRANSACTIONAL_APPLY == 0 ]] &&
 	command -v dbus-update-activation-environment &>/dev/null; then
 	dbus-update-activation-environment --systemd \
+		XDG_DATA_DIRS="$XDG_DATA_DIRS" \
 		QT_QPA_PLATFORMTHEME="$QT_PLATFORM_THEME" \
 		XCURSOR_THEME="$CURSOR_THEME" \
 		XCURSOR_SIZE="$CURSOR_SIZE" 2>/dev/null || true
+fi
+
+# Opacity is global. Reapply the current configuration without writing it into
+# theme transactions or their rollback archives. A stopped compositor stays stopped.
+if [[ $TRANSACTIONAL_APPLY == 0 && -n ${DISPLAY:-} ]] && command -v picom &>/dev/null; then
+	PICOM_HELPER=${DWM_APPEARANCE_PICOM_HELPER:-$script_dir/dwm-settings-picom}
+	if [[ -x $PICOM_HELPER ]]; then
+		"$PICOM_HELPER" reload >/dev/null ||
+			echo 'theme-apply: Picom reload failed; see Appearance > Compositor' >&2
+	fi
 fi
 
 echo "theme-apply: applied theme '$THEME_NAME'"

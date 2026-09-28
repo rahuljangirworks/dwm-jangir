@@ -8,17 +8,245 @@ versions from `config.mk`.
 
 ### Added
 
-- Add the optional `--lightdm-theme solar` LightDM theme. It restores the VM1
-  image-free line/grain, clock, and bounded optional sun/weather timeline as a
-  pinned Slick Greeter 2.2.6 overlay, while Fedora's stock `slick-greeter`
-  remains the default. Installer re-runs preserve a Solar selection unless an
-  explicit `--lightdm-theme stock` switch is requested.
+- Add the optional `--lightdm-theme solar` LightDM greeter theme, retaining
+  Fedora's stock `slick-greeter` as the default.
 
 ### Changed
 
-- Validate sudo access before installation mutates the checkout or system. A
-  non-TTY run now exits with an actionable `ssh -tt`/local-terminal message
-  instead of failing during package installation after creating `config.h`.
+- Preserve the Dwm Jangir runtime identity while importing the upstream 0.7.2
+  desktop-update, initial-update, application-theme, and Fedora image work.
+- Validate sudo access before an interactive install mutates the checkout or
+  the system; non-TTY runs now explain how to allocate a terminal.
+
+### Fixed
+
+- Install `NetworkManager-wifi` with the Fedora image and full package set, and
+  reconcile it on existing source checkouts. Without the Wi-Fi plugin,
+  NetworkManager leaves wireless interfaces unmanaged, so scans and connections
+  fail after installation even when the kernel driver is present.
+
+## [0.7.2] - 2026-09-24
+
+### Added
+
+- Offer a visible, authorized initial Fedora package update after repository
+  access becomes available on fresh standard and NVIDIA images (#344). Keep
+  offline startup usable and allow retry without recording false completion.
+- Measure mirror throughput and connection time within a bounded budget before
+  the initial upgrade; retain trusted repository fallback lists and signature
+  checks without shipping builder-specific mirror selections (#347).
+
+### Changed
+
+- Ship interactive Yes-default DNF5 prompts while preserving local overrides.
+  Retain repository ordering instead of assuming low latency means high
+  throughput; document the Fedora 44 configuration audit (#346).
+
+### Fixed
+
+- Include fastfetch in both image variants and the shared image package map,
+  and require it during offline image capture validation (#345).
+
+- Capture the Xvfb runtime test's intentional invalid-config notifications so
+  validation never sends false "dwm: bad config" warnings to the live desktop.
+
+- Let desktop updates add managed themes, palettes, commands and helpers, remove
+  unchanged retired files, and install changed build dependencies in the same
+  authorized transaction. Preserve rollback for file migrations and reject
+  unmanaged collisions. Older updaters need one complete source update to
+  receive this migration support.
+
+- Keep light-preset hover surfaces light and hovered/selected shell labels
+  readable (issue #349). Install offline GTK 2/3/4 themes and Qt palettes for
+  all 15 presets, including Dracula, with update verification and backup coverage.
+
+- Keep Quickshell linting compatible with Fedora 44 Qt tooling, with typed
+  regional controls and provider monitors, an unambiguous running-app state
+  property, and narrowly scoped exceptions for missing upstream enum metadata.
+
+## [0.7.1] - 2026-09-19
+
+### Fixed
+
+- Prepare Flatpak and verify the official Flathub remote before installing
+  Flatpak applications, using the target user for existing-system installs and
+  the system scope for factory images. Stop app installation on setup failures,
+  conflicting remote URLs, or disabled remotes (issue #332).
+- Set the installer build version to 0.7.1.
+
+- Default both Fedora image variants to regular partitions with `/home` sharing
+  the root filesystem, retaining firmware-specific boot partitions and explicit
+  installation-drive selection and storage confirmation (issue #330).
+- Keep Settings panes in a stable loading surface while their initial reads
+  complete, including Appearance capabilities and personalization state. Reveal
+  populated controls together and preserve them during later refreshes (#315).
+
+### Changed
+
+- Shrink visible tiled windows by 15% when `Super+F` enters floating layout.
+  Repeated presses and individually floated windows keep their geometry;
+  `Super+T` retiles the layout.
+
+- Shrink explicitly toggled tiled windows by 15% around their current center
+  when entering floating mode, respecting application size hints. Toggle again
+  to retile; mouse dragging and resizing retain their existing behavior.
+
+- Let authorized Desktop updates replace changed system-file contents, including
+  dwm, commands, and privileged helpers. Keep destination validation, payload
+  verification, backups, and rollback. Older hash-restricted updaters need one
+  source installation to adopt this behavior.
+
+- Load Appearance wallpaper choices using filenames and metadata, without
+  decoding the image collection during status or readiness checks.
+
+- Simplify Appearance to one desktop font and text-size control shared with the
+  shell. Hide duplicate GTK/Qt selectors, the keyboard/pointer access summary,
+  and application status cards. Keep errors and recovery actions visible.
+
+- Reduce hosted CI to one Fedora build and desktop smoke job. Check managed
+  Quickshell startup, its panel, launcher keyboard interaction, and application
+  launch. Skip documentation-only changes and keep extended validation local.
+
+### Added
+
+- Add Desktop updates at the top of System Settings, with upstream and installed
+  file checks, confirmed installation, persistent progress, and recovery copies.
+  Sandbox mutable source commands away from host authorization services.
+  Keep proxy credentials out of process arguments, reject special files before
+  staging, and exclude concurrent source installation through both file phases.
+  Build source updates without elevation and restrict authorized system-file
+  replacement to the installed manifest. Preserve personal configuration and
+  distinguish installed updates from changes requiring a new desktop session.
+  Permit approved replacement contents at the installed system destinations.
+
+### Fixed
+
+- Prevent the XSETTINGS daemon from retaining installation locks after theme
+  convergence, which blocked subsequent local desktop updates.
+
+- Recover the desktop typography subscription after it exits, clamp external
+  system text scales without retaining stale ownership, and wrap health summary
+  tiles to fit scaled labels and the available screen width.
+
+- Speed up random wallpaper changes by choosing filenames before decoding,
+  checking only the images needed for each monitor and retrying corrupt files.
+
+- Install Celluloid, mpv, and sxiv in every Fedora installer profile and both
+  ISO variants. Seed fresh-account audio/video defaults from Celluloid and
+  image defaults from sxiv, preserving existing application preferences (#308).
+
+- Keep the top bar sharp when panel menus open by placing their transparent
+  click-away surface below the bar.
+
+- Add Close to the update log window and remove the redundant Check status
+  action from automatically refreshed update progress.
+
+- Simplify the desktop update card to Check again and Update desktop. Open
+  progress automatically after starting an update and reopen it from the panel.
+
+- Keep desktop update progress in a separate window that survives shell restarts,
+  with elapsed time, a log viewer, completion notifications, and a panel shortcut
+  for reopening hidden progress.
+
+- Use one administrator approval for each desktop update or explicit recovery.
+  Retain a private, transaction-bound helper through all privileged phases,
+  without saving passwords or granting authorization to unrelated commands.
+
+- Reveal desktop update authorization by closing Settings when a password
+  request starts. Keep Check status and the log location available during an
+  update, show recovery progress, and stop repeated authorization requests
+  after a timeout while retaining recovery records.
+
+- Show menu-hidden image viewers such as sxiv and Feh in Settings MIME defaults,
+  and allow selecting them while continuing to exclude disabled or unavailable
+  handlers. Preserve application launcher and default-role visibility filtering.
+
+- Keep imported Picom includes available after failed activation, allow imports
+  into explicitly selected standard user roots, and bound unused import recovery
+  files. Allow a brief X11 selection-release grace before starting Picom while
+  keeping stop independent of X11 access. Include xsettingsd in CI validation.
+
+- Preserve pending Picom edit revisions, import read-only includes from existing
+  user configurations, and recover include watches after invalid edits. Limit
+  failed-launch cleanup to its own processes and attempt compositor recovery
+  before reporting rollback conflicts, preserving relative configuration paths.
+
+### Changed
+
+- Replace unstable Picom Appearance checks with global opacity sliders,
+  configuration watching, and automatic GPU-aware backend selection with manual
+  overrides. Startup and restart now share the same display-scoped policy (#309).
+
+- Add Self-Heal to Quick Actions for launching a configured workstation repair
+  script in a terminal with visible progress and authorization prompts (#306).
+- Simplify the Power dropdown to Reboot, Logout, Lock, Suspend, and Shutdown
+  without explanatory row text.
+- Build zstd compressed filesystem candidates with recorded compression costs,
+  keep xz input compatibility, and default offline media to normal installation.
+- Seed fresh image accounts with a themed Starship prompt, Brave Origin and
+  sxiv image associations; include verified Herdr for offline use.
+- Use verified Cloudflare-hosted compressed ISOs for the primary download and
+  installation guides, with checksums, offline setup steps and hardware limits.
+
+### Fixed
+
+- Preserve per-screen Picom isolation, apply modern opacity defaults to dialogs,
+  retain ten recovery backups, and recover cleanly from concurrent config removal
+  and transient Appearance errors. Keep native relative shader and nested include
+  lookup behavior during edits.
+
+- Make Settings fullscreen like System Health (#302), stop Appearance overscroll
+  bounce (#303), refresh running X11 clients when changing cursor themes (#304),
+  and hide the redundant Blueman tray icon (#305).
+- Require a modern fixed PackageKit in captured images while preserving the
+  existing unprivileged update security gate and explaining backport recovery.
+- Make the image's sxiv desktop entry discoverable in application Defaults.
+- Exclude `.env`, `.env.*` and `.envrc` at every depth from the ISO source
+  payload, independently of Git ignore rules.
+
+### Added
+
+- Add a compressed filesystem image build path with local Anaconda installation,
+  separate standard/NVIDIA manifests, offline user setup and build-time checks
+  for the desktop package contract, including maim and clipboard dependencies.
+
+## [0.7.0] - 2026-09-10
+
+### Changed
+
+- Keep Settings within the focused screen when opened through IPC, including
+  smaller displays. Refresh generated user autostart entries before starting
+  the graphical session so newly installed exclusions take effect.
+- Document source/configuration backup, interrupted-update retry and restoration,
+  including custom XDG locations and symlink targets.
+
+- Complete Phase 7 software/image qualification with signed Fedora 44 source verification
+  and an explicit VM/hardware evidence matrix, existing-system recovery and
+  integrated desktop validation. Record failed QEMU S3 resume and untested
+  physical hardware without claiming driver or device qualification. Restore the rebuilt installer
+  media checksum so the default media-test boot entry can continue, and patch
+  both BIOS and UEFI menus so either firmware path loads the desktop Kickstart.
+- Provision images with the recommended desktop profile so Meslo icons and
+  Gear Lever are installed. Isolate provisioning D-Bus from the installer's
+  AccountsService, and clean temporary sudoers authorization on post failure
+  or interruption.
+
+- Wait for acknowledged notification-policy persistence in the native restart
+  test, with delayed-write coverage to prevent timing-dependent CI failures.
+
+- Create Settings panes on first visit and retain them for subsequent navigation;
+  avoid repeating section discovery while typing a search for the same section.
+- Pass local validation evidence into review and add a focused native Settings
+  responsiveness gate to shorten fix/review iterations before Phase 7.
+
+- Replace raw System update logs and audit hashes with current-package progress,
+  separate overall progress, and concise verified completion messages.
+
+- Keep seeded autostart exclusions valid for desktop entries with OnlyShowIn,
+  preserving other desktop sessions without adding conflicting NotShowIn keys.
+- Resolve update recovery session evidence for managed user-service launches
+  through logind's verified active local X11 display session.
+- Wrap long Input setting labels and improve Settings search-prompt contrast.
 
 - Brand the Fedora Anaconda installer with a dark theme and centered CTT logo.
   ISO builds accept `--version X.Y.Z` to generate a sidebar badge in staging
@@ -261,9 +489,6 @@ versions from `config.mk`.
   Clipboard history and reminders are deferred pending explicit privacy,
   lifecycle, and recovery contracts; emoji/symbol and generic image pickers are
   rejected because no current product workflow requires them.
-- Use the fork-owned `rahuljangirworks/background` wallpaper repository and
-  `rahuljangirworks/copr-fedora` Gamescope COPR in the existing-system
-  installer and Fedora image profiles.
 
 ### Added
 
@@ -350,62 +575,12 @@ versions from `config.mk`.
   only a complete versioned personalization response, and unavailable or
   malformed providers degrade independently without adding polling or mutation.
 
-- Add a version-pinned Slick Greeter overlay for LightDM: a compact branded
-  login flow, accessible session selection, local random backgrounds, and a
-  minimal hostname/power header. The DWM session selector now uses a compact
-  official DWM mark. Default, focused, invalid-password, session-picker,
-  power-menu, confirmation, and signing-in states now share one stable modern
-  layout. The greeter uses only bundled assets and has a safe Fedora Slick
-  Greeter fallback when the custom RPM is unavailable.
-
-- Add a version-pinned Slick Greeter overlay for LightDM: a compact branded
-  login flow, accessible session selection, local random backgrounds, and a
-  minimal hostname/power header. The DWM session selector now uses a compact
-  official DWM mark. Default, focused, invalid-password, session-picker,
-  power-menu, confirmation, and signing-in states now share one stable modern
-  layout. The greeter uses only bundled assets and has a safe Fedora Slick
-  Greeter fallback when the custom RPM is unavailable.
-
 - Persist workspace, volume, Bluetooth, network, and power panel visibility in
   one versioned user-owned state file shared by every monitor, Control Center,
   and Settings. An absent file migrates from the prior implicit all-on state;
   malformed, incomplete, unsafe, or unsupported state falls back all-on
   without preventing shell startup. Fixed atomic set/reset actions preserve
   file mode and refuse concurrent or unsafe replacements.
-
-- Rename the fork's active runtime identity from `dwm-titus` to `dwm-jangir`:
-  XDG configuration and data, Xorg display fragment, privileged helper,
-  session entry, LightDM assets, release helper, and generated release names
-  now use the fork name. The installer migrates unambiguous legacy settings
-  and preserves any divergent files for manual review rather than overwriting
-  or deleting them.
-
-- Establish `https://github.com/rahuljangirworks/dwm-jangir` as the canonical
-  public repository in clone, release, issue, changelog, and agent guidance.
-  `ChrisTitusTech/dwm-titus` remains explicitly documented as the read-only
-  upstream source.
-
-- Add an installer preflight inspection and one atomic, user-owned last-run
-  diagnostic record under the XDG state directory. It records existing desktop,
-  display, and repository state before installation and preserves only the most
-  recent completed non-dry-run attempt for support and agent diagnosis.
-
-- Avoid unnecessary Meslo Nerd Font downloads during repeat installs. The
-  installer now verifies the exact Fontconfig family with `fc-match` before
-  using the network, avoiding the former `pipefail` false negative from the
-  `fc-list` pipeline.
-
-- Add the explicit `--display-profile dell-5820` installer option for Rahul's
-  Dell Precision 5820. The opt-in profile is stored in the user's XDG display
-  profile directory, validates its required connected outputs before use, and
-  is installed only through the existing previewable, backed-up
-  `dwm-display-setup` persistent Xorg path. NVIDIA output configuration uses
-  real MetaModes mode-pool names rather than refresh-suffixed synthetic names.
-
-- Make the display wizard default to an automatic horizontal layout. It places
-  the selected primary display at `0x0`, calculates rotated dimensions before
-  placing the other enabled outputs to its right, prints the calculated layout,
-  and retains explicit manual X/Y placement.
 
 - Add Settings Appearance controls for desktop font and text scale, cursor and
   icon themes, GTK themes, and Qt platform themes. The root Appearance model
@@ -651,10 +826,6 @@ versions from `config.mk`.
 
 ### Fixed
 
-- Generate NVIDIA `MetaModes` for persistent display mode, position, and
-  rotation settings so LightDM/Xorg applies saved layouts at login.
-- Make LightDM and `startx` enter the same D-Bus-backed dwm session, and keep
-  the checked-in LightDM configuration aligned with the Fedora installer.
 - Enforce the Fedora-only power-management boundary before any status scan or
   system change, and keep fixture overrides out of the privileged path.
 - Reject direct root `make install` calls without a target user before building
@@ -747,5 +918,6 @@ versions from `config.mk`.
 - Prevent nested dwm/Xvfb instances from terminating the active graphical login
   by verifying the logind display and isolating `XDG_DATA_HOME` in runtime tests.
 
-[Unreleased]: https://github.com/rahuljangirworks/dwm-jangir/compare/v0.6.1...HEAD
+[Unreleased]: https://github.com/rahuljangirworks/dwm-jangir/compare/v0.7.0...HEAD
+[0.7.0]: https://github.com/rahuljangirworks/dwm-jangir/compare/v0.6.1...v0.7.0
 [0.6.1]: https://github.com/rahuljangirworks/dwm-jangir/compare/v0.5.2...v0.6.1

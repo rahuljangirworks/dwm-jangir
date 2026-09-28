@@ -47,6 +47,59 @@ of `config.h` and object files.
 
 ## Fedora installer ISOs
 
+For the compressed filesystem build and offline qualification workflow, see
+[COMPRESSED-IMAGES.md](COMPRESSED-IMAGES.md). The install guide links the current Cloudflare-hosted offline images and their
+qualification notes.
+The original GitHub-attached ISO assets use the network package installation
+path described below.
+
+Track Phase 7 procedures, evidence and qualification limits in
+[P7-QUALIFICATION.md](P7-QUALIFICATION.md). Build success alone does not qualify
+installation or first boot.
+
+The Phase 7 development candidates passed standard BIOS/UEFI and NVIDIA-variant
+UEFI installation with virtual graphics. QEMU S3 resume failed and remains
+unqualified. Physical NVIDIA acceleration, multi-monitor/hotplug, radios, audio
+and laptop power/suspend were not tested. Carry these limitations into release
+notes; NVIDIA services failing without a physical GPU are not driver validation.
+Use the tested [source backup/update/recovery procedure](src/content/install.md#source-updates-and-recovery)
+for existing-system migration. Rebuild and identify authorized tagged artifacts
+separately from the development images in the evidence record.
+
+Before building, download the Fedora signing certificates, signed checksum
+manifest and netinst ISO from the official Fedora Server download page. Verify
+the signing fingerprint against https://fedoraproject.org/security/ and verify
+the signature before using the checksum. For the current x86_64 base:
+
+```sh
+curl -fLO https://fedoraproject.org/fedora.gpg
+curl -fLO https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-44-1.7-x86_64-CHECKSUM
+curl -fLO https://dl.fedoraproject.org/pub/fedora/linux/releases/44/Server/x86_64/iso/Fedora-Server-netinst-x86_64-44-1.7.iso
+gpg --show-keys --with-fingerprint ./fedora.gpg
+gpgv --keyring ./fedora.gpg --output Fedora-Server-44.verified-checksums Fedora-Server-44-1.7-x86_64-CHECKSUM
+# Continue only after gpgv succeeds and its signer matches Fedora 44.
+sha256sum -c --ignore-missing Fedora-Server-44.verified-checksums
+```
+
+The Fedora 44 fingerprint is
+`36F612DCF27F7D1A48A835E4DBFCF71C6D9F90A6`; the current netinst SHA-256 is
+`ae20c06bea746913cadea7d80463e13f4bf55bee4df2918111c921c674b70283`.
+Run downloads and builds in a dedicated directory under `$HOME/tmp`, and set
+`TMPDIR` to a staging subdirectory there when invoking the builder.
+
+Build from a clean source checkout without local dependency directories or
+generated site files: the builder embeds the checkout payload. It patches both
+UEFI and BIOS GRUB menus with the selected Kickstart and variant arguments.
+
+The builder uses `implantisomd5` and `checkisomd5` from `isomd5sum` after
+rewriting the ISO so Fedora's "Test this media & install" entry can
+verify it. It replaces the output path only after verification passes. This
+embedded checksum detects media corruption; it does not authenticate an image.
+Record a separate SHA-256 of each finished artifact and test the default
+media-check entry in the VM. Compressed images default to the normal entry 0;
+qualify both that path and the optional media check. Network factory images
+retain Fedora's original menu default.
+
 Install the Fedora image-build tools from the shared capability map:
 
 ```bash
@@ -98,3 +151,17 @@ the managed Quickshell shell. Record the source ISO checksum, firmware mode,
 architecture, package-resolution result, first-boot result, and untested
 hardware. A container can validate package availability and ISO contents, but
 it cannot replace the required boot and first-session VM qualification.
+
+## Stable Cloudflare download names
+
+Publish the standard and NVIDIA images at `iso/dwm-jangir.iso` and
+`iso/dwm-jangir-nvidia.iso`, with matching `iso/SHA256SUMS`,
+`iso/BUILD-MANIFEST.json` and `iso/BUILD-NOTES.md`. Keep versions, sizes, hashes
+and qualification evidence in the manifest and build notes instead of renaming
+the public URLs. The checksum entries must use these same universal filenames.
+
+Stage and verify both replacement images before updating the canonical objects.
+Verify complete public downloads against SHA-256 and test byte-range requests
+before deleting superseded ISOs. Refresh or purge cached canonical objects so
+clients receive matching images and metadata. Use short cache lifetimes for
+these mutable URLs; users must restart partial downloads after a build changes.

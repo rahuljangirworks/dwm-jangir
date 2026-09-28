@@ -1,6 +1,5 @@
 <div align="center">
-  <img src="./dwm-jangir.png" alt="dwm-jangir logo" width="190" />
-  <h1>dwm-jangir</h1>
+  <img alt="dwm-jangir logo" src="./dwm-jangir.png" width="190" />
   <p><strong>A fast, focused Fedora X11 desktop built for keyboard-driven work.</strong></p>
   <p>
     <a href="https://dwm.christitus.com">Documentation</a> |
@@ -12,15 +11,10 @@
 
 ![The dwm-jangir desktop with its Quickshell panel](./dwm-jangir-qs-4x.webp)
 
-dwm-jangir is Rahul Jangir's public fork of the upstream dwm-jangir Fedora X11
-desktop.
-It keeps upstream compatibility while adding documented, minimal fork-specific
-behavior. It is designed for people who want a responsive keyboard-first
-workflow without having to assemble every part themselves.
-
-The canonical fork repository is
-[github.com/rahuljangirworks/dwm-jangir](https://github.com/rahuljangirworks/dwm-jangir).
-`ChrisTitusTech/dwm-titus` remains the read-only upstream project.
+dwm-jangir is a complete, lightweight X11 desktop with sensible defaults,
+guided installation, and powerful customization. It is designed for people who
+want a responsive keyboard-first workflow without having to assemble every
+part themselves.
 
 **dwm-jangir is a Fedora-only distribution.** Fedora Linux is the sole supported
 platform for installation, runtime behavior, package resolution, testing, and
@@ -33,7 +27,7 @@ existing-system installer on Fedora Linux.
 | --- | --- |
 | **A focused desktop** | Automatic window tiling, nine workspaces, fast keyboard navigation, multi-monitor support, and flexible fullscreen modes. |
 | **Everyday essentials** | A polished panel, application launcher, system tray, Control Center, Settings, notifications, screenshots, audio, brightness, and power controls. |
-| **Easy discovery** | An interactive keybind viewer, guided display setup, built-in diagnostics, and clear unsupported-feature reporting. |
+| **Easy discovery** | An interactive keybind viewer, guided display setup, built-in diagnostics, workstation self-heal, and clear unsupported-feature reporting. |
 | **Personal configuration** | Live-reloading hotkeys, themes, and window rules, with local configuration preserved across upgrades. |
 | **Two installation paths** | A ready-to-install Fedora image or an installer for an existing Fedora system. |
 
@@ -54,17 +48,42 @@ For complete requirements and installation details, see the
 
 ### Fedora ISO
 
-Download the latest image:
+Download the **current offline images** for Fedora 44 x86_64:
 
 | Image | Download |
 | --- | --- |
-| Standard | [`dwm-jangir.iso`](https://github.com/rahuljangirworks/dwm-jangir/releases/latest/download/dwm-jangir.iso) |
-| NVIDIA | [`dwm-jangir-nvidia.iso`](https://github.com/rahuljangirworks/dwm-jangir/releases/latest/download/dwm-jangir-nvidia.iso) |
-| Checksums and release notes | [Latest release](https://github.com/rahuljangirworks/dwm-jangir/releases/latest) |
+| Standard | [Standard ISO](https://github.com/rahuljangirworks/dwm-jangir/releases/latest/download/dwm-jangir.iso) |
+| NVIDIA | [NVIDIA ISO](https://github.com/rahuljangirworks/dwm-jangir/releases/latest/download/dwm-jangir-nvidia.iso) |
+| Verification | [SHA256SUMS](https://github.com/rahuljangirworks/dwm-jangir/releases/latest/download/SHA256SUMS) and [release notes](https://github.com/rahuljangirworks/dwm-jangir/releases/latest) |
 
-Use the NVIDIA image only for systems that need the dedicated NVIDIA
-installation path. Write the selected ISO to a USB drive, boot it, complete the
-Fedora installer, and reboot into the `dwm-jangir` session.
+The release links resolve to the current Dwm Jangir release. Download a fresh
+checksum file with your selected ISO; restart partial downloads if the build
+changes. In that directory, run:
+
+```sh
+sha256sum --ignore-missing -c SHA256SUMS
+```
+
+Confirm your ISO reports `OK`. Write it as a disk image to an 8 GB or larger USB
+drive, boot it, choose your disk, locale and administrator account in Anaconda,
+then install and reboot into the `dwm-jangir` session. Writing the USB erases its contents;
+review Anaconda's disk changes before starting installation.
+
+Packages are already included in the compressed system image. Installation needs
+no Internet connection or software selection. The images include Quickshell,
+Gear Lever, `maim`, region capture and clipboard tools. Internet access is needed
+later for updates and additional software.
+
+Images built from 0.7.2 also include `fastfetch` and offer a visible initial
+package update once repositories are reachable. The flow measures mirrors, asks
+for authorization, and preserves DNF confirmation; Enter accepts and No cancels.
+See [initial updates and DNF defaults](docs/INITIAL-UPDATE.md) for retry and
+configuration overrides.
+
+See the [installation guide](https://dwm.christitus.com/install.html#fedora-iso-recommended-for-a-new-installation)
+and the [release notes](https://github.com/rahuljangirworks/dwm-jangir/releases/latest)
+for tested firmware modes and hardware limits, including NVIDIA and Secure Boot.
+For building images, see [compressed-image builds](docs/COMPRESSED-IMAGES.md).
 
 ### Existing System
 
@@ -82,28 +101,6 @@ installs the managed desktop components. It accepts only Fedora's
 `/etc/os-release` identity and rejects every other operating-system identity
 before making changes.
 
-Each real installer run keeps one diagnostic record for later troubleshooting:
-`${XDG_STATE_HOME:-$HOME/.local/state}/dwm-jangir/install-last.log`. It records
-the preflight state and result, replaces only the prior completed run, and is
-not updated by `--dry-run`.
-
-#### Dell Precision 5820 display profile (optional)
-
-This opt-in profile is only for Rahul's Dell Precision 5820 display wiring. It
-is never selected automatically and does not add a login hook or a static
-monitor command. To seed and install it through the normal persistent Xorg
-workflow, use:
-
-```bash
-./install.sh --display-profile dell-5820
-```
-
-The installer saves it as
-`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/display-profiles/dell-5820.conf`,
-then checks that `DVI-D-0` and `DP-0` are connected before it asks
-`dwm-display-setup` to preview/install it. If the outputs do not match, nothing
-is applied; log in normally and run `dwm-display-setup` for the generic wizard.
-
 | Profile | Includes |
 | --- | --- |
 | `core` | The X11 session, required dependencies, and one terminal emulator. |
@@ -115,6 +112,12 @@ unavailable, installation continues and reports that the screenshot hotkeys
 remain disabled; invoking one makes `dwm-screenshot` exit with
 `dwm-screenshot: maim is not installed`. `xclip` and `xdotool` remain required
 runtime dependencies for the X11 desktop and its other managed helpers.
+
+## Dependencies
+
+See [Desktop Dependencies](https://dwm.christitus.com/dependencies.html) for the
+packages behind each desktop component, installation-profile differences, and
+build, gaming, and image-specific dependencies.
 
 ## First Login
 
@@ -156,10 +159,7 @@ only persistent Xorg install and rollback require `pkexec`. Named profiles live
 under the `display-profiles/` directory in the XDG path above.
 Run `dwm-display-setup detect`, then `dwm-display-setup`, for a guided wizard
 that detects outputs and configures modes, positions, rotation, and the primary
-display with a reversible preview. The wizard defaults to an automatic
-horizontal layout: the chosen primary display starts at `0x0`, and other enabled
-displays are placed to its right using rotation-aware dimensions. Choose manual
-placement in the wizard to enter explicit X/Y coordinates instead. Persistent generation selects compatible
+display with a reversible preview. Persistent generation selects compatible
 TearFree or NVIDIA Full Composition Pipeline behavior automatically; pass
 `--force-full-composition-pipeline off` to disable the NVIDIA default.
 The adjacent `dwm-settings-input` provider uses `xinput`, `setxkbmap` for
@@ -167,6 +167,40 @@ keyboard settings, `xkbset` for session-wide AccessX controls, and `udevadm`
 for stable device identity and hotplug events. Kept values are stored in
 `input-settings.conf` in the same XDG directory; `DWM_INPUT_SETTINGS_FILE` can
 select another file.
+
+The compositor settings in **Settings -> Appearance -> Compositor** and the CLI
+helper `dwm-settings-picom` manage window opacity and rendering backends. Sliders
+adjust active and inactive window opacity with live persistence in the active configuration
+(resolved from `DWM_PICOM_CONFIG`, a running Picom `--config` argument, or standard
+fallback paths `~/.config/picom.conf` and `~/.config/picom/picom.conf`). The automatic
+backend policy selects GLX for accelerated Intel/AMD graphics and falls back to XRender
+on NVIDIA or software rendering, with manual GLX, XRender, and EGL overrides available.
+Edits preserve custom comments and includes with up to ten automatic recovery backups.
+All 15 shipped presets include offline `Dwm-<preset>` application themes,
+including `Dwm-dracula`, for Thunar and other native GTK 2/3/4 applications.
+The system install places their files under `${DATADIR}/themes` (normally
+`/usr/share/themes` with the supported installer); source updates install and
+verify them too.
+Qt applications using qt5ct or qt6ct receive the matching installed palette,
+also listed in those tools from `${DATADIR}/qt5ct/colors` and
+`${DATADIR}/qt6ct/colors`;
+Alacritty and Kitty continue to receive the active terminal colors. Restart
+Qt applications if they do not reload their platform theme dynamically.
+These are dwm-jangir palette adaptations of GTK's built-in widgets, not the
+upstream third-party theme packages. Libadwaita and sandboxed applications may
+follow only the light/dark preference rather than the custom palette.
+
+Existing explicit `gtk_theme` values and Appearance personalization overrides
+are preserved. Remove an explicit GTK theme setting to follow the bundled
+preset automatically, or select a `Dwm-` theme in Appearance. The existing explicit `Nordic` selection remains supported; `Dwm-nord` is
+also available offline. Existing installations need the supported source
+installer once (`./install.sh --profile recommended`) to add the new system
+file paths before subsequent updates can use Settings.
+Maintainers regenerate assets with `python3 scripts/generate-app-themes.py`
+after changing the shipped palettes.
+
+Cursor theme changes in Settings take effect immediately across running X11
+applications via `dwm-cursor-reload`.
 
 See the [Configuration Guide](https://dwm.christitus.com/configuration.html)
 and [Theming Guide](https://dwm.christitus.com/theming.html) for examples and
@@ -217,6 +251,11 @@ Start with the built-in diagnostic report:
 ```bash
 dwm-diagnostics
 ```
+
+You can also run **Control Center -> Quick Actions -> Self-Heal** to execute a
+configured workstation repair script (`dwm-self-heal` on `$PATH` or referenced in
+`${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/self-heal.path`) inside an interactive
+terminal with visible output and authorization prompts.
 
 You can also open **Control Center -> System Health** for a graphical overview.
 If the session does not start, run `startx` from a TTY to see its error output.

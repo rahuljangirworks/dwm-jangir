@@ -6,6 +6,9 @@ helper=$repo/scripts/dwm-settings-appearance
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT HUP INT TERM
 
+export HOME=$work/home
+mkdir -p "$HOME"
+
 config_home=$work/config
 data_root=$work/data
 bin_dir=$work/bin
@@ -218,8 +221,8 @@ grep -Fqx $'integration\tqt\tavailable\tqt6ct\tQt applications use the supported
 grep -Fqx $'integration\tcursor\tavailable\tCapitaine-Cursors-White\tManaged cursor theme is installed and applied' <<<"$output"
 grep -Fqx $'integration\talacritty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' <<<"$output"
 grep -Fqx $'integration\tkitty\tavailable\tactive-theme\tGenerated terminal theme matches the resolved palette' <<<"$output"
-grep -Fqx $'integration\tcompositor\tpartial\tpicom\tPicom is available but has no shared theme mutation contract' <<<"$output"
-grep -Fqx $'error\tcompositor\tunsupported\tPicom theme mutation is not implemented' <<<"$output"
+grep -Fqx $'integration\tcompositor\tavailable\tpicom\tGlobal opacity is configured in the Compositor section' <<<"$output"
+if grep -Fq 'Picom theme mutation is not implemented' <<<"$output"; then exit 1; fi
 
 no_picom_bin=$work/no-picom-bin
 cp -a "$bin_dir" "$no_picom_bin"
@@ -767,6 +770,15 @@ if grep -Fq $'error\tgtk\tmissing-theme' <<<"$adwaita"; then
 fi
 sed -i 's/gtk-theme-name=Adwaita-dark/gtk-theme-name=Nordic/' \
 	"$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"
+
+mkdir -p "$data_root/themes/adw-gtk3-dark/gtk-3.0" "$data_root/themes/adw-gtk3-dark/gtk-4.0"
+sed -i 's/gtk-theme-name=Nordic/gtk-theme-name=adw-gtk3-dark/' \
+	"$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"
+adw_dark=$(snapshot)
+grep -Fqx $'integration\tgtk\tavailable\tadw-gtk3-dark\tRequested GTK theme is installed and applied' <<<"$adw_dark"
+sed -i 's/gtk-theme-name=adw-gtk3-dark/gtk-theme-name=Nordic/' \
+	"$config_home/gtk-3.0/settings.ini" "$config_home/gtk-4.0/settings.ini"
+rm -rf "$data_root/themes/adw-gtk3-dark"
 
 cp "$work/managed-themes.toml" "$config_home/dwm-jangir/themes.toml"
 sed -i '0,/theme = "nord"/s//theme = "missing"/' "$config_home/dwm-jangir/themes.toml"

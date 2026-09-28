@@ -9,6 +9,13 @@ Scope {
     id: root
 
     property bool settingsVisible: false
+    // Only finite initial reads belong here, never resident subscriptions.
+    readonly property bool initialLoading: snapshotProcess.running || root.snapshotPending
+        || readinessProcess.running || root.mutationReadinessPending
+        || previewStatusProcess.running || recoveryStatusProcess.running
+        || root.wallpaperStatusBusy || root.fontStatusBusy
+        || root.personalizationStatusBusy || root.personalizationStatusPending
+        || root.fontStatusPending || picomModel.statusBusy
     property bool busy: false
     property bool mutationReady: false
     property bool mutationReadinessPending: false
@@ -38,7 +45,8 @@ Scope {
     property bool inventoryWatchSawEvent: false
     property bool inventoryWatchFailed: false
     property bool inventoryWatchRestartPending: false
-    property bool compositorWatchReady: false
+    readonly property alias picom: picomModel
+    PicomModel { id: picomModel; active: root.settingsVisible }
     property string wallpaperState: "idle"
     property string wallpaperPath: ""
     property string wallpaperFit: "fill"
@@ -103,6 +111,9 @@ Scope {
     property string personalizationMutationDetail: "Desktop personalization changes have not been checked"
     property string personalizationRepairState: "unavailable"
     property string personalizationRepairDetail: "Personalization state does not need repair"
+    property string desktopFontFamily: ""
+    property real desktopFontScale: 0
+    property bool desktopFollowsSystemScale: false
     property var personalizationSelections: ({})
     property var personalizationActionReadiness: ({})
     property var personalizationDelegates: ({})
@@ -462,12 +473,9 @@ Scope {
         root.inventoryWatchSawEvent = false;
         root.inventoryWatchFailed = true;
         root.inventoryWatchRestartPending = false;
-        root.compositorWatchReady = false;
         inventoryWatchExitSettleTimer.stop();
         inventoryWatchRestartTimer.stop();
         inventoryWatchProcess.running = false;
-        compositorWatchRestartTimer.stop();
-        compositorWatchProcess.running = false;
     }
 
     function parseInventory(text) {
@@ -532,19 +540,13 @@ Scope {
         }
         root.inventorySelections = selections;
         root.inventoryCandidates = candidates;
-        root.compositorWatchReady = selections.compositor.value === "picom";
         if (root.settingsVisible && !root.inventoryWatchFailed && watch.state === "available")
             root.startInventoryWatcher();
         if (watch.state !== "available") {
             inventoryWatchRestartTimer.stop();
             inventoryWatchProcess.running = false;
         }
-        if (root.settingsVisible && root.compositorWatchReady && !compositorWatchProcess.running)
-            compositorWatchProcess.running = true;
-        if (!root.compositorWatchReady) {
-            compositorWatchRestartTimer.stop();
-            compositorWatchProcess.running = false;
-        }
+
     }
 
     function parseSnapshot(text) {
@@ -639,10 +641,10 @@ Scope {
             root.snapshotPending = true;
             return;
         }
-        root.snapshotPending = false;
         root.snapshotRunGeneration = root.snapshotGeneration;
         root.snapshotParsed = false;
         snapshotProcess.running = true;
+        root.snapshotPending = false;
     }
 
     function refreshPreviewStatus(force) {
@@ -664,8 +666,8 @@ Scope {
             root.mutationReadinessPending = true;
             return;
         }
-        root.mutationReadinessPending = false;
         readinessProcess.running = true;
+        root.mutationReadinessPending = false;
     }
 
     function refreshWallpaperStatus() {
@@ -675,9 +677,9 @@ Scope {
             root.wallpaperStatusPending = true;
             return;
         }
-        root.wallpaperStatusPending = false;
         root.wallpaperStatusParsed = false;
         wallpaperStatusProcess.running = true;
+        root.wallpaperStatusPending = false;
     }
 
     function refreshFontStatus() {
@@ -805,6 +807,7 @@ Scope {
         root.personalizationRepairState = repair.state;
         root.personalizationRepairDetail = repair.detail;
         root.personalizationSelections = selections;
+        root.applySharedTypography();
         root.personalizationActionReadiness = actionReadiness;
         root.personalizationDelegates = delegates;
         root.xsettingsWatchReady = xsettingsWatch.state === "available"
@@ -816,8 +819,48 @@ Scope {
         }
     }
 
+    // The desktop provider owns typography. Legacy font.conf is a startup
+    // fallback; transient failures retain the last valid desktop typography.
+    function fontDescriptionFamily(description) {
+        const family = description.replace(/,?\s+\d+(?:\.\d+)?$/, "").trim();
+        if (family === description.trim()) return family;
+        // Prefer the longest installed family so names containing style words
+        // remain intact while Pango suffixes such as "Bold Italic" are removed.
+        let matched = "";
+        for (const installed of Qt.fontFamilies()) {
+            if (family.toLowerCase() === installed.toLowerCase()) return installed;
+            if (family.toLowerCase().startsWith(installed.toLowerCase() + " ")
+                    && installed.length > String(matched).length
+                    && /^(?:(?:thin|ultra-?light|extra-?light|light|semi-?light|book|regular|normal|medium|semi-?bold|demi-?bold|bold|ultra-?bold|extra-?bold|heavy|black|italic|oblique|condensed|expanded)\s*)+$/i.test(
+                        family.slice(installed.length).trim()))
+                matched = installed;
+        }
+        return matched || family;
+    }
+
+    function applySharedTypography() {
+        const font = root.personalizationSelections.font;
+        const scale = root.personalizationSelections["text-size"];
+        if (font && font.state === "available" && font.value.length > 0)
+            root.desktopFontFamily = root.fontDescriptionFamily(font.value);
+        if (scale && (scale.state === "available" || scale.state === "partial")
+                && (scale.option === "follow-system" || root.validDesktopTextScale(scale.option))
+                && isFinite(Number(scale.value)) && Number(scale.value) > 0
+                && (scale.option === "follow-system"
+                    || (Number(scale.value) >= 0.75 && Number(scale.value) <= 2.0))) {
+            // External system scales may exceed the shell's supported range.
+            // Clamp deterministically, but always update the ownership mode.
+            root.desktopFontScale = Math.max(0.75, Math.min(2.0, Number(scale.value)));
+            root.desktopFollowsSystemScale = scale.option === "follow-system";
+        }
+        // System-follow leaves native DPI intact, including an existing Xft.dpi
+        // resource. Explicit choices supply an absolute desktop scale instead.
+        Theme.desktopTypography = root.desktopFontScale > 0 && !root.desktopFollowsSystemScale;
+        Theme.applyFontPreferences(root.desktopFontFamily || root.fontFamily,
+            root.desktopFontScale > 0 ? root.desktopFontScale : root.fontScale);
+    }
+
     function refreshPersonalizationStatus() {
-        if (!root.settingsVisible) return;
         if (personalizationStatusProcess.running || personalizationActionProcess.running) {
             root.personalizationStatusPending = true;
             return;
@@ -847,14 +890,15 @@ Scope {
                 || allowUnwatched === true;
             return;
         }
-        root.inventoryPending = false;
-        root.inventoryPendingAllowUnwatched = false;
         root.inventoryRunGeneration = root.inventoryGeneration;
         root.inventoryParsed = false;
         inventoryProcess.running = true;
+        root.inventoryPending = false;
+        root.inventoryPendingAllowUnwatched = false;
     }
 
     function refreshAll(forcePreviewStatus) {
+        picomModel.refresh();
         root.refreshSnapshot();
         root.refreshInventory();
         root.refreshPreviewStatus(forcePreviewStatus === true);
@@ -922,9 +966,6 @@ Scope {
         inventoryWatchProcess.running = false;
         root.inventoryWatchReady = false;
         root.inventoryWatchSawEvent = false;
-        compositorWatchSettleTimer.stop();
-        compositorWatchRestartTimer.stop();
-        compositorWatchProcess.running = false;
         xsettingsWatchProcess.running = false;
         root.xsettingsWatchReady = false;
         root.xsettingsWatchProtocolSeen = false;
@@ -932,8 +973,6 @@ Scope {
         root.xsettingsWatchFailed = false;
         inventoryProcess.running = false;
         wallpaperStatusProcess.running = false;
-        personalizationStatusProcess.running = false;
-        root.personalizationStatusPending = false;
         root.wallpaperStatusPending = false;
         root.inventoryPending = false;
         root.inventoryPendingAllowUnwatched = false;
@@ -1083,7 +1122,7 @@ Scope {
         root.fontPreviewScale = preview.scale;
         root.fontPreviewRemaining = preview.remaining;
         root.fontPreviewDetail = preview.detail;
-        Theme.applyFontPreferences(root.fontFamily, root.fontScale);
+        root.applySharedTypography();
         if (!previewWasActive && preview.state === "active") {
             root.message = "Font preview active; keep it within " + preview.remaining
                 + (preview.remaining === 1 ? " second" : " seconds") + " or it will revert";
@@ -1168,6 +1207,9 @@ Scope {
     }
 
     function personalizationCandidateAvailable(capability, value) {
+        // Manual font entry is not limited to the bounded suggestion list.
+        // The transactional helper validates that the exact family is installed.
+        if (capability === "font") return root.validInventoryField(value, false);
         if (capability === "text-size") return root.validDesktopTextScale(value);
         const candidates = root.personalizationCandidates(capability, 24);
         for (const candidate of candidates) {
@@ -1295,8 +1337,8 @@ Scope {
                 : "Personalization helper did not confirm the requested change";
             root.messageSeverity = "danger";
         }
+        Qt.callLater(root.refreshPersonalizationStatus);
         if (root.settingsVisible) {
-            Qt.callLater(root.refreshPersonalizationStatus);
             root.refreshInventory(true);
             root.refreshSnapshot();
         }
@@ -1691,6 +1733,52 @@ Scope {
     }
 
     FileView {
+        path: root.configHome + "/dwm-jangir/personalization.conf"
+        watchChanges: true
+        printErrors: false
+        onLoaded: typographySettleTimer.restart()
+        onLoadFailed: typographySettleTimer.restart()
+        onFileChanged: reload()
+    }
+
+    // GSettings emits changes; no timer polls the desktop while Settings is closed.
+    Process {
+        id: typographyMonitor
+        property int retryDelay: 1000
+        command: ["gsettings", "monitor", "org.gnome.desktop.interface"]
+        running: true
+        stdout: SplitParser {
+            onRead: line => {
+                if (line.indexOf("font-name:") === 0
+                        || line.indexOf("text-scaling-factor:") === 0)
+                    typographySettleTimer.restart();
+                typographyMonitor.retryDelay = 1000;
+            }
+        }
+        onRunningChanged: {
+            if (running) typographySettleTimer.restart();
+            else typographyMonitorRestartTimer.restart();
+        }
+    }
+
+    // Retry subscriptions with capped backoff; never poll a healthy monitor.
+    // Refresh on reconnect to cover changes made while the stream was down.
+    Timer {
+        id: typographyMonitorRestartTimer
+        interval: typographyMonitor.retryDelay
+        onTriggered: {
+            typographyMonitor.retryDelay = Math.min(30000, typographyMonitor.retryDelay * 2);
+            if (!typographyMonitor.running) typographyMonitor.running = true;
+        }
+    }
+
+    Timer {
+        id: typographySettleTimer
+        interval: 150
+        onTriggered: root.refreshPersonalizationStatus()
+    }
+
+    FileView {
         id: fontConfigWatch
         path: root.fontConfigPath
         watchChanges: true
@@ -1756,7 +1844,6 @@ Scope {
                     : "Appearance provider failed before returning a valid snapshot");
             }
             if (!running && root.snapshotPending) {
-                root.snapshotPending = false;
                 Qt.callLater(root.refreshSnapshot);
             }
         }
@@ -1773,7 +1860,6 @@ Scope {
         onRunningChanged: {
             if (!running && root.mutationReadinessPending && !actionProcess.running) {
                 root.mutationReady = false;
-                root.mutationReadinessPending = false;
                 Qt.callLater(root.refreshMutationReadiness);
             }
         }
@@ -1817,21 +1903,20 @@ Scope {
 
     Process {
         id: personalizationStatusProcess
-        // Own the helper process directly so pane close terminates the actual
-        // bounded probe rather than an output-capturing wrapper. The required
-        // final completion record rejects partial output from failed probes.
+        // Typography is shared with the shell, so an in-flight bounded read
+        // survives pane close. The completion record rejects partial output.
         command: Commands.settingsPersonalizationCommand("status", [])
         running: false
         stdout: StdioCollector { onStreamFinished: root.parsePersonalizationStatus(this.text) }
         stderr: StdioCollector { id: personalizationStatusError }
         onRunningChanged: {
             if (running) return;
-            if (!root.personalizationStatusParsed && root.settingsVisible) {
+            if (!root.personalizationStatusParsed) {
                 const error = personalizationStatusError.text.trim();
                 root.clearPersonalizationStatus(error.length > 0 ? error
                     : "Personalization helper failed before returning a valid status");
             }
-            if (root.personalizationStatusPending && root.settingsVisible)
+            if (root.personalizationStatusPending)
                 Qt.callLater(root.refreshPersonalizationStatus);
         }
     }
@@ -1850,11 +1935,8 @@ Scope {
             }
             if (!running && root.settingsVisible && root.inventoryPending) {
                 const allowUnwatched = root.inventoryPendingAllowUnwatched;
-                root.inventoryPending = false;
-                root.inventoryPendingAllowUnwatched = false;
                 Qt.callLater(function() { root.refreshInventory(allowUnwatched); });
             } else if (!running && root.settingsVisible && root.wallpaperStatusPending) {
-                root.wallpaperStatusPending = false;
                 Qt.callLater(root.refreshWallpaperStatus);
             }
         }
@@ -1882,8 +1964,6 @@ Scope {
             }
             if (!running && root.inventoryPending && root.settingsVisible) {
                 const allowUnwatched = root.inventoryPendingAllowUnwatched;
-                root.inventoryPending = false;
-                root.inventoryPendingAllowUnwatched = false;
                 Qt.callLater(function() { root.refreshInventory(allowUnwatched); });
             } else if (!running && root.wallpaperStatusPending && root.settingsVisible) {
                 Qt.callLater(root.refreshWallpaperStatus);
@@ -1926,17 +2006,6 @@ Scope {
             }
             root.inventoryWatchReady = false;
             if (root.settingsVisible) inventoryWatchExitSettleTimer.restart();
-        }
-    }
-
-    Process {
-        id: compositorWatchProcess
-        command: Commands.settingsAppearanceCommand("watch-compositor", [])
-        running: false
-        stdout: SplitParser { onRead: compositorWatchSettleTimer.restart() }
-        onRunningChanged: {
-            if (!running && root.settingsVisible && root.compositorWatchReady)
-                compositorWatchRestartTimer.restart();
         }
     }
 
@@ -2098,7 +2167,6 @@ Scope {
                 return;
             }
             if (root.mutationReadinessPending) {
-                root.mutationReadinessPending = false;
                 Qt.callLater(root.refreshMutationReadiness);
             }
         }
@@ -2196,23 +2264,6 @@ Scope {
             if (root.settingsVisible && (root.inventoryWatchState === "available"
                     || root.inventoryWatchState === "idle")
                     && !root.inventoryWatchFailed) root.startInventoryWatcher();
-        }
-    }
-
-    Timer {
-        id: compositorWatchSettleTimer
-        interval: 100
-        repeat: false
-        onTriggered: root.refreshInventory(true)
-    }
-
-    Timer {
-        id: compositorWatchRestartTimer
-        interval: 3000
-        repeat: false
-        onTriggered: {
-            if (root.settingsVisible && root.compositorWatchReady
-                    && !compositorWatchProcess.running) compositorWatchProcess.running = true;
         }
     }
 

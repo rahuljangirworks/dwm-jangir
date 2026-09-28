@@ -165,7 +165,8 @@ ClickAwayPopup {
             text: presetButton.label
             color: !presetButton.enabled ? Theme.controlDisabledText
                 : presetButton.activeFocus ? Theme.controlFocusText
-                : presetButton.active ? Theme.controlSelectedText : Theme.controlNormalText
+                : presetButton.active ? Theme.controlSelectedText
+                : presetMouse.containsMouse ? Theme.controlHoverText : Theme.controlNormalText
         }
 
         MouseArea {
@@ -226,7 +227,7 @@ ClickAwayPopup {
                     visible: root.pageMessage().length > 0
                     text: root.pageMessage()
                     color: Theme.textMuted
-                    elide: Text.ElideRight
+                    wrapMode: Text.Wrap
                 }
 
                 PanelSeparator {}
