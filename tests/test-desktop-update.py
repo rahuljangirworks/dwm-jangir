@@ -790,13 +790,13 @@ class DesktopUpdate(unittest.TestCase):
         privileged.validate_candidate(candidate, installed)
 
     def test_fork_oneorganize_commands_are_the_only_extra_bin_names(self):
-        # D-009: exactly these fork commands may be added outside dwm-*.
+        # D-009/D-010: exactly these fork commands may be added outside dwm-*.
         record = {"sha256": "c" * 64, "mode": 0o755}
-        for name in ("oneorganize-clockin", "oneorganize-clockout", "oneorganize-status"):
+        for name in ("oneorganize-clockin", "oneorganize-clockout", "oneorganize-status", "tailscale-tray"):
             candidate = copy.deepcopy(self.manifest)
             candidate["files"][str(self.base / "bin" / name)] = record
             privileged.validate_candidate(candidate, self.manifest)
-        for name in ("oneorganize-other", "oneorganize-clockin.sh", "clockin"):
+        for name in ("oneorganize-other", "oneorganize-clockin.sh", "clockin", "tailscale-tray2", "tailscale", "tailscale-tray.py"):
             candidate = copy.deepcopy(self.manifest)
             candidate["files"][str(self.base / "bin" / name)] = record
             with self.assertRaises(RuntimeError):

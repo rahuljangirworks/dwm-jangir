@@ -72,20 +72,29 @@ Not fully validated here:
 - `shfmt`, `qmllint`, and Xvfb are unavailable on the host. Run their dedicated
   formatter and QML/Xvfb checks before release when those tools are provisioned.
 
-## Pending Upstream Sync 2026-10-16
+## Upstream Sync 2026-10-16
 
-`sync/2026-10-16` merges upstream `4e881bf` into `dev` (`7056944`). Build,
-`git diff --check`, runtime-identity-adjacent focused tests, display, Dell
-profile, LightDM, settings-theme, terminal, Update Center, kickstart,
-accessibility, panel and input settings tests pass. D-009 (OneOrganize commands, approved 2026-10-16) is recorded and the
-desktop updater allows exactly `oneorganize-clockin`, `oneorganize-clockout`,
-and `oneorganize-status` by name. Still blocking: upstream
-`tests/test-desktop-update.py::test_installed_commands_fit_existing_upgrade_namespace`
-fails on `tailscale-tray` (fork commit `ae49e66`), which is installed by
-`Makefile` but is not an approved delta.
-Pre-existing failures also seen on `dev`: `make check-shell` (SC2016 in
-`tests/test-runtime-identity.sh`), `tests/test-runtime-identity.sh`, and
-`tests/test-install-preservation.sh`. Not merged into `dev`; not pushed.
+`sync/2026-10-16` merges upstream `4e881bf` (Update Center, Path file manager,
+Kitty theme fix, fullscreen/size-hint window rules, GNOME Keyring PAM
+requirement, WFHelper overlays, Podman test runner) and is merged locally into
+`dev` with `--no-ff`; not pushed to `origin`. D-001 through D-010 are retained.
+D-009 (OneOrganize commands) and D-010 (`tailscale-tray`) were approved by
+Rahul on 2026-10-16; the desktop updater allows exactly those four commands by
+name through `FORK_COMMANDS`.
+
+Passed on 2026-10-16: build, `git diff --check`, `tests/test-desktop-update.py`
+(73), Update Center (92), Update Center terminal (61), window-rule migration
+(7), LightDM config, display setup/wizard, Dell and install display profiles,
+settings-theme, terminal, Update Center settings/window-rule/assets/model,
+Podman runner, kickstart variants, accessibility, panel settings, and input
+settings tests.
+
+Pre-existing failures, identical on `dev` before the sync: `make check-shell`
+(SC2016 in `tests/test-runtime-identity.sh`), `tests/test-runtime-identity.sh`,
+and `tests/test-install-preservation.sh`. Not run on this host:
+`test-desktop-update-security.py` (needs a root container),
+`test-fedora-iso-builder.sh` (`ksvalidator` missing), and Xvfb tests.
+Upstream has an unmerged `revert-374-integ/pathfm-integration` branch.
 
 ## Next Action
 
