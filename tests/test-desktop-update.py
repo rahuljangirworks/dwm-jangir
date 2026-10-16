@@ -789,6 +789,23 @@ class DesktopUpdate(unittest.TestCase):
         candidate["files"].update({str(self.base / "bin" / name): record for name in names})
         privileged.validate_candidate(candidate, installed)
 
+    def test_fork_oneorganize_commands_are_the_only_extra_bin_names(self):
+        # D-009: exactly these fork commands may be added outside dwm-*.
+        record = {"sha256": "c" * 64, "mode": 0o755}
+        for name in ("oneorganize-clockin", "oneorganize-clockout", "oneorganize-status"):
+            candidate = copy.deepcopy(self.manifest)
+            candidate["files"][str(self.base / "bin" / name)] = record
+            privileged.validate_candidate(candidate, self.manifest)
+        for name in ("oneorganize-other", "oneorganize-clockin.sh", "clockin"):
+            candidate = copy.deepcopy(self.manifest)
+            candidate["files"][str(self.base / "bin" / name)] = record
+            with self.assertRaises(RuntimeError):
+                privileged.validate_candidate(candidate, self.manifest)
+        candidate = copy.deepcopy(self.manifest)
+        candidate["files"][str(self.base / "libexec/dwm-jangir/oneorganize-status")] = record
+        with self.assertRaises(RuntimeError):
+            privileged.validate_candidate(candidate, self.manifest)
+
     def test_candidate_rejects_paths_outside_owned_namespaces(self):
         for name in ("/etc/shadow", "/usr/share/themes/Other/gtk.css",
                      "/usr/share/themes/Dwm-New/../../../etc/shadow",

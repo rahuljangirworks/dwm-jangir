@@ -140,6 +140,9 @@ def restore(backup, journal):
     write_json(backup / "journal.json", journal)
 
 
+FORK_COMMANDS = frozenset({"oneorganize-clockin", "oneorganize-clockout", "oneorganize-status"})
+
+
 def managed_destination(name, installed):
     """Allow additions only in desktop-owned namespaces, never arbitrary paths."""
     path = Path(name)
@@ -150,6 +153,9 @@ def managed_destination(name, installed):
     layout = installed["layout"]
     prefix = Path(layout["prefix"])
     if path.parent in (prefix / "bin", prefix / "libexec/dwm-jangir"):
+        # D-009: approved fork OneOrganize commands, listed explicitly.
+        if path.parent == prefix / "bin" and path.name in FORK_COMMANDS:
+            return True
         return re.fullmatch(r"dwm-[A-Za-z0-9_.-]+", path.name) is not None
     data = Path(layout.get("datadir", "/usr/share"))
     try:

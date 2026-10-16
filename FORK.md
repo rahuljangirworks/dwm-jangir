@@ -37,6 +37,7 @@ Keep only changes that fit one of these categories:
 | Runtime identity | Install the fork under the `dwm-jangir` XDG, Xorg, session, helper, release, asset, and package names, with a safe one-way migration from the former runtime name. | Never discard divergent user settings or leave two conflicting managed Xorg fragments. Keep `ChrisTitusTech/dwm-titus` only where it identifies the read-only upstream. |
 | Display persistence | Generic fixes implemented through the upstream display setup and persistent Xorg configuration path; the documented `dell-5820` profile is a narrowly scoped opt-in exception. | No LightDM display hook, shell-profile mutation, or automatic profile selection. The exception may only seed a user-owned XDG profile after explicit `--display-profile dell-5820`, validate its connected outputs, and invoke `dwm-display-setup` for preview/persistent Xorg installation. |
 | Session startup | Minimal, generic D-Bus session guard shared by LightDM and `startx`. | Do not add desktop policy, display setup, or user-specific environment to the wrapper. |
+| Workplace tools (D-009) | Rahul's OneOrganize `oneorganize-clockin`, `oneorganize-clockout`, and `oneorganize-status` commands, approved 2026-10-16. | Only these three commands; the desktop updater allows them by exact name, not by a broader pattern. |
 
 Use `dwm-display-setup` from an X11 session for reversible preview and
 persistent Xorg configuration. Do not add a LightDM `display-setup-script`,
