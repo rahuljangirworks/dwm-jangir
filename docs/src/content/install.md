@@ -33,11 +33,11 @@ checksum file with your selected ISO. If a build changes while you have a
 partial download, start again instead of resuming the older file.
 
 Use the standard image unless you need the proprietary NVIDIA driver packages.
-Both include LightDM, dwm, Quickshell, Brave Origin, Celluloid, mpv, sxiv, Thunar,
+Both include LightDM, dwm, Quickshell, Brave Origin, Celluloid, mpv, sxiv, Path, Thunar,
 Alacritty, Starship, Herdr, fonts, Papirus icons, Gear Lever, and `maim` with region capture and
 clipboard dependencies. Fresh accounts use Brave Origin for web browsing,
 Celluloid for its supported audio/video formats, sxiv for its supported image
-formats, Thunar for folders, and Alacritty for the terminal. Existing application
+formats, Path for folders (with Thunar also available), and Alacritty for the terminal. Existing application
 preferences are preserved; use Settings > Defaults to change them. Internet
 access is needed for later updates and additional software.
 
@@ -78,7 +78,7 @@ For NVIDIA, use the NVIDIA ISO link from the table with the same checksum file.
    using the **dwm-jangir** session. The desktop is already installed; you do not need to
    run the existing-system installer below.
 
-`Super` is usually the Windows key. Open Thunar with `Super+E`, open a terminal
+`Super` is usually the Windows key. Open the default file manager with `Super+E`, open a terminal
 with `Super+X`, take a full
 screenshot with `Super+P`, select a region with `Super+Shift+P`, or copy a region
 to the clipboard with `Super+Ctrl+P`.
@@ -122,12 +122,47 @@ package names from the shared map:
 
 Use `core` for the required build/X11/session packages, Alacritty, and media applications,
 `recommended` for the complete desktop layer, or `full` for optional extras
-such as file-manager integration, keyring login integration, wallpapers, and
+such as file-manager integration, wallpapers, and
 display-manager setup. On x86_64 Fedora, `full` can also install Steam,
 Gamescope, GameMode, and MangoHud after repository approval.
+Every profile includes GNOME Keyring and its PAM module for credential storage
+and support for automatic unlock at password login. Unlock also requires the
+display manager's PAM stack to load `pam_gnome_keyring.so` and matching account
+and keyring passwords; installing the packages does not configure PAM services.
 The installer separately asks before enabling the `christitustech/copr-fedora`
 COPR for patched Gamescope and RPM Fusion nonfree for Steam. Declining skips the
 gaming subset without affecting other full-profile extras.
+
+### Optional Path File Manager
+
+[Path](https://github.com/ChrisTitusTech/Path) is packaged as `path` in the
+[christitustech/copr-fedora COPR](https://copr.fedorainfracloud.org/coprs/christitustech/copr-fedora/).
+To install it explicitly on Fedora x86_64:
+
+```bash
+sudo dnf copr enable christitustech/copr-fedora
+sudo dnf install path
+```
+
+The full installer attempts Path after its existing gaming-repository approval
+step, or uses an already enabled COPR. If the package is unavailable, it skips
+Path and retains Thunar. The installer does not enable a repository solely for
+Path. The explicit commands above do not require opting into gaming packages.
+
+Fresh accounts prefer `pathfm.desktop` for folders when Path is installed,
+otherwise `thunar.desktop`. Existing MIME preferences are preserved. To select
+Path on an existing account, use Settings > Default Applications or:
+
+```bash
+dwm-default-apps set-role file-manager pathfm.desktop
+```
+
+Before removing Path, select Thunar with
+`dwm-default-apps set-role file-manager thunar.desktop`. Seeding does not rewrite
+an existing MIME preference file after removal. File chooser portals continue
+to use GTK: the current Path package opens a chooser but does not implement
+caller cancellation through `org.freedesktop.portal.Request.Close`. Using Path
+for folder browsing does not require its file chooser portal.
 
 ### 2. Clone and Build
 
@@ -224,7 +259,7 @@ Installer package profiles are selected with `DWM_INSTALL_PROFILE`:
   rerun the recommended or full installer to add the Phase 6 PackageKit,
   Python RPM binding, AccountsService, CUPS, and printer-tool packages.
 - `full`: `recommended` plus optional extras such as Thunar with SMB-share
-  browsing, network tray utilities, keyring login integration,
+  browsing, network tray utilities,
   wallpapers, and display-manager setup. x86_64 Fedora full installs also
   include Steam, Gamescope, and 64-bit and 32-bit GameMode and MangoHud support
   after separate repository approval.

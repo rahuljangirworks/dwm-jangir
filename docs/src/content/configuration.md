@@ -105,6 +105,143 @@ $EDITOR config.h
 
 ### Window Rules
 
+#### Open an application across the entire monitor
+
+Add a rule to `~/.config/dwm-jangir/window-rules.toml` (or your
+`XDG_CONFIG_HOME` equivalent), inside its existing `rules = [...]` array:
+
+```toml
+{ class="YourApp", fullscreen=1, noswallow=1, tags=5 },
+```
+
+Use `xprop WM_CLASS` and click the application to find its class (the second
+quoted value). Omit `tags` to use the current tag, or add `monitor` to select a
+monitor using the existing tag/monitor rules. `noswallow=1` keeps the application
+independent of the terminal that launched it.
+
+`fullscreen=1` opens a newly managed window in true fullscreen: it covers the
+entire assigned monitor, including the top-bar area, with no dwm border or gaps.
+The managed top bar hides on that monitor while the fullscreen window is visible.
+Other monitors and the tag's selected layout stay unchanged. This differs from
+monocle, which uses the available work area. Existing explicitly allowed overlays
+can still appear above fullscreen windows.
+
+For games that should remain windowed, use `fakefullscreen=1` instead. This
+fills the monitor, hides the panel, and removes dwm borders without advertising
+`_NET_WM_STATE_FULLSCREEN` to Wine or the application. It overrides normal size
+hints while active. Start the game in its own windowed mode; dwm does not edit
+game settings, and a game may independently react to the resized window.
+
+Add `ignoresizehints=1` to bypass application minimum, maximum, base-size,
+resize-increment, and aspect-ratio hints during normal tiling and resizing.
+Fixed-size hints then also stop forcing the window to float. This is useful
+for Wine windows and can be combined with `fakefullscreen=1`; fake fullscreen
+already uses a direct monitor-sized resize, while `ignoresizehints` also covers
+normal layout and resize paths. It does not change the game's rendering resolution
+or stretch pixels inside a window that the application refuses to redraw.
+
+Only integer `1` enables it; the last matching rule wins, including zero or an
+omitted field. A late title change recalculates this option and the fixed-size
+status. A window that was already floating stays floating until you toggle it
+back to tiled mode. Existing rules keep their size-hint behavior by default.
+
+Press `Super+Shift+Y` to exit this rule's mode and restore the previous window
+size and border. While active, client fullscreen requests cannot switch it to
+advertised fullscreen or cancel its screen-filling geometry. Outside this rule's
+mode, that shortcut retains its existing behavior: advertising fullscreen while
+keeping the normal layout. The shortcut and rule intentionally differ.
+
+Use only one mode per rule. If both fields are `1`, `fakefullscreen` wins. Both
+accept only integer `1`; zero, omitted, or invalid values disable that mode in
+the final matching rule.
+
+Rules hot-reload when saved; reopening applies them at startup. A title-based
+rule for either mode also applies once if the matching title arrives after the
+window opens, as can happen with Wine games. For example:
+
+```toml
+{ class="steam_app_24200", title="DC Universe Online [DCUOT.", fakefullscreen=1, ignoresizehints=1 },
+```
+
+This excludes the launcher titled only `DC Universe Online`. Matching uses
+case-sensitive substrings. Later title changes do not force fullscreen back on
+after you exit it. Late title matching does not move the window to a different
+tag or monitor, and saving rules alone does not reapply them to existing windows.
+
+Like other scalar rule fields, the last matching rule wins. Existing files need
+no migration. The `fullscreen=1` mode remains an opening preference: the
+application can leave true fullscreen normally. The `fakefullscreen=1` mode
+stays borderless and windowed until you exit it with `Super+Shift+Y`. Transient dialogs keep the existing parent-inheritance behavior, and
+unmanaged overlay windows are not resized by this option.
+
+#### Overlays above other applications
+
+An overlay's application chooses whether its X11 window is managed. This is
+separate from whether the window looks like a borderless overlay:
+
+| Window kind | X11 setting | Who controls it | `alwaysontop=1` behavior |
+| --- | --- | --- | --- |
+| Managed | `override_redirect=false` | dwm controls placement, tags, borders, focus, and stacking | Floats above normal application windows; real fullscreen stays above it |
+| Unmanaged | `override_redirect=true` | The application controls placement and display; dwm does not tile or tag it | Explicitly matching rules raise it above normal and real fullscreen windows |
+
+Tooltips, menus, and game overlays commonly use unmanaged windows. WFHelper's
+Relic Rewards window is one example. A rule does not convert a window between
+managed and unmanaged: that normally requires an application setting or a change
+to the application's window-creation code. This stacking exception does not
+change an overlay's position, size, input handling, or focus behavior.
+
+To configure an overlay:
+
+1. Show the overlay and run `xwininfo`. Click its window and note the window ID
+   and `Override Redirect State`: `yes` means unmanaged; `no` means managed.
+   Click-through overlays may select the application underneath instead. In
+   that case, run `xwininfo -root -tree`, find the overlay by title, then inspect
+   its ID with `xwininfo -id 0xWINDOW_ID`.
+2. Inspect that same window's identity and state, replacing the placeholder ID:
+
+   ```sh
+   xprop -id 0xWINDOW_ID WM_CLASS WM_NAME _NET_WM_NAME _NET_WM_STATE
+   ```
+
+   `WM_CLASS` lists the instance first and class second. Prefer the overlay's
+   `_NET_WM_NAME` title when present; otherwise use `WM_NAME`. Check the covered
+   application's `_NET_WM_STATE` too if needed: even borderless games can request
+   `_NET_WM_STATE_FULLSCREEN`.
+3. Add a narrow class-and-title rule inside `rules = [...]` in
+   `${XDG_CONFIG_HOME:-$HOME/.config}/dwm-jangir/window-rules.toml`. For example:
+
+   ```toml
+   { class="wfhelper", title="WFHelper Relic Rewards", alwaysontop=1 },
+   ```
+
+   For another overlay, replace those strings with its actual class and title.
+   Avoid a class-only rule when the same application has other windows that
+   should not stay on top.
+4. Save the file. Unmanaged overlay rules reload live, including for already
+   visible overlays. For a managed window, close and reopen that window to
+   ensure its creation-time rules apply. Unmanaged windows only use the stacking
+   field; tag, monitor, and floating fields do not manage these surfaces.
+
+Matching uses case-sensitive substrings. All supplied identity fields must
+match, the last matching rule wins, and a matching rule with omitted
+`alwaysontop` resets it to zero. To remove an unmanaged overlay's fullscreen
+exception, remove its rule or set `alwaysontop=0`; its ordinary application
+stacking hints still apply.
+
+New configurations include the WFHelper rule. Upgrades preserve existing user
+rules, so add the entry manually to an existing file. After installing the dwm
+version that introduces unmanaged overlay rules, log out and back in once to
+activate the binary; a configuration reload alone cannot update running code.
+
+Ordinary managed always-on-top windows and application `_NET_WM_STATE_ABOVE`
+hints retain their existing priority below real fullscreen; those hints alone
+do not opt into this exception. If a managed overlay must appear over an
+application requesting fullscreen, use the application's windowed mode or try
+fake fullscreen (`Super+Shift+Y`) while that application is focused. Fake
+fullscreen can change the application's layout. Changing the overlay application
+to create an unmanaged window is another development option, but it must then
+handle its own positioning and input behavior.
+
 Rules in `config.h` let you assign windows to specific tags or force float:
 
 ```c
