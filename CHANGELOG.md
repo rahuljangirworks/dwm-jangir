@@ -8,17 +8,79 @@ versions from `config.mk`.
 
 ### Added
 
+- Integrate Path from `ChrisTitusTech/Path`, available as `path` in the
+  `christitustech/copr-fedora` COPR. Full installs attempt it after approved
+  repository setup and skip it when unavailable. Both Fedora image profiles
+  include Path from their existing COPR. Fresh-account folder defaults
+  prefer Path when installed, with Thunar otherwise; existing MIME preferences
+  remain unchanged. Keep GTK as the file chooser portal until Path supports
+  cancellation through the portal request API.
+
+- Add `fullscreen=1` window rules to open matching applications across the
+  entire monitor without a top bar, gaps, or window borders. Title-based rules
+  also apply once when a matching title arrives after the window opens.
+- Add `ignoresizehints=1` window rules to bypass application size constraints
+  and fixed-size auto-floating, including late title matches.
+- Add `fakefullscreen=1` rules for borderless, monitor-sized windowed mode
+  without requesting fullscreen from the application.
+
+- Keep Update Center floating and apply its saved Float update terminal toggle
+  to the next update or recovery terminal, which defaults to tiled.
+
+- Add the panel Update Center for Fedora, desktop, Flatpak, and mise updates,
+  with provider counts, refresh preferences, terminal progress, and recovery.
+  Existing window rules gain backed-up floating/tiled no-swallow rules for its
+  terminals during source and desktop updates.
+
 - Add the optional `--lightdm-theme solar` LightDM greeter theme, retaining
   Fedora's stock `slick-greeter` as the default.
 
 ### Changed
 
+- Reuse existing non-interactive sudo authorization for confirmed desktop
+  updates and recovery, falling back to polkit when unavailable. Passwords and
+  authorization policy are not stored or changed by the updater.
 - Preserve the Dwm Jangir runtime identity while importing the upstream 0.7.2
   desktop-update, initial-update, application-theme, and Fedora image work.
 - Validate sudo access before an interactive install mutates the checkout or
   the system; non-TTY runs now explain how to allocate a terminal.
 
 ### Fixed
+
+- Make Kitty follow the selected theme instead of Nord. The shipped
+  `kitty.conf` no longer sets its own palette or includes `nord.conf`. Theme
+  apply, including from Settings, updates an existing `kitty.conf` once: it
+  removes unchanged palette, border and tab lines shipped up to v0.7.2 and the
+  `nord.conf` include, makes `include active-theme.conf` the last and only
+  copy, keeps every other line, and saves the original as
+  `kitty.conf.dwm-jangir.bak` with the same permissions.
+
+- Require GNOME Keyring and its separate PAM module in every install profile,
+  detect missing keyring packages in dependency checks and System Health, and
+  repair them during source and desktop updates. This prevents repeated unlock
+  prompts caused by a missing PAM module at password login.
+
+- Keep WFHelper Relic Rewards above fullscreen games. Unmanaged overlays now
+  honor `alwaysontop` window rules, including live rule and identity changes.
+
+- Restore the original panel-anchored Update Center popup, including content-based
+  sizing and click-away dismissal. Keep the floating/tiled preference scoped to
+  update and recovery terminals.
+
+- Restore access to desktop update progress from the Update Center, and skip
+  optional window-rule migration for symlinked or special personal files.
+- Keep Update Center controls reachable on short screens and with large text,
+  and reload preferences when reopening their editor after a save conflict.
+  Unsafe preference files show defaults and preservation guidance without
+  permitting writes. Save commits typed interval text and remains retryable
+  after repeated identical errors.
+- Preserve Flatpak scope completion across interrupted recovery attempts and
+  stop bounded helper descendants on timeout. Keep long non-ASCII error
+  details within the operation journal's byte limit.
+
+- Show Fedora updates through the native DNF terminal workflow, preserving full
+  transaction output and confirmation. Limit discovery to update state and
+  correctly parse active PackageKit operations during legacy recovery.
 
 - Install `NetworkManager-wifi` with the Fedora image and full package set, and
   reconcile it on existing source checkouts. Without the Wi-Fi plugin,

@@ -84,7 +84,27 @@ The installed session must provide:
 - Xinerama multi-monitor support.
 - Window swallowing.
 - Per-client size factors and stack reordering.
-- Real and fake fullscreen behavior.
+- Real and fake fullscreen behavior. A managed window matching a
+  `fullscreen=1` TOML rule opens in true fullscreen on its assigned monitor,
+  with zero borders and no reserved panel area. The rule applies at management
+  time or once when a title first matches a fullscreen rule. It preserves normal
+  fullscreen exit and does not change the tag layout. Late title matching does
+  not reassign tags or monitors. A `fakefullscreen=1` rule uses the same
+  monitor-sized borderless geometry and panel hiding without advertising
+  `_NET_WM_STATE_FULLSCREEN`. It takes precedence over `fullscreen=1` in the
+  same rule. While active, application fullscreen requests do not advertise
+  fullscreen or cancel the geometry; `togglefakefullscreen` exits to the saved
+  window state. The existing fake-fullscreen shortcut behavior is otherwise
+  unchanged. Neither rule modifies application settings files.
+- A managed window rule with `ignoresizehints=1` bypasses ICCCM min/max/base,
+  increment, and aspect size constraints and disables fixed-hint auto-floating.
+  Last matching rule wins; only integer `1` enables it. Reevaluate on title
+  changes, retain the setting with its window across swallowing, and preserve
+  existing size-hint behavior when disabled. It does not change application
+  rendering resolution.
+- Unmanaged overlays explicitly matched by an `alwaysontop=1` runtime rule
+  appear above real fullscreen clients without becoming managed or taking focus.
+  Ordinary shell popups and EWMH above hints retain their existing priority.
 - Window icons from `_NET_WM_ICON`.
 - Configured border suppression and cursor-warp behavior.
 - Stable handling of applications that omit optional X properties.
@@ -130,8 +150,12 @@ state providers and be explicitly profiled to show that it remains near idle.
 The managed shell requires Quickshell 0.3.0 or Fedora 44's compatible
 `0.2.1^git20260209.dacfa9d` snapshot. That Fedora snapshot contains the
 `PopupWindow.grabFocus` API used by the shell; an unpatched upstream 0.2.1 is
-not sufficient. Anchored control popups
-must close on Escape and on a click outside their visible card under X11.
+not sufficient. Update Center opens as a popup anchored beneath its panel icon,
+with content-based sizing and bounds clamped to the active screen. Its
+Settings tab offers a persistent Float update terminal toggle that applies to
+the next update or recovery terminal; those terminals default to tiled.
+Update Center and the other anchored control popups must close on Escape and
+on a click outside their visible card under X11.
 Visible shell surfaces must be opaque and follow the active theme selected in
 the user `themes.toml` file.
 
@@ -381,9 +405,18 @@ be validated against the supported Fedora release.
 Runtime dependencies are classified as:
 
 - Core: an X11 server/session, D-Bus session support, one usable terminal
-  emulator, and the tools required by configured core keybindings. Alacritty
-  is the preferred emulator, with the existing supported-terminal fallback
-  chain retained when Alacritty is unavailable.
+  emulator, the GNOME Keyring packages for credential storage
+  (`gnome-keyring` and `gnome-keyring-pam`), and the tools required by configured
+  core keybindings. Alacritty is the preferred emulator, with the existing
+  supported-terminal fallback chain retained when Alacritty is unavailable.
+  Source synchronization must reconcile the keyring pair even without
+  Quickshell installed, while keeping desktop-only update dependencies gated
+  on Quickshell. Dependency diagnostics must report a missing daemon or PAM
+  package and offer the installer repair path. Automatic keyring unlock at
+  password login also requires the display manager's PAM stack to load
+  `pam_gnome_keyring.so` and matching account/keyring passwords. Installing the
+  package pair does not configure PAM services. Autologin and `startx` do not
+  supply a password to this PAM path.
 - Recommended desktop: Alacritty, Quickshell, Picom, Feh, Dex, a polkit agent,
   notification tools, audio controls, screenshot tooling, Nerd/emoji fonts,
   Flatpak with its GTK portal, the Phase 6 system-management runtime
@@ -466,6 +499,13 @@ requiring a reboot. The application must use a hybrid integration model:
 - Providers and delegated administration tools target Fedora. Missing Fedora
   capabilities must expose a clean unavailable or unsupported state rather
   than failing the entire application.
+
+The panel Update Center delegates confirmed Fedora updates to the installed,
+root-owned DNF5 through sudo in a terminal. It must preserve DNF's native output
+and transaction confirmation, reuse existing authorization where possible, and
+never supply automatic consent. PackageKit remains the read-only discovery API
+and handles recovery of its existing operations; native DNF retries must not
+acknowledge unrelated PackageKit work or claim an interrupted attempt succeeded.
 
 The Settings platform must distinguish:
 
@@ -588,13 +628,15 @@ installation roots still require the source installer. Changes to the release's
 build/source-update package list are handled within the reserved transaction:
 only validated RPM names are passed to DNF, and the resulting manifest must
 match that prepared list. DNF owns package recovery; desktop rollback does not
-uninstall packages. Authorization uses polkit and requires one visible approval per update or
-explicit recovery operation. A root-owned helper retains that approval only
-for the transaction. Updates bind the operation, generation, and selected
-revision; recovery remains limited to the original operation and its owner.
+uninstall packages. After explicit update or recovery confirmation, authorization
+reuses an existing non-interactive sudo grant when available. Otherwise it uses
+polkit for one visible approval. The updater must not create passwordless sudo
+rules, store passwords, or change configured credential timeouts. A root-owned helper
+retains its operation-bound authorization only for the transaction. Updates bind
+the operation, generation, and selected revision; recovery remains limited to the original operation and its owner.
 A private pipe carries at most eight allowlisted phase requests; EOF, completion,
 or the one-hour session deadline ends the grant. Passwords are never saved, and
-there is no blanket authorization cache for other programs or updates.
+the updater creates no blanket authorization cache for other programs or updates.
 Existing installations bootstrap this support through the source
 installer; the GUI does not elevate a repository copy.
 
