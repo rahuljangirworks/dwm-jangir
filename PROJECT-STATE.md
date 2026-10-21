@@ -89,9 +89,14 @@ settings-theme, terminal, Update Center settings/window-rule/assets/model,
 Podman runner, kickstart variants, accessibility, panel settings, and input
 settings tests.
 
-Pre-existing failures, identical on `dev` before the sync: `make check-shell`
-(SC2016 in `tests/test-runtime-identity.sh`), `tests/test-runtime-identity.sh`,
-and `tests/test-install-preservation.sh`. Not run on this host:
+On 2026-10-21 the three earlier host failures were fixed on `dev`:
+`make check-shell` and `tests/test-runtime-identity.sh` (test matched wrapped
+docs line-by-line; SC2016 literal), and `tests/test-install-preservation.sh`
+(`install.sh` still used split `install-system`/`install-user` stages instead
+of upstream's guarded `sudo make install`; the D-007 user migration now runs
+first). Build, `git diff --check`, `make check-shell`, and all suites above
+pass on the host. The installer change still needs a Fedora VM install run.
+Not run on this host:
 `test-desktop-update-security.py` (needs a root container),
 `test-fedora-iso-builder.sh` (`ksvalidator` missing), and Xvfb tests.
 Upstream has an unmerged `revert-374-integ/pathfm-integration` branch.
