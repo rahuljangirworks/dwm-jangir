@@ -17,7 +17,10 @@ grep -Fq "DATA_DIR  := \${XDG_DATA_HOME}/dwm-jangir" "$repo_dir/Makefile"
 grep -Fq "PRIVILEGED_HELPER_DIR = \${PREFIX}/libexec/dwm-jangir" "$repo_dir/Makefile"
 grep -Fq 'static const char dwmdir[] = "dwm-jangir";' "$repo_dir/dwm.c"
 grep -Fq '90-dwm-jangir-display.conf' "$repo_dir/scripts/dwm-display-setup"
-grep -Fq "legacy \`dwm-titus\` XDG configuration, data, and state directories" "$repo_dir/docs/src/content/install.md"
+# The documentation is wrapped prose; compare it with line breaks folded.
+tr -s '[:space:]' ' ' <"$repo_dir/docs/src/content/install.md" |
+	grep -Fq "legacy \`dwm-titus\` XDG configuration, data, and state directories"
+# shellcheck disable=SC2016
 grep -Fq '[[ -f $legacy_session && ! -L $legacy_session ]]' "$repo_dir/install.sh"
 
 # Execute only the user-owned migration helper definitions. This covers the
