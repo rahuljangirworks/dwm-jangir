@@ -1188,16 +1188,16 @@ fi
 cd "$REPO_DIR"
 make clean
 make
-sudo make install-system \
-	USER_HOME="$HOME" \
-	OWNER="$(id -un)" \
-	DATADIR="/usr/share"
+# Move legacy user directories before the guarded install records new state.
 migrate_user_runtime_identity
-make install-user \
+sudo make install \
+	DATADIR="/usr/share" \
+	USER_RUNTIME_DIR="${XDG_RUNTIME_DIR:-}" \
 	USER_HOME="$HOME" \
 	OWNER="$(id -un)" \
 	XDG_CONFIG_HOME="${XDG_CONFIG_HOME:-$HOME/.config}" \
-	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}"
+	XDG_DATA_HOME="${XDG_DATA_HOME:-$HOME/.local/share}" \
+	XDG_STATE_HOME="${XDG_STATE_HOME:-$HOME/.local/state}"
 # Install a low-priority DNF5 default without replacing administrator settings.
 # The main /etc/dnf/dnf.conf and later drop-ins keep precedence.
 info "Installing DNF5 defaults while preserving administrator settings."

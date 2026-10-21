@@ -59,7 +59,7 @@ grep -Fq 'runuser -u "$$target_user" -- env -u DBUS_SESSION_BUS_ADDRESS -u XDG_R
 # shellcheck disable=SC2016
 grep -Fq 'set -- "XDG_RUNTIME_DIR=$$runtime_dir"' "$REPO_DIR/Makefile"
 grep -Fq "\$(MAKE) install-user-files " "$REPO_DIR/Makefile"
-grep -Fq 'dwm.desktop not found (run '\''./install.sh'\'')' \
+grep -Fq 'dwm-jangir.desktop not found (run '\''./install.sh'\'')' \
 	"$REPO_DIR/scripts/check-deps.sh"
 grep -Fq 'Run: make && sudo make install-system && make install-user' \
 	"$REPO_DIR/scripts/check-deps.sh"
